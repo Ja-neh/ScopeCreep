@@ -273,7 +273,8 @@ ScopeCreep/
 │   │   ├── GameWorld.js    # Central coordinator: canvas, loop, scene, renderer, clock
 │   │   ├── PhysicsWorld.js # Rapier 3D WASM physics wrapper & debug line generator
 │   │   ├── InputManager.js # Keyboard, mouse, pointer lock, and semantic action map
-│   │   └── LevelManager.js # Stage transitions, lifecycle, and GPU memory cleanup
+│   │   ├── LevelManager.js # Stage transitions, lifecycle, and GPU memory cleanup
+│   │   └── FPSTracker.js   # Real-time framerate and frame time HUD performance monitor
 │   ├── entities/           # Concrete game actors and interactive objects
 │   │   ├── BaseEntity.js   # Abstract lifecycle contract (prePhysics/postPhysics/gameplay/lateUpdate)
 │   │   ├── Battleship.js   # Guided-missile destroyer assembly, decks, citadel, colliders
@@ -338,6 +339,13 @@ ScopeCreep/
 - `loadLevel(newLevel)`: Disposes old level and asynchronously boots new stage.
 - `restartCurrentLevel()`: Reloads current stage without browser refresh.
 - `update(delta)`: Dispatches frame update to active level.
+
+### `FPSTracker` (`src/core/FPSTracker.js`)
+- Top-left HUD performance and framerate diagnostic widget (`#fps-tracker`).
+- `update()`: Measures frame delta using `performance.now()`, updates rolling FPS and frame time in milliseconds (`ms`) every 150ms without visual jitter.
+- Dynamic color-coding: Green/emerald ($\ge 55$ FPS), Amber/yellow ($30-54$ FPS), Red ($< 30$ FPS).
+- `pointer-events: none` ensuring zero interference with mouse clicks or pointer lock.
+- `dispose()`: Safely unmounts DOM element upon engine cleanup.
 
 ### `BaseEntity` (`src/entities/BaseEntity.js`)
 - `constructor(name)`: Sets entity name, registers `isEntity = true`, and initializes `this.mesh = null`.

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { InputManager } from './InputManager.js';
 import { PhysicsWorld } from './PhysicsWorld.js';
+import { FPSTracker } from './FPSTracker.js';
 
 /**
  * GameWorld
@@ -80,6 +81,9 @@ export class GameWorld {
     this._onResize = this._onResize.bind(this);
     this._loop = this._loop.bind(this);
     window.addEventListener('resize', this._onResize);
+
+    // 9. On-Screen Performance & FPS Monitor (Top-Left HUD)
+    this.fpsTracker = new FPSTracker();
   }
 
   /**
@@ -301,6 +305,11 @@ export class GameWorld {
     // =========================================================================
     this.renderer.render(this.scene, this.getActiveCamera());
 
+    // Update on-screen FPS & performance diagnostics
+    if (this.fpsTracker) {
+      this.fpsTracker.update();
+    }
+
     // =========================================================================
     // PHASE 8: INPUT TRANSITION FLUSH
     // =========================================================================
@@ -419,5 +428,10 @@ export class GameWorld {
 
     this.physics.dispose();
     this.renderer.dispose();
+
+    if (this.fpsTracker) {
+      this.fpsTracker.dispose();
+      this.fpsTracker = null;
+    }
   }
 }
