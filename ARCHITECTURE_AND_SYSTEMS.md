@@ -285,6 +285,9 @@ ScopeCreep/
 │   │   │   └── BattleshipModel.js # Destroyer hull, superstructure, stairs, collider slabs
 │   │   ├── player-components/     # Modular player sub-systems
 │   │   │   └── SpringArmCamera.js # 1st/3rd person camera, occlusion raycasting, arm compression
+│   │   ├── projectiles/    # High-performance object-pooled ballistics
+│   │   │   ├── Projectile.js      # Ballistic trajectory, gravity arc, CCD raycast sweep
+│   │   │   └── ProjectilePool.js  # Zero-allocation pool (Flak, Artillery)
 │   │   └── ship-components/# Specialized naval stations and subsystems
 │   │       ├── BaseStation.js     # Abstract station lifecycle (mount, dismount, proximity, deck return)
 │   │       ├── ShipBuoyancy.js    # 5-probe wave sampling, pitch/roll/heave damping
@@ -404,6 +407,18 @@ ScopeCreep/
 - `FlakTurret`: Aft quad rapid-fire anti-aircraft battery with high-angle elevation.
 - `update(delta)`: Handles station proximity detection, mouse aiming, crosshair HUD display, and dismount inputs.
 
+### `ProjectilePool` (`src/entities/projectiles/ProjectilePool.js`)
+- High-performance, zero-allocation object pool for rapid-fire ballistics.
+- Pre-allocates 100 Flak tracers and 30 Heavy Artillery shells upfront in `gameWorld.projectilesGroup`.
+- `gameplayUpdate(delta, gameWorld)`: Runs in **Phase 5**, advancing all active trajectories and executing $O(1)$ swap-and-pop recycling upon impact or lifetime expiration.
+- `fireFlak({ origin, direction, spread, source })`: Spawns high-velocity kinetic tracer ($460\text{ m/s}$, slight spread, 2.4s lifetime).
+- `fireArtillery({ origin, direction, source })`: Spawns heavy explosive shell ($240\text{ m/s}$, gravity arc $-18\text{ m/s}^2$, 6.5s lifetime).
+
+### `Projectile` (`src/entities/projectiles/Projectile.js`)
+- Single physical projectile instance managing position, velocity, ballistic gravity, and drag.
+- Continuous Collision Detection (CCD): Performs segment raycasting (`castRay`) from previous position to next position every frame, preventing tunneling through thin surfaces even at $500\text{ m/s}$.
+- Detects surface impacts against Rapier colliders and ocean water plane ($Y \le 0$). Delivers `DamageInfo` (`KINETIC` or `EXPLOSIVE`) to target entity's `HealthComponent`.
+
 ### `HealthComponent` (`src/entities/components/HealthComponent.js`)
 - Standalone health container focused strictly on basic damage mechanics.
 - `DamageType`: Strict enum constrained to `KINETIC` and `EXPLOSIVE`.
@@ -488,9 +503,11 @@ Rather than declaring rigid, grand specifications upfront, the remaining systems
 - **The Gotcha:** The 8-phase pipeline (`prePhysicsUpdate`, `postPhysicsUpdate`, `lateUpdate`) currently works because `Battleship` and `CharacterController` explicitly opt into the right phases.
 - **To Watch:** As new entities arrive (projectiles, drones, boats), each must correctly implement the right lifecycle hooks. If a new moving platform updates in `postPhysicsUpdate` instead of `prePhysicsUpdate`, it will immediately reintroduce the exact 1-frame lag bug we just fixed. A short phase contract or base class will keep this disciplined.
 
-### Projectiles & Object Pooling
-- **The Gotcha:** Artillery shells and rapid-fire flak tracers imply dozens of short-lived objects being spawned and destroyed every second.
-- **To Watch:** In Three.js and Rapier, continuously allocating and disposing meshes and colliders triggers severe Garbage Collection (GC) hitches. We need to budget for an **object pool** (reusable shell instances) before ballistics are wired in.
+### Projectiles & Object Pooling (Resolved)
+- **Implemented Solution:** `ProjectilePool` pre-allocates 100 Flak tracers and 30 Heavy Artillery shells upfront.
+- **Zero Allocations in Hot Loop:** No dynamic mesh or Rapier allocations during firing; instances are recycled in $O(1)$ time via swap-and-pop arrays.
+- **Continuous Collision Detection (CCD):** Trajectory sweeps execute segment raycasts (`castRay`) from previous to next frame positions, preventing tunneling through targets at velocities over $450\text{ m/s}$.
+- **Phase 5 Execution:** Projectiles tick in `gameplayUpdate(delta, gameWorld)` after platform motion and character sweeps have settled.
 
 ### Damage State Placement
 - **Current State:** A lightweight, standalone foundation exists in `HealthComponent.js` (`src/entities/components/HealthComponent.js`), supporting basic health tracking and damage calculation.
