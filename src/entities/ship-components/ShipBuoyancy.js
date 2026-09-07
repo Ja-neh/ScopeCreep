@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import config from '../../config.json';
 
 /**
  * ShipBuoyancy
@@ -7,10 +8,11 @@ import * as THREE from 'three';
  */
 export class ShipBuoyancy {
   constructor(options = {}) {
-    this.draft = options.draft || 1.0;
-    this.heaveScale = options.heaveScale || 0.25; // 25% vertical bobbing amplitude
-    this.pitchScale = options.pitchScale || 0.20; // 20% longitudinal pitch tilt
-    this.rollScale = options.rollScale || 0.15;   // 15% lateral roll tilt
+    const buoyCfg = config.ship.buoyancy;
+    this.draft = options.draft || buoyCfg.draft;
+    this.heaveScale = options.heaveScale || buoyCfg.heaveScale; // vertical bobbing amplitude
+    this.pitchScale = options.pitchScale || buoyCfg.pitchScale; // longitudinal pitch tilt
+    this.rollScale = options.rollScale || buoyCfg.rollScale;   // lateral roll tilt
 
     this.currentPitch = 0;
     this.currentRoll = 0;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseEntity } from '../BaseEntity.js';
 import { Projectile } from './Projectile.js';
 import { DamageType } from '../components/HealthComponent.js';
+import config from '../../config.json';
 
 /**
  * ProjectilePool
@@ -13,9 +14,10 @@ export class ProjectilePool extends BaseEntity {
     super('ProjectilePool');
     this.gameWorld = gameWorld;
 
-    // Capacities
-    this.flakCapacity = options.flakCapacity || 100;
-    this.artilleryCapacity = options.artilleryCapacity || 20;
+    // Capacities from config
+    const projConfig = config.projectiles;
+    this.flakCapacity = options.flakCapacity || projConfig.flak.capacity;
+    this.artilleryCapacity = options.artilleryCapacity || projConfig.artillery.capacity;
 
     // Root Three.js container
     this.mesh = new THREE.Group();
@@ -127,11 +129,15 @@ export class ProjectilePool extends BaseEntity {
   fireFlak({
     origin,
     direction,
-    spread = 0.012,
-    speed = 460,
+    spread,
+    speed,
     source = null,
     excludeCollider = null
   } = {}) {
+    const flakCfg = config.projectiles.flak;
+    const finalSpeed = speed !== undefined ? speed : flakCfg.speed;
+    const finalSpread = spread !== undefined ? spread : flakCfg.spread;
+
     let p = this.flakPool.pop();
 
     // If pool empty, recycle oldest active flak projectile
@@ -148,9 +154,9 @@ export class ProjectilePool extends BaseEntity {
 
     // Apply angular cone spread
     this._spreadDir.copy(direction).normalize();
-    if (spread > 0) {
-      const angle = (Math.random() - 0.5) * spread * 2;
-      const angle2 = (Math.random() - 0.5) * spread * 2;
+    if (finalSpread > 0) {
+      const angle = (Math.random() - 0.5) * finalSpread * 2;
+      const angle2 = (Math.random() - 0.5) * finalSpread * 2;
       this._spreadRight.set(-this._spreadDir.z, 0, this._spreadDir.x).normalize();
       this._spreadUp.crossVectors(this._spreadDir, this._spreadRight).normalize();
       this._spreadDir.addScaledVector(this._spreadRight, angle);
@@ -161,11 +167,11 @@ export class ProjectilePool extends BaseEntity {
     p.spawn({
       origin,
       direction: this._spreadDir,
-      speed,
-      gravity: -10.0,
-      drag: 0.002,
-      maxLifeTime: 2.4,
-      damage: 35,
+      speed: finalSpeed,
+      gravity: flakCfg.gravity,
+      drag: flakCfg.drag,
+      maxLifeTime: flakCfg.maxLifeTime,
+      damage: flakCfg.damage,
       damageType: DamageType.KINETIC,
       source,
       excludeCollider
@@ -181,10 +187,13 @@ export class ProjectilePool extends BaseEntity {
   fireArtillery({
     origin,
     direction,
-    speed = 220,
+    speed,
     source = null,
     excludeCollider = null
   } = {}) {
+    const artCfg = config.projectiles.artillery;
+    const finalSpeed = speed !== undefined ? speed : artCfg.speed;
+
     let p = this.artilleryPool.pop();
 
     // If pool empty, recycle oldest active artillery projectile
@@ -202,11 +211,11 @@ export class ProjectilePool extends BaseEntity {
     p.spawn({
       origin,
       direction,
-      speed,
-      gravity: -18.0, // Substantial ballistic arc
-      drag: 0.001,
-      maxLifeTime: 6.5,
-      damage: 350,
+      speed: finalSpeed,
+      gravity: artCfg.gravity,
+      drag: artCfg.drag,
+      maxLifeTime: artCfg.maxLifeTime,
+      damage: artCfg.damage,
       damageType: DamageType.EXPLOSIVE,
       source,
       excludeCollider
