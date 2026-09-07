@@ -14,7 +14,7 @@ async function bootstrap() {
   gameWorld.setLevelManager(levelManager);
 
   // 3. Load Level 1: Operation Retake (At Sea)
-  await levelManager.loadLevel(new TestLevel(gameWorld));
+  await levelManager.loadLevel(new Level1(gameWorld));
 
   // 4. Start the main game loop
   gameWorld.start();

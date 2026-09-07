@@ -26,6 +26,7 @@ Guidelines follow RFC 2119 priority levels:
 - **Validate in sandbox:** Validate and calibrate new mechanics, weapons, and character controls in `TestLevel` before wiring them into operational mission stages like `Level01`.
 - **Keep components simple:** Build lightweight, single-purpose components (e.g. `HealthComponent` managing only health and kinetic/explosive damage without premature multi-zone complexity).
 - **Synchronize CPU/GPU wave math:** Any changes to wave displacement formulas in `ocean.vert.glsl` should be accurately mirrored in `Ocean.getWaveHeight()`.
+- **Externalize balance to `config.json`:** Gameplay balance parameters (projectile velocities, damage, drag, player speeds, ship propulsion metrics) should be defined in `src/config.json` rather than hardcoded in entity logic. Do not put shader or rendering values in `config.json`; keep visual parameters self-contained within rendering classes.
 
 ### MAY (Discretionary)
 - Non-essential performance micro-optimizations not required by profiling.
@@ -149,6 +150,19 @@ flowchart LR
     }
     super.dispose();
   }
+  ```
+
+### 4. Gameplay Configuration (`config.json`)
+- Define gameplay balance parameters (weapon damage, projectile speeds, cadences, player speeds, ship propulsion) in `src/config.json`.
+- Do not hardcode "magic numbers" for gameplay tuning inside entity classes. Always provide fallback to `config.json` while honoring explicit `options` overrides.
+- Do not include rendering, visual, or shader parameters (such as Gerstner wave vectors or material colors) in `config.json`; rendering configuration belongs inside the corresponding rendering modules (e.g. `Ocean.js`).
+  ```javascript
+  // Good:
+  import config from '../config.json';
+  const speed = options.speed !== undefined ? options.speed : config.projectiles.artillery.speed;
+
+  // Avoid:
+  const speed = options.speed || 220.0; // Hardcoded magic number
   ```
 
 ---

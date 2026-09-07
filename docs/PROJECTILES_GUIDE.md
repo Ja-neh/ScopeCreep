@@ -37,7 +37,7 @@ The pool provides two specialized methods tailored for your turret weapons:
 
 ### 3.1 `fireFlak(options)` — Rapid-Fire Anti-Air & Bullets
 
-Spawns a high-speed kinetic tracer round from the pre-allocated flak pool (100 rounds pre-allocated).
+Spawns a high-speed kinetic tracer round from the pre-allocated flak pool (defaults sourced directly from `src/config.json`).
 
 ```javascript
 const projectile = this.gameWorld.projectilePool.fireFlak({

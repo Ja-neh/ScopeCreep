@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseEntity } from './BaseEntity.js';
 import { SpringArmCamera, CameraMode } from './player-components/SpringArmCamera.js';
+import config from '../config.json';
 
 export { CameraMode };
 
@@ -18,12 +19,15 @@ export class Player extends BaseEntity {
     this.camera = gameWorld.camera;
     this.physicsWorld = gameWorld.physics;
 
-    // Movement attributes
-    this.walkSpeed = options.walkSpeed || 8.0;
-    this.sprintSpeed = options.sprintSpeed || 14.0;
-    this.jumpForce = options.jumpForce || 10.0;
-    this.gravity = options.gravity || 25.0;
-    this.mouseSensitivity = options.mouseSensitivity || 0.002;
+    // Movement attributes from config
+    const locCfg = config.player.locomotion;
+    const camCfg = config.player.camera;
+
+    this.walkSpeed = options.walkSpeed || locCfg.walkSpeed;
+    this.sprintSpeed = options.sprintSpeed || locCfg.sprintSpeed;
+    this.jumpForce = options.jumpForce || locCfg.jumpForce;
+    this.gravity = options.gravity || locCfg.gravity;
+    this.mouseSensitivity = options.mouseSensitivity || locCfg.mouseSensitivity;
 
     // Position & Kinematics
     this.position = options.position ? options.position.clone() : new THREE.Vector3(0, 0, 0);
@@ -42,12 +46,12 @@ export class Player extends BaseEntity {
     // Spring Arm Camera Controller
     this.springArm = new SpringArmCamera(this.camera, this.physicsWorld, {
       defaultMode: CameraMode.THIRD_PERSON,
-      eyeHeight: options.eyeHeight || 1.7,
-      thirdPersonDistance: options.thirdPersonDistance || 4.5,
-      thirdPersonTargetHeight: options.thirdPersonTargetHeight || 1.3,
-      minCameraDistance: 0.6,
-      cameraCollisionMargin: 0.25,
-      shoulderOffset: options.shoulderOffset || 0.0
+      eyeHeight: options.eyeHeight || camCfg.eyeHeight,
+      thirdPersonDistance: options.thirdPersonDistance || camCfg.thirdPersonDistance,
+      thirdPersonTargetHeight: options.thirdPersonTargetHeight || camCfg.thirdPersonTargetHeight,
+      minCameraDistance: options.minCameraDistance || camCfg.minCameraDistance,
+      cameraCollisionMargin: options.cameraCollisionMargin || camCfg.cameraCollisionMargin,
+      shoulderOffset: options.shoulderOffset || camCfg.shoulderOffset
     });
 
     // Reusable math vectors for movement input (eliminating GC)

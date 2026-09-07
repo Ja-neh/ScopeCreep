@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
 import { ShipBuoyancy } from './ShipBuoyancy.js';
+import config from '../../config.json';
 
 /**
  * HelmStation
@@ -24,12 +25,15 @@ export class HelmStation extends BaseStation {
     this.mesh = battleship.mesh; // Primary mesh reference for local/world transforms
     this.input = options.input || null;
 
-    // Movement parameters
-    this.maxForwardSpeed = options.maxForwardSpeed || 15.0; // m/s (~30 knots)
-    this.maxReverseSpeed = options.maxReverseSpeed || 5.0;
-    this.acceleration = options.acceleration || 3.5;
-    this.drag = options.drag || 0.8;
-    this.turnRate = options.turnRate || 0.45; // rad/s
+    // Movement parameters from config
+    const propCfg = config.ship.propulsion;
+    const buoyCfg = config.ship.buoyancy;
+
+    this.maxForwardSpeed = options.maxForwardSpeed || propCfg.maxForwardSpeed;
+    this.maxReverseSpeed = options.maxReverseSpeed || propCfg.maxReverseSpeed;
+    this.acceleration = options.acceleration || propCfg.acceleration;
+    this.drag = options.drag || propCfg.drag;
+    this.turnRate = options.turnRate || propCfg.turnRate;
 
     // Dynamic locomotion state
     this.speed = 0;
@@ -37,7 +41,12 @@ export class HelmStation extends BaseStation {
     this.rudderAngle = 0; // Current rudder steer [-1, 1]
 
     // Buoyancy subsystem
-    this.buoyancy = new ShipBuoyancy({ draft: options.draft || 1.0 });
+    this.buoyancy = new ShipBuoyancy({
+      draft: options.draft || buoyCfg.draft,
+      heaveScale: options.heaveScale || buoyCfg.heaveScale,
+      pitchScale: options.pitchScale || buoyCfg.pitchScale,
+      rollScale: options.rollScale || buoyCfg.rollScale
+    });
 
     this._forwardVec = new THREE.Vector3();
 
