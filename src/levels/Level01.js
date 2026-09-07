@@ -4,6 +4,7 @@ import { BaseLevel } from './BaseLevel.js';
 import { Ocean } from '../rendering/Ocean.js';
 import { Battleship } from '../entities/Battleship.js';
 import { Player } from '../entities/Player.js';
+import { ProjectilePool } from '../entities/projectiles/ProjectilePool.js';
 
 /**
  * Level01
@@ -21,6 +22,7 @@ export class Level01 extends BaseLevel {
     this.water = null;
     this.battleship = null;
     this.player = null;
+    this.projectilePool = null;
 
     // Dev Tools Camera System
     this.cameraMode = 'PLAYER'; // 'PLAYER' | 'AERIAL'
@@ -68,6 +70,11 @@ export class Level01 extends BaseLevel {
     });
     this.gameWorld.environmentGroup.add(this.water.mesh);
     this.trackDisposable(this.water);
+
+    // 3.5 High-Performance Projectile Object Pool
+    this.projectilePool = new ProjectilePool(this.gameWorld);
+    this.gameWorld.addEntity(this.projectilePool);
+    this.gameWorld.projectilePool = this.projectilePool;
 
     // 4. Instantiate Modern Battleship with Ocean Buoyancy
     this.battleship = new Battleship(this.gameWorld, {
@@ -403,6 +410,15 @@ export class Level01 extends BaseLevel {
 
     // Restore master camera
     this.gameWorld.setActiveCamera(null);
+
+    if (this.projectilePool) {
+      this.gameWorld.removeEntity(this.projectilePool);
+      this.projectilePool.dispose();
+      this.projectilePool = null;
+      if (this.gameWorld.projectilePool === this.projectilePool) {
+        this.gameWorld.projectilePool = null;
+      }
+    }
 
     if (this.player) {
       this.gameWorld.removeEntity(this.player);

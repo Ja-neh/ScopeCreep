@@ -4,6 +4,7 @@ import { Player } from '../entities/Player.js';
 import { Battleship } from '../entities/Battleship.js';
 import { ArtilleryTurret } from '../entities/ship-components/ArtilleryTurret.js';
 import { FlakTurret } from '../entities/ship-components/FlakTurret.js';
+import { ProjectilePool } from '../entities/projectiles/ProjectilePool.js';
 
 /**
  * TestLevel
@@ -17,6 +18,7 @@ export class TestLevel extends BaseLevel {
     this.battleship = null;
     this.mainGun = null;
     this.flakTurret = null;
+    this.projectilePool = null;
   }
 
   async init() {
@@ -67,6 +69,11 @@ export class TestLevel extends BaseLevel {
     this.gameWorld.environmentGroup.add(gridHelper);
     this.trackDisposable(gridHelper);
 
+    // 3.5 High-Performance Projectile Object Pool
+    this.projectilePool = new ProjectilePool(this.gameWorld);
+    this.gameWorld.addEntity(this.projectilePool);
+    this.gameWorld.projectilePool = this.projectilePool;
+
     // 4. Instantiate Modern Battleship Placeholder & Collisions
     this.battleship = new Battleship(this.gameWorld, {
       position: new THREE.Vector3(0, 0, 0)
@@ -98,7 +105,7 @@ export class TestLevel extends BaseLevel {
     });
     this.gameWorld.addEntity(this.flakTurret);
 
-    console.log(`${this.name} initialized with Battleship, MainGun, FlakTurret, Rapier Ground, and KinematicCharacterController.`);
+    console.log(`${this.name} initialized with Battleship, MainGun, FlakTurret, ProjectilePool`);
   }
 
   update(delta) {
@@ -111,6 +118,16 @@ export class TestLevel extends BaseLevel {
       this.gameWorld.physics.world.removeCollider(this.groundCollider, true);
       this.groundCollider = null;
     }
+
+    if (this.projectilePool) {
+      this.gameWorld.removeEntity(this.projectilePool);
+      this.projectilePool.dispose();
+      this.projectilePool = null;
+      if (this.gameWorld.projectilePool === this.projectilePool) {
+        this.gameWorld.projectilePool = null;
+      }
+    }
+
     if (this.mainGun) {
       this.gameWorld.removeEntity(this.mainGun);
       this.mainGun.dispose();
