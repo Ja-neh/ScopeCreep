@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
+import config from '../../config.json';
 
 /**
  * FlakTurret
@@ -27,6 +28,27 @@ export class FlakTurret extends BaseStation {
 
     this.minPitch = -Math.PI / 18; // -10 deg
     this.maxPitch = Math.PI / 2.1; // ~85 deg high-angle flak fire
+
+    // --- Card 2.2: Firing state ---
+    // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
+    this._muzzleWorldPos = new THREE.Vector3();
+    this._barrelWorldDir = new THREE.Vector3();
+
+    // Rate of fire (rapid anti-air battery)
+    const flakCfg = config.turrets.flak;
+    this.fireCooldown = 0;
+    this.fireRate = 1 / flakCfg.defaultRoundsPerSecond; // seconds between rounds
+
+    // Distance from the pitch-group pivot to the muzzle tip along the barrel axis
+    // (barrel mesh is 6.5m long, centered at local z = -3.2, so its tip sits ~6.45m
+    // forward of the pitch pivot)
+    this.barrelLength = 6.45;
+    this.barrelRestZ = -3.2; // rest local-Z position of each barrel mesh
+
+    // Visual recoil (barrel kickback)
+    this.recoilOffset = 0;
+    this.recoilKick = 0.25;         // meters of kickback per round (lighter, faster weapon)
+    this.recoilRecoverySpeed = 4.0; // meters/sec spring-back rate
 
     // 1. Build the 3D turret mesh hierarchy & detect field
     this._createMesh();
@@ -95,12 +117,15 @@ export class FlakTurret extends BaseStation {
       [0.65, -0.2, -3.2]
     ];
 
+    // Keep references for recoil kickback animation
+    this.barrels = [];
     flakPositions.forEach(([x, y, z]) => {
       const b = new THREE.Mesh(aaBarrelGeo, turretMat);
       b.position.set(x, y, z);
       b.rotation.x = Math.PI / 2; // Barrel points along -Z
       b.castShadow = true;
       this.pitchGroup.add(b);
+      this.barrels.push(b);
     });
 
     // Apply default upward elevation
@@ -221,8 +246,46 @@ export class FlakTurret extends BaseStation {
         <strong>[E]</strong> or <strong>[ESC]</strong> Dismount &nbsp;|&nbsp; 
         <strong>Mouse</strong> Aim
       </div>
+      <div style="
+        position: absolute;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 180px;
+        text-align: center;
+        font-family: monospace;
+      ">
+        <div data-role="reload-label" style="
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          color: #f4a261;
+          margin-bottom: 4px;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        ">READY</div>
+        <div style="
+          width: 100%;
+          height: 6px;
+          border-radius: 3px;
+          background: rgba(15, 23, 42, 0.7);
+          border: 1px solid rgba(244, 162, 97, 0.5);
+          overflow: hidden;
+        ">
+          <div data-role="reload-fill" style="
+            height: 100%;
+            width: 100%;
+            background: #f4a261;
+            box-shadow: 0 0 8px rgba(244, 162, 97, 0.8);
+            transition: width 0.05s linear, background-color 0.15s ease;
+          "></div>
+        </div>
+      </div>
     `;
     document.body.appendChild(this.hudEl);
+
+    // Cache reload indicator elements for per-frame updates (avoid re-querying DOM)
+    this.reloadLabelEl = this.hudEl.querySelector('[data-role="reload-label"]');
+    this.reloadFillEl = this.hudEl.querySelector('[data-role="reload-fill"]');
   }
 
   /**
@@ -246,13 +309,95 @@ export class FlakTurret extends BaseStation {
   }
 
   /**
-   * Update loop: handles idle sweep (when unmanned), proximity detection, prompt display, mounting, aiming, and dismounting
+   * Computes the current world-space muzzle position & aim direction into the
+   * pre-allocated scratchpads (no per-frame allocations).
+   */
+  _updateMuzzleTransform() {
+    // World position of the barrel pivot
+    this.pitchGroup.getWorldPosition(this._muzzleWorldPos);
+
+    // getWorldDirection() returns the object's +Z axis in world space; the barrels
+    // point down local -Z, so negate to get the actual forward firing direction.
+    this.pitchGroup.getWorldDirection(this._barrelWorldDir);
+    this._barrelWorldDir.negate();
+
+    // Offset from the pivot out to the muzzle tips
+    this._muzzleWorldPos.addScaledVector(this._barrelWorldDir, this.barrelLength);
+  }
+
+  /**
+   * Fires one rapid flak tracer round from the projectile pool.
+   */
+  _fireWeapon() {
+    const pool = this.gameWorld?.projectilePool;
+    if (!pool) return;
+
+    this._updateMuzzleTransform();
+
+    pool.fireFlak({
+      origin: this._muzzleWorldPos,
+      direction: this._barrelWorldDir,
+      source: this
+    });
+
+    this._triggerRecoil();
+  }
+
+  /**
+   * Kicks off the visual barrel recoil animation.
+   */
+  _triggerRecoil() {
+    this.recoilOffset = this.recoilKick;
+  }
+
+  /**
+   * Smoothly springs the barrels back to their rest position after firing.
+   */
+  _updateRecoil(delta) {
+    if (this.recoilOffset <= 0) return;
+
+    this.recoilOffset = Math.max(0, this.recoilOffset - delta * this.recoilRecoverySpeed);
+    const z = this.barrelRestZ + this.recoilOffset;
+
+    for (const barrel of this.barrels) {
+      barrel.position.z = z;
+    }
+  }
+
+  /**
+   * Refreshes the gunner HUD's reload progress bar/label to reflect fireCooldown.
+   */
+  _updateReloadIndicator() {
+    if (!this.reloadFillEl) return;
+
+    const ready = this.fireCooldown <= 0;
+    const pct = ready ? 100 : THREE.MathUtils.clamp(100 - (this.fireCooldown / this.fireRate) * 100, 0, 100);
+
+    this.reloadFillEl.style.width = `${pct}%`;
+    this.reloadFillEl.style.background = ready ? '#7fd992' : '#f4a261';
+    this.reloadFillEl.style.boxShadow = ready
+      ? '0 0 8px rgba(127, 217, 146, 0.8)'
+      : '0 0 8px rgba(244, 162, 97, 0.8)';
+
+    if (this.reloadLabelEl) {
+      this.reloadLabelEl.textContent = ready ? 'READY' : 'CYCLING';
+      this.reloadLabelEl.style.color = ready ? '#7fd992' : '#f4a261';
+    }
+  }
+
+  /**
+   * Update loop: handles idle sweep (when unmanned), proximity detection, prompt display, mounting, aiming, firing, and dismounting
    */
   update(delta, gameWorld = this.gameWorld) {
     this.updateCooldown(delta);
+    this._updateRecoil(delta);
+
+    if (this.fireCooldown > 0) {
+      this.fireCooldown -= delta;
+    }
 
     // -------------------------------------------------------------
-    // A. GUNNER MOUNTED: AIMING & DISMOUNT LOGIC
+    // A. GUNNER MOUNTED: AIMING, FIRING & DISMOUNT LOGIC
     // -------------------------------------------------------------
     if (this.isMounted) {
       if (gameWorld && gameWorld.input) {
@@ -278,6 +423,15 @@ export class FlakTurret extends BaseStation {
         if (input.isKeyDown('ArrowDown')) this.pitch -= 0.9 * delta;
 
         this.setAim(this.yaw, this.pitch);
+
+        // Fire the rapid-fire flak battery (held down for sustained fire)
+        const wantsFire = input.isActionDown('firePrimary');
+        if (wantsFire && this.fireCooldown <= 0) {
+          this.fireCooldown = this.fireRate;
+          this._fireWeapon();
+        }
+
+        this._updateReloadIndicator();
       }
       return;
     }
