@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
+import config from '../../config.json';
 
 /**
  * ArtilleryTurret
@@ -29,6 +30,27 @@ export class ArtilleryTurret extends BaseStation {
     this.maxYaw = Math.PI * 0.75; // 135 degrees arc to port and starboard
     this.minPitch = 0.0;
     this.maxPitch = Math.PI / 6;  // ~30 degrees max elevation
+
+    // --- Card 2.2: Firing state ---
+    // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
+    this._muzzleWorldPos = new THREE.Vector3();
+    this._barrelWorldDir = new THREE.Vector3();
+
+    // Rate of fire (heavy naval cannon, slow reload)
+    const artilleryCfg = config.turrets.artillery;
+    this.fireCooldown = 0;
+    this.fireRate = artilleryCfg.defaultReloadCadence; // seconds between shots
+
+    // Distance from the pitch-group pivot to the muzzle tip along the barrel axis
+    // (barrel mesh is 14m long, centered at local z = -6.5, so its tip sits ~13.5m
+    // forward of the pitch pivot)
+    this.barrelLength = 13.5;
+    this.barrelRestZ = -6.5; // rest local-Z position of each barrel mesh
+
+    // Visual recoil (barrel kickback)
+    this.recoilOffset = 0;
+    this.recoilKick = 0.6;          // meters of kickback per shot
+    this.recoilRecoverySpeed = 1.6; // meters/sec spring-back rate
 
     // 1. Build the 3D turret mesh hierarchy & detect field
     this._createMesh();
@@ -102,6 +124,10 @@ export class ArtilleryTurret extends BaseStation {
     barrelR.rotation.x = Math.PI / 2;
     barrelR.castShadow = true;
     this.pitchGroup.add(barrelR);
+
+    // Keep references for muzzle-flash offset & recoil kickback animation
+    this.barrelL = barrelL;
+    this.barrelR = barrelR;
 
     // 4. Proximity Detect Field on Deck (Operator Area behind turret)
     this._createDetectField();
@@ -217,8 +243,46 @@ export class ArtilleryTurret extends BaseStation {
         <strong>[E]</strong> or <strong>[ESC]</strong> Dismount &nbsp;|&nbsp; 
         <strong>Mouse</strong> Aim
       </div>
+      <div style="
+        position: absolute;
+        bottom: 90px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 180px;
+        text-align: center;
+        font-family: monospace;
+      ">
+        <div data-role="reload-label" style="
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          color: #e76f51;
+          margin-bottom: 4px;
+          text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+        ">READY</div>
+        <div style="
+          width: 100%;
+          height: 6px;
+          border-radius: 3px;
+          background: rgba(15, 23, 42, 0.7);
+          border: 1px solid rgba(231, 111, 81, 0.5);
+          overflow: hidden;
+        ">
+          <div data-role="reload-fill" style="
+            height: 100%;
+            width: 100%;
+            background: #e76f51;
+            box-shadow: 0 0 8px rgba(231, 111, 81, 0.8);
+            transition: width 0.05s linear, background-color 0.15s ease;
+          "></div>
+        </div>
+      </div>
     `;
     document.body.appendChild(this.hudEl);
+
+    // Cache reload indicator elements for per-frame updates (avoid re-querying DOM)
+    this.reloadLabelEl = this.hudEl.querySelector('[data-role="reload-label"]');
+    this.reloadFillEl = this.hudEl.querySelector('[data-role="reload-fill"]');
   }
 
   /**
@@ -242,13 +306,94 @@ export class ArtilleryTurret extends BaseStation {
   }
 
   /**
-   * Update loop: handles proximity detection, prompt display, mounting, aiming, and dismounting
+   * Computes the current world-space muzzle position & aim direction into the
+   * pre-allocated scratchpads (no per-frame allocations).
+   */
+  _updateMuzzleTransform() {
+    // World position of the barrel pivot
+    this.pitchGroup.getWorldPosition(this._muzzleWorldPos);
+
+    // getWorldDirection() returns the object's +Z axis in world space; the barrels
+    // point down local -Z, so negate to get the actual forward firing direction.
+    this.pitchGroup.getWorldDirection(this._barrelWorldDir);
+    this._barrelWorldDir.negate();
+
+    // Offset from the pivot out to the muzzle tip
+    this._muzzleWorldPos.addScaledVector(this._barrelWorldDir, this.barrelLength);
+  }
+
+  /**
+   * Fires one heavy artillery shell from the projectile pool.
+   */
+  _fireWeapon() {
+    const pool = this.gameWorld?.projectilePool;
+    if (!pool) return;
+
+    this._updateMuzzleTransform();
+
+    pool.fireArtillery({
+      origin: this._muzzleWorldPos,
+      direction: this._barrelWorldDir,
+      source: this
+    });
+
+    this._triggerRecoil();
+  }
+
+  /**
+   * Kicks off the visual barrel recoil animation.
+   */
+  _triggerRecoil() {
+    this.recoilOffset = this.recoilKick;
+  }
+
+  /**
+   * Smoothly springs the barrels back to their rest position after firing.
+   */
+  _updateRecoil(delta) {
+    if (this.recoilOffset <= 0) return;
+
+    this.recoilOffset = Math.max(0, this.recoilOffset - delta * this.recoilRecoverySpeed);
+    const z = this.barrelRestZ + this.recoilOffset;
+
+    if (this.barrelL) this.barrelL.position.z = z;
+    if (this.barrelR) this.barrelR.position.z = z;
+  }
+
+  /**
+   * Refreshes the gunner HUD's reload progress bar/label to reflect fireCooldown.
+   */
+  _updateReloadIndicator() {
+    if (!this.reloadFillEl) return;
+
+    const ready = this.fireCooldown <= 0;
+    const pct = ready ? 100 : THREE.MathUtils.clamp(100 - (this.fireCooldown / this.fireRate) * 100, 0, 100);
+
+    this.reloadFillEl.style.width = `${pct}%`;
+    this.reloadFillEl.style.background = ready ? '#7fd992' : '#e76f51';
+    this.reloadFillEl.style.boxShadow = ready
+      ? '0 0 8px rgba(127, 217, 146, 0.8)'
+      : '0 0 8px rgba(231, 111, 81, 0.8)';
+
+    if (this.reloadLabelEl) {
+      this.reloadLabelEl.textContent = ready ? 'READY' : 'RELOADING';
+      this.reloadLabelEl.style.color = ready ? '#7fd992' : '#e76f51';
+    }
+  }
+
+  /**
+   * Update loop: handles proximity detection, prompt display, mounting, aiming, firing, and dismounting
    */
   update(delta, gameWorld = this.gameWorld) {
     this.updateCooldown(delta);
+    this._updateRecoil(delta);
+
+    if (this.fireCooldown > 0) {
+      this.fireCooldown -= delta;
+    }
 
     // -------------------------------------------------------------
-    // A. GUNNER MOUNTED: AIMING & DISMOUNT LOGIC
+    // A. GUNNER MOUNTED: AIMING, FIRING & DISMOUNT LOGIC
     // -------------------------------------------------------------
     if (this.isMounted) {
       if (gameWorld && gameWorld.input) {
@@ -274,6 +419,15 @@ export class ArtilleryTurret extends BaseStation {
         if (input.isKeyDown('ArrowDown')) this.pitch -= 0.6 * delta;
 
         this.setAim(this.yaw, this.pitch);
+
+        // Fire the main gun
+        const wantsFire = input.isActionDown('firePrimary');
+        if (wantsFire && this.fireCooldown <= 0) {
+          this.fireCooldown = this.fireRate;
+          this._fireWeapon();
+        }
+
+        this._updateReloadIndicator();
       }
       return;
     }
