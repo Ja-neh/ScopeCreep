@@ -38,6 +38,9 @@
     }
   },
   "ship": {
+    "health": {
+      "maxHealth": 5000
+    },
     "propulsion": {
       "maxForwardSpeed": 15.0,
       "maxReverseSpeed": 5.0,
@@ -54,6 +57,7 @@
   },
   "turrets": {
     "artillery": {
+      "maxHealth": 900,
       "detectionRadius": 5.5,
       "maxYaw": 2.356,
       "minPitch": 0.0,
@@ -61,6 +65,7 @@
       "defaultReloadCadence": 1.8
     },
     "flak": {
+      "maxHealth": 650,
       "detectionRadius": 5.5,
       "maxYaw": 3.1415,
       "minPitch": -0.087,

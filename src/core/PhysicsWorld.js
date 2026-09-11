@@ -213,6 +213,17 @@ export class PhysicsWorld {
         const geom = child.geometry;
         const localToRoot = new THREE.Matrix4().multiplyMatrices(rootInverse, child.matrixWorld);
 
+        let entity = object3d.userData?.entity || null;
+        let owner = child;
+        while (owner) {
+          if (owner.userData?.entity) {
+            entity = owner.userData.entity;
+            break;
+          }
+          if (owner === object3d) break;
+          owner = owner.parent;
+        }
+
         const pos = new THREE.Vector3();
         const quat = new THREE.Quaternion();
         const scale = new THREE.Vector3();
@@ -244,6 +255,7 @@ export class PhysicsWorld {
           .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w });
 
         const collider = this.world.createCollider(colliderDesc, body);
+        collider.userData = { entity };
         const boxData = {
           halfExtents: new THREE.Vector3(halfX, halfY, halfZ),
           position: finalPos.clone(),

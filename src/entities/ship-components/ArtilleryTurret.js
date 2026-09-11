@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
 import config from '../../config.json';
+import { HealthComponent } from '../components/HealthComponent.js';
 
 /**
  * ArtilleryTurret
@@ -25,6 +26,13 @@ export class ArtilleryTurret extends BaseStation {
     // Turret orientation angles
     this.yaw = 0;   // Left/Right rotation relative to ship heading
     this.pitch = 0; // Barrel vertical elevation (0 to ~30 deg)
+    this.health = new HealthComponent(options.maxHealth ?? config.turrets.artillery.maxHealth);
+    this.isDestroyed = false;
+    this.health.onDeath = () => {
+      this.isDestroyed = true;
+      if (this.isMounted) this.dismount(this.gameWorld);
+      if (this.mesh) this.mesh.visible = false;
+    };
 
     // Limits
     this.maxYaw = Math.PI * 0.75; // 135 degrees arc to port and starboard
@@ -66,6 +74,7 @@ export class ArtilleryTurret extends BaseStation {
     // Root group placed on the deck
     this.mesh = new THREE.Group();
     this.mesh.name = 'Ship_MainArtilleryGun';
+    this.mesh.userData.entity = this;
     this.mesh.position.copy(this.position);
 
     const turretMat = new THREE.MeshStandardMaterial({
