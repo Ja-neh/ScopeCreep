@@ -96,7 +96,7 @@ export class Player extends BaseEntity {
 
     // Rapier Kinematic Character Controller (auto-step, slope slide, snap-to-ground)
     this.characterController = this.physicsWorld.createCharacterController({
-      offset: 0.04
+      offset: 0.1
     });
 
     console.log('CharacterController: Rapier KinematicCharacterController ready.');

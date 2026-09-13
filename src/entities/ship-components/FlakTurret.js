@@ -50,88 +50,45 @@ export class FlakTurret extends BaseStation {
     this.recoilKick = 0.25;         // meters of kickback per round (lighter, faster weapon)
     this.recoilRecoverySpeed = 4.0; // meters/sec spring-back rate
 
-    // 1. Build the 3D turret mesh hierarchy & detect field
+    this.turretMesh = options.turretMesh || null;
+    this.barrelMesh = options.barrelMesh || null;
+    this.yawGroup = this.turretMesh;
+    this.pitchGroup = this.barrelMesh;
+
+    // 1. Build the station detection field
     this._createMesh();
 
     // 2. Dedicated Anti-Air Camera
     this._createCamera();
 
+    if (this.turretMesh && this.barrelMesh) {
+      this.attachTurretNodes(this.turretMesh, this.barrelMesh);
+    }
+
     // 3. UI overlays (prompt and crosshair)
     this._createUI();
   }
 
+  attachTurretNodes(turretMesh, barrelMesh) {
+    this.turretMesh = turretMesh;
+    this.barrelMesh = barrelMesh;
+    this.yawGroup = turretMesh;
+    this.pitchGroup = barrelMesh;
+
+    if (this.camera) {
+      if (this.camera.parent) this.camera.parent.remove(this.camera);
+      this.camera.position.set(0, 1.8, 2.2);
+      this.camera.rotation.set(0, 0, 0);
+      this.pitchGroup.add(this.camera);
+    }
+  }
+
   _createMesh() {
     this.mesh = new THREE.Group();
-    this.mesh.name = 'Ship_FlakTurret';
+    this.mesh.name = 'Ship_FlakTurret_Station';
     this.mesh.position.copy(this.position);
+    this.mesh.userData = { noCollision: true };
 
-    const bridgeMat = new THREE.MeshStandardMaterial({
-      color: 0x5a6d7c,
-      roughness: 0.6,
-      flatShading: true
-    });
-
-    const turretMat = new THREE.MeshStandardMaterial({
-      color: 0x2e3842,
-      roughness: 0.5,
-      metalness: 0.4,
-      flatShading: true
-    });
-
-    // 1. Static Elevated Platform Ring
-    const flakPlatGeo = new THREE.CylinderGeometry(3.2, 3.4, 1.0, 12);
-    const flakPlat = new THREE.Mesh(flakPlatGeo, bridgeMat);
-    flakPlat.position.y = 0.5;
-    flakPlat.castShadow = true;
-    this.mesh.add(flakPlat);
-
-    // 2. Yaw Rotator (360-degree swivel)
-    this.yawGroup = new THREE.Group();
-    this.yawGroup.position.y = 1.0;
-    this.mesh.add(this.yawGroup);
-
-    // AA Gun Mount Base
-    const mountGeo = new THREE.BoxGeometry(2.6, 1.6, 2.6);
-    const mount = new THREE.Mesh(mountGeo, turretMat);
-    mount.position.y = 0.8;
-    mount.castShadow = true;
-    this.yawGroup.add(mount);
-
-    // 3. Pitch Elevating Assembly (Quad Barrels)
-    this.pitchGroup = new THREE.Group();
-    this.pitchGroup.position.set(0, 1.2, 0);
-    this.yawGroup.add(this.pitchGroup);
-
-    // Armored gun mantlet
-    const mantletGeo = new THREE.BoxGeometry(2.2, 1.2, 1.8);
-    const mantlet = new THREE.Mesh(mantletGeo, turretMat);
-    mantlet.castShadow = true;
-    this.pitchGroup.add(mantlet);
-
-    // Quad rapid-fire barrels (point along -Z)
-    const aaBarrelGeo = new THREE.CylinderGeometry(0.16, 0.20, 6.5, 6);
-    const flakPositions = [
-      [-0.65, 0.3, -3.2],
-      [0.65, 0.3, -3.2],
-      [-0.65, -0.2, -3.2],
-      [0.65, -0.2, -3.2]
-    ];
-
-    // Keep references for recoil kickback animation
-    this.barrels = [];
-    flakPositions.forEach(([x, y, z]) => {
-      const b = new THREE.Mesh(aaBarrelGeo, turretMat);
-      b.position.set(x, y, z);
-      b.rotation.x = Math.PI / 2; // Barrel points along -Z
-      b.castShadow = true;
-      this.pitchGroup.add(b);
-      this.barrels.push(b);
-    });
-
-    // Apply default upward elevation
-    this.pitchGroup.rotation.x = -this.pitch;
-
-    // 4. Proximity Detect Field on Aft Platform
     this._createDetectField();
   }
 
@@ -139,10 +96,10 @@ export class FlakTurret extends BaseStation {
    * Builds the glowing proximity detect field on the aft platform
    */
   _createDetectField() {
-    const field = this.createDetectField({ radius: this.detectionRadius, color: 0xf4a261 });
-    field.position.set(0, 0.1, 2.8); // Operator station behind the mount
-    field.userData = { noCollision: true };
-    this.mesh.add(field);
+    this.detectFieldGroup = this.createDetectField({ radius: this.detectionRadius, color: 0xf4a261 });
+    this.detectFieldGroup.position.set(0, 0.1, 0.0);
+    this.detectFieldGroup.userData = { noCollision: true };
+    this.mesh.add(this.detectFieldGroup);
   }
 
   /**
@@ -157,12 +114,13 @@ export class FlakTurret extends BaseStation {
     );
     this.camera.name = 'FlakTurret_Camera';
 
-    // Position camera right behind the quad mantlet sight looking along -Z
-    this.camera.position.set(0, 1.3, 1.8);
+    // Position camera looking aft along +Z world down the quad barrels
+    this.camera.position.set(0, 1.8, 2.2);
     this.camera.rotation.set(0, 0, 0);
 
-    // Adding to pitchGroup ensures camera tracks 360-degree yaw and high elevation into the sky
-    this.pitchGroup.add(this.camera);
+    if (this.pitchGroup) {
+      this.pitchGroup.add(this.camera);
+    }
   }
 
   /**
@@ -296,7 +254,7 @@ export class FlakTurret extends BaseStation {
     this.pitch = THREE.MathUtils.clamp(targetPitch, this.minPitch, this.maxPitch);
 
     if (this.yawGroup) this.yawGroup.rotation.y = this.yaw;
-    if (this.pitchGroup) this.pitchGroup.rotation.x = -this.pitch;
+    if (this.pitchGroup) this.pitchGroup.rotation.x = this.pitch;
   }
 
   /**
@@ -316,10 +274,8 @@ export class FlakTurret extends BaseStation {
     // World position of the barrel pivot
     this.pitchGroup.getWorldPosition(this._muzzleWorldPos);
 
-    // getWorldDirection() returns the object's +Z axis in world space; the barrels
-    // point down local -Z, so negate to get the actual forward firing direction.
+    // getWorldDirection() returns the object's +Z axis in world space (aft firing direction)
     this.pitchGroup.getWorldDirection(this._barrelWorldDir);
-    this._barrelWorldDir.negate();
 
     // Offset from the pivot out to the muzzle tips
     this._muzzleWorldPos.addScaledVector(this._barrelWorldDir, this.barrelLength);
@@ -357,10 +313,8 @@ export class FlakTurret extends BaseStation {
     if (this.recoilOffset <= 0) return;
 
     this.recoilOffset = Math.max(0, this.recoilOffset - delta * this.recoilRecoverySpeed);
-    const z = this.barrelRestZ + this.recoilOffset;
-
-    for (const barrel of this.barrels) {
-      barrel.position.z = z;
+    if (this.barrelMesh) {
+      this.barrelMesh.position.z = 0.80 + this.recoilOffset;
     }
   }
 

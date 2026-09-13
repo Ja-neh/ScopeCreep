@@ -17,10 +17,13 @@ export class ArtilleryTurret extends BaseStation {
   constructor(options = {}) {
     super({
       ...options,
-      name: 'ArtilleryTurret',
-      detectionRadius: 5.5,
+      name: options.name || 'ArtilleryTurret',
+      detectionRadius: options.detectionRadius || 4.5,
       position: options.position || new THREE.Vector3(0, 4.2, -22)
     });
+
+    this.turretTitle = options.title || 'MAIN ARTILLERY TURRET';
+    this.promptText = options.promptText || 'OPERATE MAIN ARTILLERY GUN';
 
     // Turret orientation angles
     this.yaw = 0;   // Left/Right rotation relative to ship heading
@@ -42,105 +45,66 @@ export class ArtilleryTurret extends BaseStation {
     this.fireRate = artilleryCfg.defaultReloadCadence; // seconds between shots
 
     // Distance from the pitch-group pivot to the muzzle tip along the barrel axis
-    // (barrel mesh is 14m long, centered at local z = -6.5, so its tip sits ~13.5m
-    // forward of the pitch pivot)
     this.barrelLength = 13.5;
-    this.barrelRestZ = -6.5; // rest local-Z position of each barrel mesh
+    this.barrelRestZ = 1.43; // rest local-Z position of barrel mesh
 
     // Visual recoil (barrel kickback)
     this.recoilOffset = 0;
-    this.recoilKick = 0.6;          // meters of kickback per shot
+    this.recoilKick = 0.4;          // meters of kickback per shot
     this.recoilRecoverySpeed = 1.6; // meters/sec spring-back rate
 
-    // 1. Build the 3D turret mesh hierarchy & detect field
+    this.turretMesh = options.turretMesh || null;
+    this.barrelMesh = options.barrelMesh || null;
+    this.yawGroup = this.turretMesh;
+    this.pitchGroup = this.barrelMesh;
+
+    // 1. Build the station detection field
     this._createMesh();
 
     // 2. Dedicated Aiming Camera
     this._createCamera();
 
+    if (this.turretMesh && this.barrelMesh) {
+      this.attachTurretNodes(this.turretMesh, this.barrelMesh);
+    }
+
     // 3. UI overlays (prompt and crosshair)
     this._createUI();
   }
 
+  attachTurretNodes(turretMesh, barrelMesh) {
+    this.turretMesh = turretMesh;
+    this.barrelMesh = barrelMesh;
+    this.yawGroup = turretMesh;
+    this.pitchGroup = barrelMesh;
+
+    if (this.camera) {
+      if (this.camera.parent) this.camera.parent.remove(this.camera);
+      this.camera.position.set(0, 1.8, -2.2);
+      this.camera.rotation.set(0, Math.PI, 0);
+      this.pitchGroup.add(this.camera);
+    }
+  }
+
   _createMesh() {
-    // Root group placed on the deck
+    // Root group placed on the deck for operator station detection
     this.mesh = new THREE.Group();
-    this.mesh.name = 'Ship_MainArtilleryGun';
+    this.mesh.name = `${this.stationName}_Station`;
     this.mesh.position.copy(this.position);
+    this.mesh.userData = { noCollision: true };
 
-    const turretMat = new THREE.MeshStandardMaterial({
-      color: 0x2e3842,
-      roughness: 0.5,
-      metalness: 0.4,
-      flatShading: true
-    });
-
-    const accentMat = new THREE.MeshStandardMaterial({
-      color: 0xe76f51,
-      roughness: 0.4,
-      flatShading: true
-    });
-
-    // 1. Static Barbette / Rotating Ring Base
-    const barbetteGeo = new THREE.CylinderGeometry(4.2, 4.5, 1.2, 12);
-    const barbette = new THREE.Mesh(barbetteGeo, turretMat);
-    barbette.position.y = 0.6;
-    barbette.castShadow = true;
-    this.mesh.add(barbette);
-
-    // 2. Yaw Rotator (Swivels horizontally with player aiming)
-    this.yawGroup = new THREE.Group();
-    this.yawGroup.position.y = 1.2;
-    this.mesh.add(this.yawGroup);
-
-    // Armored Turret Housing
-    const housingGeo = new THREE.BoxGeometry(6.2, 2.6, 7.5);
-    const housing = new THREE.Mesh(housingGeo, turretMat);
-    housing.position.set(0, 1.0, 0.5);
-    housing.castShadow = true;
-    this.yawGroup.add(housing);
-
-    // Gunner Cupola Hatch
-    const hatchGeo = new THREE.CylinderGeometry(0.9, 0.9, 0.5, 8);
-    const hatch = new THREE.Mesh(hatchGeo, accentMat);
-    hatch.position.set(1.5, 2.4, 1.5);
-    this.yawGroup.add(hatch);
-
-    // 3. Pitch Elevating Assembly (Barrels tilt up/down)
-    this.pitchGroup = new THREE.Group();
-    this.pitchGroup.position.set(0, 1.0, -1.0);
-    this.yawGroup.add(this.pitchGroup);
-
-    // Twin Artillery Barrels (point along -Z)
-    const barrelGeo = new THREE.CylinderGeometry(0.38, 0.48, 14, 8);
-    const barrelL = new THREE.Mesh(barrelGeo, turretMat);
-    barrelL.position.set(-1.2, 0, -6.5);
-    barrelL.rotation.x = Math.PI / 2;
-    barrelL.castShadow = true;
-    this.pitchGroup.add(barrelL);
-
-    const barrelR = new THREE.Mesh(barrelGeo, turretMat);
-    barrelR.position.set(1.2, 0, -6.5);
-    barrelR.rotation.x = Math.PI / 2;
-    barrelR.castShadow = true;
-    this.pitchGroup.add(barrelR);
-
-    // Keep references for muzzle-flash offset & recoil kickback animation
-    this.barrelL = barrelL;
-    this.barrelR = barrelR;
-
-    // 4. Proximity Detect Field on Deck (Operator Area behind turret)
+    // Proximity Detect Field on Deck (Operator Area)
     this._createDetectField();
   }
 
   /**
-   * Builds the glowing proximity detect field on the deck behind the turret
+   * Builds the glowing proximity detect field on the deck
    */
   _createDetectField() {
-    const field = this.createDetectField({ radius: this.detectionRadius, color: 0xe76f51 });
-    field.position.set(0, 0.1, 4.0); // Station position behind the barbette
-    field.userData = { noCollision: true };
-    this.mesh.add(field);
+    this.detectFieldGroup = this.createDetectField({ radius: this.detectionRadius, color: 0xe76f51 });
+    this.detectFieldGroup.position.set(0, 0.1, 0.0);
+    this.detectFieldGroup.userData = { noCollision: true };
+    this.mesh.add(this.detectFieldGroup);
   }
 
   /**
@@ -153,23 +117,25 @@ export class ArtilleryTurret extends BaseStation {
       0.1,
       2000
     );
-    this.camera.name = 'MainGun_Camera';
+    this.camera.name = `${this.stationName}_Camera`;
 
-    // Position camera just above the turret roof looking directly down the twin barrels (-Z)
-    this.camera.position.set(0, 1.8, 2.2);
-    this.camera.rotation.set(0, 0, 0);
+    // Position camera looking directly forward down the twin barrels (-Z in world)
+    this.camera.position.set(0, 1.8, -2.2);
+    this.camera.rotation.set(0, Math.PI, 0);
 
     // Adding to pitchGroup ensures camera pitches and yaws identically with the artillery barrels
-    this.pitchGroup.add(this.camera);
+    if (this.pitchGroup) {
+      this.pitchGroup.add(this.camera);
+    }
   }
 
   /**
    * On-screen HUD elements for detection prompt and gunner aiming
    */
   _createUI() {
-    // 1. Proximity interaction prompt: [E] OPERATE MAIN ARTILLERY GUN
+    // 1. Proximity interaction prompt: [E] OPERATE ARTILLERY GUN
     this.promptEl = document.createElement('div');
-    this.promptEl.id = 'maingun-prompt';
+    this.promptEl.id = `${this.stationName.toLowerCase()}-prompt`;
     this.promptEl.style.cssText = `
       position: fixed;
       bottom: 110px;
@@ -193,13 +159,13 @@ export class ArtilleryTurret extends BaseStation {
     `;
     this.promptEl.innerHTML = `
       <span style="background: #e76f51; color: #fff; padding: 3px 9px; border-radius: 4px; margin-right: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.4);">E</span>
-      OPERATE MAIN ARTILLERY GUN
+      ${this.promptText}
     `;
     document.body.appendChild(this.promptEl);
 
     // 2. Turret Gunner HUD (Center Crosshair & Dismount guide)
     this.hudEl = document.createElement('div');
-    this.hudEl.id = 'maingun-hud';
+    this.hudEl.id = `${this.stationName.toLowerCase()}-hud`;
     this.hudEl.style.cssText = `
       position: fixed;
       inset: 0;
@@ -239,7 +205,7 @@ export class ArtilleryTurret extends BaseStation {
         font-size: 14px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.5);
       ">
-        <strong style="color: #e76f51;">MAIN ARTILLERY TURRET</strong> &nbsp;|&nbsp; 
+        <strong style="color: #e76f51;">${this.turretTitle}</strong> &nbsp;|&nbsp; 
         <strong>[E]</strong> or <strong>[ESC]</strong> Dismount &nbsp;|&nbsp; 
         <strong>Mouse</strong> Aim
       </div>
@@ -313,10 +279,8 @@ export class ArtilleryTurret extends BaseStation {
     // World position of the barrel pivot
     this.pitchGroup.getWorldPosition(this._muzzleWorldPos);
 
-    // getWorldDirection() returns the object's +Z axis in world space; the barrels
-    // point down local -Z, so negate to get the actual forward firing direction.
+    // getWorldDirection() returns the object's +Z local axis in world space, which points forward (-Z world).
     this.pitchGroup.getWorldDirection(this._barrelWorldDir);
-    this._barrelWorldDir.negate();
 
     // Offset from the pivot out to the muzzle tip
     this._muzzleWorldPos.addScaledVector(this._barrelWorldDir, this.barrelLength);
@@ -354,10 +318,9 @@ export class ArtilleryTurret extends BaseStation {
     if (this.recoilOffset <= 0) return;
 
     this.recoilOffset = Math.max(0, this.recoilOffset - delta * this.recoilRecoverySpeed);
-    const z = this.barrelRestZ + this.recoilOffset;
-
-    if (this.barrelL) this.barrelL.position.z = z;
-    if (this.barrelR) this.barrelR.position.z = z;
+    if (this.barrelMesh) {
+      this.barrelMesh.position.z = 1.43 - this.recoilOffset;
+    }
   }
 
   /**

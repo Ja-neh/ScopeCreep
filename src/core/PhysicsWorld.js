@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
+const GRAVITY = { x: 0.0, y: -24.0, z: 0.0 };
+
 /**
  * PhysicsWorld
  * Encapsulates the Rapier3D physics engine, integration step,
@@ -11,7 +13,7 @@ export class PhysicsWorld {
     this.RAPIER = RAPIER;
     this.world = null;
     this.isInitialized = false;
-    this.gravity = { x: 0.0, y: -24.0, z: 0.0 };
+    this.gravity = GRAVITY;
   }
 
   /**
@@ -51,16 +53,14 @@ export class PhysicsWorld {
    * Handles auto-stepping over ledges/curbs, slope sliding, and collision movement.
    */
   createCharacterController(options = {}) {
-    const offset = options.offset !== undefined ? options.offset : 0.02;
+    const offset = options.offset !== undefined ? options.offset : 0.05;
     const controller = this.world.createCharacterController(offset);
 
     // Auto-step over stairs and curbs up to 0.4m tall, with min width 0.2m
     controller.enableAutostep(0.4, 0.2, true);
 
-    // Max climbable slope: 50 degrees (smooth ramp and stairs climbing)
     controller.setMaxSlopeClimbAngle((50 * Math.PI) / 180);
 
-    // Slide down slopes steeper than 50 degrees (prevents flat/seam sliding)
     controller.setMinSlopeSlideAngle((50 * Math.PI) / 180);
 
     // Snap to ground to prevent hopping when descending slopes
@@ -168,6 +168,43 @@ export class PhysicsWorld {
     collider.debugGeometry = { vertices, indices };
     collider.rigidBody = body;
 
+    return collider;
+  }
+
+  /**
+   * Creates a single TriMesh collider from a Three.js Mesh geometry and attaches it to an existing rigid body.
+   * Useful for dynamic sub-parts (like rotating gun turrets and elevating barrels).
+   */
+  createTrimeshColliderForMesh(mesh, rigidBody) {
+    if (!mesh || !mesh.geometry) return null;
+    const geom = mesh.geometry;
+    const posAttr = geom.getAttribute('position');
+    if (!posAttr) return null;
+
+    const vertices = [];
+    const indices = [];
+
+    for (let i = 0; i < posAttr.count; i++) {
+      vertices.push(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
+    }
+
+    if (geom.index) {
+      for (let i = 0; i < geom.index.count; i++) {
+        indices.push(geom.index.getX(i));
+      }
+    } else {
+      for (let i = 0; i < posAttr.count; i++) {
+        indices.push(i);
+      }
+    }
+
+    const colliderDesc = this.RAPIER.ColliderDesc.trimesh(
+      new Float32Array(vertices),
+      new Uint32Array(indices)
+    );
+
+    const collider = this.world.createCollider(colliderDesc, rigidBody);
+    collider.debugGeometry = { vertices, indices };
     return collider;
   }
 

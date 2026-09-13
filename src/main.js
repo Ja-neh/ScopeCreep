@@ -13,7 +13,7 @@ async function bootstrap() {
   const levelManager = new LevelManager(gameWorld);
   gameWorld.setLevelManager(levelManager);
 
-  // 3. Load Level 1: Operation Retake (At Sea)
+  // 3. Load Level(TestLevel/Level1)
   await levelManager.loadLevel(new Level1(gameWorld));
 
   // 4. Start the main game loop
@@ -52,7 +52,7 @@ async function bootstrap() {
     overlay.appendChild(controlsHelp);
   }
 
-  console.log('GameWorld & LevelManager initialized. Level 1 (At Sea) active.');
+  console.log('GameWorld & LevelManager initialized. Level active.');
 }
 
 bootstrap().catch(console.error);

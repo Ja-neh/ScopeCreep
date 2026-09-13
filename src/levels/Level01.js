@@ -81,6 +81,7 @@ export class Level01 extends BaseLevel {
       position: new THREE.Vector3(0, 0, 0),
       water: this.water
     });
+    await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);
     this.battleship.initPhysics(this.gameWorld.physics);
 
@@ -91,7 +92,7 @@ export class Level01 extends BaseLevel {
       jumpForce: 10.0
     });
     // Position player on forward deck between bridge and main gun
-    this.player.setPosition(0, 5.0, -15);
+    this.player.setPosition(0.46, 6.2, -14.0);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
