@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
 import config from '../../config.json';
+import { HealthComponent } from '../components/HealthComponent.js';
 
 /**
  * FlakTurret
@@ -25,6 +26,13 @@ export class FlakTurret extends BaseStation {
     // Turret orientation angles
     this.yaw = 0;
     this.pitch = Math.PI / 6; // Default ~30 deg upward anti-air posture
+    this.health = new HealthComponent(options.maxHealth ?? config.turrets.flak.maxHealth);
+    this.isDestroyed = false;
+    this.health.onDeath = () => {
+      this.isDestroyed = true;
+      if (this.isMounted) this.dismount(this.gameWorld);
+      if (this.mesh) this.mesh.visible = false;
+    };
 
     this.minPitch = -Math.PI / 18; // -10 deg
     this.maxPitch = Math.PI / 2.1; // ~85 deg high-angle flak fire
@@ -63,6 +71,7 @@ export class FlakTurret extends BaseStation {
   _createMesh() {
     this.mesh = new THREE.Group();
     this.mesh.name = 'Ship_FlakTurret';
+    this.mesh.userData.entity = this;
     this.mesh.position.copy(this.position);
 
     const bridgeMat = new THREE.MeshStandardMaterial({

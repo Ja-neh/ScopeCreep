@@ -4,6 +4,8 @@ import { ArtilleryTurret } from './ship-components/ArtilleryTurret.js';
 import { FlakTurret } from './ship-components/FlakTurret.js';
 import { HelmStation } from './ship-components/HelmStation.js';
 import { createBattleshipModel } from './models/BattleshipModel.js';
+import { HealthComponent } from './components/HealthComponent.js';
+import config from '../config.json';
 
 /**
  * Battleship
@@ -19,6 +21,14 @@ export class Battleship extends BaseEntity {
     this.gameWorld = gameWorld;
     this.position = options.position || new THREE.Vector3(0, 0, 0);
     this.water = options.water || null;
+    this.health = new HealthComponent(options.maxHealth ?? config.ship.health.maxHealth);
+    this.isDestroyed = false;
+    this.health.onDeath = () => {
+      this.isDestroyed = true;
+      if (this.shipController) this.shipController.speed = 0;
+      if (this.mesh) this.mesh.visible = false;
+      this._updateHealthUI();
+    };
 
     // Relative operational stations
     this.stations = {
@@ -30,6 +40,8 @@ export class Battleship extends BaseEntity {
 
     // 1. Build the Ship Base (Hull, Deck, Superstructure via BattleshipModel)
     this.mesh = createBattleshipModel(this.stations);
+    this.mesh.userData.entity = this;
+    this._createHealthUI();
 
     // 2. Instantiate Guns as Children of the Ship Hierarchy
     this.mainGun = new ArtilleryTurret({ position: this.stations.artilleryGunner, gameWorld: this.gameWorld, battleship: this });
@@ -72,6 +84,9 @@ export class Battleship extends BaseEntity {
     this.physicsWorld = physicsWorld;
     if (physicsWorld && physicsWorld.world) {
       this.collider = physicsWorld.createCompoundCuboidsFromObject(this.mesh);
+      for (const collider of this.collider.colliders) {
+        collider.userData = { entity: this };
+      }
       console.log(`Battleship Rapier Compound Cuboid colliders created (${this.collider.colliders.length} boxes).`);
       this._createColliderDebugMesh();
     }
@@ -147,6 +162,47 @@ export class Battleship extends BaseEntity {
     return false;
   }
 
+  _createHealthUI() {
+    this.healthPanel = document.createElement('div');
+    this.healthPanel.id = 'battleship-health';
+    this.healthPanel.style.cssText = `
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      width: 230px;
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.88);
+      color: #f8fafc;
+      font: 700 12px/1.3 monospace;
+      pointer-events: none;
+      z-index: 9999;
+    `;
+    this.healthPanel.innerHTML = `
+      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+        <span>WARSHIP HULL</span><span data-role="health-text"></span>
+      </div>
+      <div style="height:8px;background:#334155;border-radius:4px;overflow:hidden;">
+        <div data-role="health-fill" style="height:100%;width:100%;background:#22c55e;transition:width .15s,background .15s;"></div>
+      </div>
+    `;
+    document.body.appendChild(this.healthPanel);
+    this.healthText = this.healthPanel.querySelector('[data-role="health-text"]');
+    this.healthFill = this.healthPanel.querySelector('[data-role="health-fill"]');
+    this._updateHealthUI();
+  }
+
+  _updateHealthUI() {
+    if (!this.healthText || !this.healthFill) return;
+    const ratio = Math.max(0, this.health.currentHealth / this.health.maxHealth);
+    this.healthText.textContent = this.isDestroyed
+      ? 'DESTROYED'
+      : `${Math.ceil(this.health.currentHealth)} / ${this.health.maxHealth}`;
+    this.healthFill.style.width = `${ratio * 100}%`;
+    this.healthFill.style.background = ratio > 0.5 ? '#22c55e' : ratio > 0.25 ? '#f59e0b' : '#ef4444';
+  }
+
   /**
    * Checks if a world position is within the walking platform bounds of the battleship
    */
@@ -187,6 +243,8 @@ export class Battleship extends BaseEntity {
    * platform displacement matrices, and sets Rapier rigid body transforms BEFORE physics step.
    */
   prePhysicsUpdate(delta) {
+    this._updateHealthUI();
+
     // 0. Update previous world matrix for platform delta kinematics
     if (!this._hasPrevMatrix) {
       this.mesh.updateMatrixWorld(true);
@@ -244,6 +302,11 @@ export class Battleship extends BaseEntity {
   }
 
   dispose() {
+    if (this.healthPanel && this.healthPanel.parentNode) {
+      this.healthPanel.parentNode.removeChild(this.healthPanel);
+    }
+    this.healthPanel = null;
+
     if (this.colliderDebugGroup) {
       if (this.colliderDebugGroup.parent) {
         this.colliderDebugGroup.parent.remove(this.colliderDebugGroup);
