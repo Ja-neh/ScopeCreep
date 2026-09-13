@@ -314,8 +314,9 @@ export class Battleship extends BaseEntity {
     this.healthPanel.style.cssText = `
       position: fixed;
       top: 18px;
-      right: 18px;
+      left: 50%;
       width: 230px;
+      transform: translateX(-50%);
       padding: 10px 12px;
       border: 1px solid rgba(148, 163, 184, 0.5);
       border-radius: 6px;
@@ -333,7 +334,8 @@ export class Battleship extends BaseEntity {
         <div data-role="health-fill" style="height:100%;width:100%;background:#22c55e;transition:width .15s,background .15s;"></div>
       </div>
     `;
-    document.body.appendChild(this.healthPanel);
+    const mountContainer = document.querySelector('#ui-overlay') || document.body;
+    mountContainer.appendChild(this.healthPanel);
     this.healthText = this.healthPanel.querySelector('[data-role="health-text"]');
     this.healthFill = this.healthPanel.querySelector('[data-role="health-fill"]');
     this._updateHealthUI();
@@ -342,6 +344,7 @@ export class Battleship extends BaseEntity {
   _updateHealthUI() {
     if (!this.healthText || !this.healthFill) return;
     const ratio = Math.max(0, this.health.currentHealth / this.health.maxHealth);
+    const pct = Math.round(ratio * 100);
     this.healthText.textContent = this.isDestroyed
       ? 'DESTROYED'
       : `${Math.ceil(this.health.currentHealth)} / ${this.health.maxHealth}`;
@@ -357,12 +360,12 @@ export class Battleship extends BaseEntity {
     this._tempPoint.copy(worldPos);
     this.mesh.worldToLocal(this._tempPoint);
     // Local bounds: hull width ~21.4m (halfX=10.7), deck length ~99.6m (halfZ=49.8)
-    // Generous margins (+1.5m) to catch ramps and edge stairs
+    // Generous vertical margins (-6m to +40m) to catch lower decks, ramps, and pitched hulls
     return (
       Math.abs(this._tempPoint.x) <= 12.0 &&
       Math.abs(this._tempPoint.z) <= 52.0 &&
-      this._tempPoint.y >= 0.0 &&
-      this._tempPoint.y <= 36.0
+      this._tempPoint.y >= -6.0 &&
+      this._tempPoint.y <= 40.0
     );
   }
 
@@ -402,7 +405,7 @@ export class Battleship extends BaseEntity {
       this._invPrevMatrixWorld.copy(this._prevMatrixWorld).invert();
     }
 
-    // 1. Update Ship Controller (Propulsion, steering, wave buoyancy, & helmsman interaction)
+    // 1. Update Ship Controller (Propulsion, steering, & helmsman interaction)
     if (this.shipController) {
       this.shipController.update(delta, this.water, this.gameWorld);
     }
@@ -411,7 +414,9 @@ export class Battleship extends BaseEntity {
     this.mesh.updateMatrixWorld(true);
     this._currMatrixWorld.copy(this.mesh.matrixWorld);
 
-    // 2. Synchronize Rapier Kinematic Rigid Body with Ship Mesh Transform BEFORE physics step
+    // 2. Synchronize Rapier Kinematic Rigid Body with Ship Mesh Transform BEFORE physics step.
+    // Set next kinematic translation and rotation so Rapier integrates genuine velocity during step(),
+    // preventing the platform from teleporting and sinking/clipping walking characters.
     if (this.collider && this.collider.rigidBody) {
       const pos = {
         x: this.mesh.position.x,
@@ -424,9 +429,6 @@ export class Battleship extends BaseEntity {
         z: this.mesh.quaternion.z,
         w: this.mesh.quaternion.w
       };
-      // Instant spatial update so Rapier collision queries see the current frame's position immediately
-      this.collider.rigidBody.setTranslation(pos, true);
-      this.collider.rigidBody.setRotation(rot, true);
       this.collider.rigidBody.setNextKinematicTranslation(pos);
       this.collider.rigidBody.setNextKinematicRotation(rot);
     }

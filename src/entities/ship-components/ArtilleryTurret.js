@@ -380,7 +380,8 @@ export class ArtilleryTurret extends BaseStation {
         }
 
         // Mouse Aiming
-        if (input.isPointerLocked) {
+        const isDragging = input.isMouseButtonDown('Mouse0') || input.isMouseButtonDown('Mouse2');
+        if (input.isPointerLocked || isDragging) {
           this.yaw -= input.mouseDelta.x * 0.002;
           this.pitch -= input.mouseDelta.y * 0.002;
         }

@@ -50,21 +50,31 @@ export class PhysicsWorld {
 
   /**
    * Creates a Kinematic Character Controller
-   * Handles auto-stepping over ledges/curbs, slope sliding, and collision movement.
+   * Handles auto-stepping over ledges/curbs, loop cut seams, slope sliding, and collision movement.
    */
   createCharacterController(options = {}) {
-    const offset = options.offset !== undefined ? options.offset : 0.05;
+    const offset = options.offset !== undefined ? options.offset : 0.01;
     const controller = this.world.createCharacterController(offset);
 
-    // Auto-step over stairs and curbs up to 0.4m tall, with min width 0.2m
-    controller.enableAutostep(0.4, 0.2, true);
+    // Auto-step over stairs, curbs, and loop cut seams
+    // Crucial: minStepWidth 0.0 allows smoothly stepping over loop cuts and internal triangle edges
+    const maxStepHeight = options.maxStepHeight !== undefined ? options.maxStepHeight : 0.45;
+    const minStepWidth = options.minStepWidth !== undefined ? options.minStepWidth : 0.0;
+    controller.enableAutostep(maxStepHeight, minStepWidth, true);
 
-    controller.setMaxSlopeClimbAngle((50 * Math.PI) / 180);
+    const maxSlope = options.maxSlope !== undefined ? options.maxSlope : (55 * Math.PI) / 180;
+    controller.setMaxSlopeClimbAngle(maxSlope);
+    controller.setMinSlopeSlideAngle(maxSlope);
 
-    controller.setMinSlopeSlideAngle((50 * Math.PI) / 180);
+    // Slide normal nudge factor prevents getting wedged in high-density trimesh seams
+    const normalNudgeFactor = options.normalNudgeFactor !== undefined ? options.normalNudgeFactor : 0.02;
+    controller.setNormalNudgeFactor(normalNudgeFactor);
 
-    // Snap to ground to prevent hopping when descending slopes
-    controller.enableSnapToGround(0.3);
+    // Snap to ground: only enable if explicitly requested (causes trimesh edge seam sticking if enabled globally)
+    if (options.snapToGround) {
+      const snapDistance = options.snapDistance !== undefined ? options.snapDistance : 0.5;
+      controller.enableSnapToGround(snapDistance);
+    }
 
     return controller;
   }
@@ -91,7 +101,7 @@ export class PhysicsWorld {
 
     const vertices = [];
     const indices = [];
-    let vertexOffset = 0;
+    const vertMap = new Map();
 
     // Inverse of root object's world matrix to convert child vertices into object3d's LOCAL coordinate frame
     const rootInverse = new THREE.Matrix4().copy(object3d.matrixWorld).invert();
@@ -118,6 +128,7 @@ export class PhysicsWorld {
         // Transform vertices to root object's LOCAL space
         const localToRoot = new THREE.Matrix4().multiplyMatrices(rootInverse, child.matrixWorld);
 
+        const childVerts = [];
         for (let i = 0; i < positionAttr.count; i++) {
           const v = new THREE.Vector3(
             positionAttr.getX(i),
@@ -125,21 +136,39 @@ export class PhysicsWorld {
             positionAttr.getZ(i)
           );
           v.applyMatrix4(localToRoot);
-          vertices.push(v.x, v.y, v.z);
+          childVerts.push(v);
         }
 
-        if (geom.index) {
-          const indexAttr = geom.index;
-          for (let i = 0; i < indexAttr.count; i++) {
-            indices.push(indexAttr.getX(i) + vertexOffset);
-          }
-        } else {
-          for (let i = 0; i < positionAttr.count; i++) {
-            indices.push(i + vertexOffset);
-          }
-        }
+        const count = geom.index ? geom.index.count : positionAttr.count;
+        for (let i = 0; i < count; i += 3) {
+          const triIdx = i / 3;
+          const i0 = geom.index ? geom.index.getX(i) : i;
+          const i1 = geom.index ? geom.index.getX(i + 1) : i + 1;
+          const i2 = geom.index ? geom.index.getX(i + 2) : i + 2;
+          if (i0 === i1 || i1 === i2 || i0 === i2) continue;
 
-        vertexOffset += positionAttr.count;
+          let v0 = childVerts[i0].clone();
+          let v1 = childVerts[i1].clone();
+          let v2 = childVerts[i2].clone();
+
+          // Filter degenerate zero-area triangles
+          const cross = new THREE.Vector3().crossVectors(
+            new THREE.Vector3().subVectors(v1, v0),
+            new THREE.Vector3().subVectors(v2, v0)
+          );
+          if (cross.lengthSq() < 1e-8) continue;
+
+          function getOrAddVert(v) {
+            const key = `${v.x.toFixed(4)},${v.y.toFixed(4)},${v.z.toFixed(4)}`;
+            if (vertMap.has(key)) return vertMap.get(key);
+            const newIdx = vertices.length / 3;
+            vertices.push(v.x, v.y, v.z);
+            vertMap.set(key, newIdx);
+            return newIdx;
+          }
+
+          indices.push(getOrAddVert(v0), getOrAddVert(v1), getOrAddVert(v2));
+        }
       }
     });
 

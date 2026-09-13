@@ -112,41 +112,41 @@ export class SpringArmCamera {
 
     // Obstacle raycasting against Rapier physics world
     if (this.physicsWorld && this.physicsWorld.world) {
-      const ray = new this.physicsWorld.RAPIER.Ray(
-        {
-          x: this._targetFocalPoint.x,
-          y: this._targetFocalPoint.y,
-          z: this._targetFocalPoint.z
-        },
-        {
-          x: this._camRayDir.x,
-          y: this._camRayDir.y,
-          z: this._camRayDir.z
-        }
-      );
+      if (!this._cameraRay && this.physicsWorld.RAPIER) {
+        this._cameraRay = new this.physicsWorld.RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
+      }
 
-      const hit = this.physicsWorld.world.castRay(
-        ray,
-        maxRayDist,
-        true,
-        undefined,
-        undefined,
-        excludeCollider
-      );
+      if (this._cameraRay) {
+        this._cameraRay.origin.x = this._targetFocalPoint.x;
+        this._cameraRay.origin.y = this._targetFocalPoint.y;
+        this._cameraRay.origin.z = this._targetFocalPoint.z;
+        this._cameraRay.dir.x = this._camRayDir.x;
+        this._cameraRay.dir.y = this._camRayDir.y;
+        this._cameraRay.dir.z = this._camRayDir.z;
 
-      if (hit && hit.timeOfImpact < maxRayDist) {
-        targetDist = Math.max(
-          this.minCameraDistance,
-          hit.timeOfImpact - this.cameraCollisionMargin
+        const hit = this.physicsWorld.world.castRay(
+          this._cameraRay,
+          maxRayDist,
+          true,
+          undefined,
+          undefined,
+          excludeCollider
         );
+
+        if (hit && hit.timeOfImpact < maxRayDist) {
+          targetDist = Math.max(
+            this.minCameraDistance,
+            hit.timeOfImpact - this.cameraCollisionMargin
+          );
+        }
       }
     }
 
-    // Smooth spring arm interpolation
+    // Smooth spring arm interpolation (fast compression, responsive extension)
     if (targetDist < this.currentCameraDistance) {
       this.currentCameraDistance += (targetDist - this.currentCameraDistance) * Math.min(1.0, 28.0 * delta);
     } else {
-      this.currentCameraDistance += (targetDist - this.currentCameraDistance) * Math.min(1.0, 10.0 * delta);
+      this.currentCameraDistance += (targetDist - this.currentCameraDistance) * Math.min(1.0, 24.0 * delta);
     }
 
     const camX = this._targetFocalPoint.x + this._camRayDir.x * this.currentCameraDistance;

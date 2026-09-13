@@ -24,6 +24,7 @@ async function bootstrap() {
   if (overlay) {
     const controlsHelp = document.createElement('div');
     controlsHelp.id = 'controls-helper';
+    controlsHelp.style.pointerEvents = 'none';
     controlsHelp.innerHTML = `
       <div style="
         position: absolute;

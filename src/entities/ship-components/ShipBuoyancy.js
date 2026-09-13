@@ -62,10 +62,10 @@ export class ShipBuoyancy {
     const targetPitch = Math.atan2(hStern - hBow, 56.0) * this.pitchScale;
     const targetRoll = Math.atan2(hPort - hStarboard, 13.0) * this.rollScale;
 
-    // Heavy warship inertial damping: slow, steady naval sway
-    mesh.position.y += (targetY - mesh.position.y) * Math.min(1.0, 1.2 * delta);
-    this.currentPitch += (targetPitch - this.currentPitch) * Math.min(1.0, 1.0 * delta);
-    this.currentRoll += (targetRoll - this.currentRoll) * Math.min(1.0, 1.0 * delta);
+    // Heavy warship inertial damping: slow, steady naval sway without sharp jolts
+    mesh.position.y += (targetY - mesh.position.y) * Math.min(1.0, 0.8 * delta);
+    this.currentPitch += (targetPitch - this.currentPitch) * Math.min(1.0, 0.6 * delta);
+    this.currentRoll += (targetRoll - this.currentRoll) * Math.min(1.0, 0.6 * delta);
 
     mesh.rotation.x = this.currentPitch;
     mesh.rotation.z = this.currentRoll;

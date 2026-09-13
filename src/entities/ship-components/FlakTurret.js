@@ -87,8 +87,21 @@ export class FlakTurret extends BaseStation {
 
     if (this.camera) {
       if (this.camera.parent) this.camera.parent.remove(this.camera);
-      this.camera.position.set(0, 1.8, 2.2);
-      this.camera.rotation.set(0, 0, 0);
+
+      // Check for camera anchor empty in barrelMesh or hierarchy
+      const camAnchor = this.pitchGroup ? (
+        this.pitchGroup.getObjectByName('PositionAntiAirGunCamera') ||
+        this.pitchGroup.getObjectByName('CameraAnchor')
+      ) : null;
+
+      if (camAnchor) {
+        this.camera.position.copy(camAnchor.position);
+        this.camera.rotation.copy(camAnchor.rotation);
+      } else {
+        this.camera.position.set(0, 1.8, 2.2);
+        this.camera.rotation.set(0, 0, 0);
+      }
+
       this.pitchGroup.add(this.camera);
     }
   }
@@ -124,9 +137,18 @@ export class FlakTurret extends BaseStation {
     );
     this.camera.name = 'FlakTurret_Camera';
 
-    // Position camera looking aft along +Z world down the quad barrels
-    this.camera.position.set(0, 1.8, 2.2);
-    this.camera.rotation.set(0, 0, 0);
+    const camAnchor = this.pitchGroup ? (
+      this.pitchGroup.getObjectByName('PositionAntiAirGunCamera') ||
+      this.pitchGroup.getObjectByName('CameraAnchor')
+    ) : null;
+
+    if (camAnchor) {
+      this.camera.position.copy(camAnchor.position);
+      this.camera.rotation.copy(camAnchor.rotation);
+    } else {
+      this.camera.position.set(0, 1.8, 2.2);
+      this.camera.rotation.set(0, 0, 0);
+    }
 
     if (this.pitchGroup) {
       this.pitchGroup.add(this.camera);
@@ -281,14 +303,12 @@ export class FlakTurret extends BaseStation {
    * pre-allocated scratchpads (no per-frame allocations).
    */
   _updateMuzzleTransform() {
-    // World position of the barrel pivot
-    this.pitchGroup.getWorldPosition(this._muzzleWorldPos);
+    // In AntiAirBarrels local coordinates, the 4 barrels point along local -Z.
+    // Transform (0, 0, -1) to world space to obtain the true forward firing vector.
+    this._barrelWorldDir.set(0, 0, -1).transformDirection(this.pitchGroup.matrixWorld);
 
-    // getWorldDirection() returns the object's +Z axis in world space (aft firing direction)
-    this.pitchGroup.getWorldDirection(this._barrelWorldDir);
-
-    // Offset from the pivot out to the muzzle tips
-    this._muzzleWorldPos.addScaledVector(this._barrelWorldDir, this.barrelLength);
+    // Muzzle tip position: local (0, 0.48, -4.6) sits directly at the tips of the 4 barrels
+    this._muzzleWorldPos.set(0, 0.48, -4.6).applyMatrix4(this.pitchGroup.matrixWorld);
   }
 
   /**
@@ -375,7 +395,8 @@ export class FlakTurret extends BaseStation {
         }
 
         // Mouse Aiming (Fast tracking for anti-air)
-        if (input.isPointerLocked) {
+        const isDragging = input.isMouseButtonDown('Mouse0') || input.isMouseButtonDown('Mouse2');
+        if (input.isPointerLocked || isDragging) {
           this.yaw -= input.mouseDelta.x * 0.0025;
           this.pitch -= input.mouseDelta.y * 0.0025;
         }

@@ -20,7 +20,8 @@ export class InputManager {
     this.mousePosition = { x: 0, y: 0 };
     this.mouseNormalized = { x: 0, y: 0 }; // [-1, 1] range
     this.mouseDelta = { x: 0, y: 0 };
-    this.isPointerLocked = false;
+    this._lastClientX = undefined;
+    this._lastClientY = undefined;
 
     // Action mappings (Action Name -> Array of Keys / Mouse Buttons)
     this.actionBindings = {
@@ -55,6 +56,13 @@ export class InputManager {
     this._attachListeners();
   }
 
+  /**
+   * Real-time check if browser pointer lock is currently active
+   */
+  get isPointerLocked() {
+    return typeof document !== 'undefined' && document.pointerLockElement !== null;
+  }
+
   _attachListeners() {
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
@@ -62,6 +70,7 @@ export class InputManager {
     window.addEventListener('mouseup', this._onMouseUp);
     window.addEventListener('mousemove', this._onMouseMove);
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
+    document.addEventListener('pointerlockerror', this._onPointerLockChange);
 
     // Prevent right-click context menu inside the game canvas
     window.addEventListener('contextmenu', this._onContextMenu);
@@ -101,35 +110,60 @@ export class InputManager {
   }
 
   _onMouseMove(e) {
-    if (this.isPointerLocked) {
-      this.mouseDelta.x += e.movementX || 0;
-      this.mouseDelta.y += e.movementY || 0;
+    let dx = e.movementX || 0;
+    let dy = e.movementY || 0;
+
+    // Fallback: when not pointer-locked or if browser movementX/Y is zero/missing,
+    // compute deltas from client coordinates to ensure smooth mouse tracking
+    if (!this.isPointerLocked) {
+      if (this._lastClientX !== undefined && (dx === 0 && dy === 0)) {
+        dx = e.clientX - this._lastClientX;
+        dy = e.clientY - this._lastClientY;
+      }
+      this._lastClientX = e.clientX;
+      this._lastClientY = e.clientY;
     } else {
-      this.mousePosition.x = e.clientX;
-      this.mousePosition.y = e.clientY;
-      this.mouseNormalized.x = (e.clientX / window.innerWidth) * 2 - 1;
-      this.mouseNormalized.y = -(e.clientY / window.innerHeight) * 2 + 1;
-      this.mouseDelta.x += e.movementX || 0;
-      this.mouseDelta.y += e.movementY || 0;
+      this._lastClientX = undefined;
+      this._lastClientY = undefined;
     }
+
+    this.mouseDelta.x += dx;
+    this.mouseDelta.y += dy;
+
+    this.mousePosition.x = e.clientX;
+    this.mousePosition.y = e.clientY;
+    this.mouseNormalized.x = (e.clientX / window.innerWidth) * 2 - 1;
+    this.mouseNormalized.y = -(e.clientY / window.innerHeight) * 2 + 1;
   }
 
   _onPointerLockChange() {
-    this.isPointerLocked = document.pointerLockElement !== null;
+    this._lastClientX = undefined;
+    this._lastClientY = undefined;
   }
 
   /**
    * Request browser pointer lock on an element (e.g. canvas)
+   * Prefers unadjustedMovement for direct raw mouse input without OS acceleration lag.
    */
   requestPointerLock(element) {
     if (element && element.requestPointerLock) {
       try {
-        const promise = element.requestPointerLock();
+        const promise = element.requestPointerLock({ unadjustedMovement: true });
         if (promise && typeof promise.catch === 'function') {
-          promise.catch(() => { });
+          promise.catch(() => {
+            // Fallback for browsers that do not support unadjustedMovement options
+            try {
+              const fallbackPromise = element.requestPointerLock();
+              if (fallbackPromise && typeof fallbackPromise.catch === 'function') {
+                fallbackPromise.catch(() => { });
+              }
+            } catch (e) { }
+          });
         }
       } catch (err) {
-        // Silently catch browser policy or user activation errors
+        try {
+          element.requestPointerLock();
+        } catch (e) { }
       }
     }
   }
@@ -193,6 +227,27 @@ export class InputManager {
    */
   isKeyDown(code) {
     return this.keysDown.has(code);
+  }
+
+  /**
+   * Check if a mouse button is currently held down (e.g. 'Mouse0', 'Mouse1', 'Mouse2')
+   */
+  isMouseButtonDown(buttonId) {
+    return this.mouseButtonsDown.has(buttonId);
+  }
+
+  /**
+   * Check if a mouse button was just pressed on this exact frame
+   */
+  isMouseButtonJustPressed(buttonId) {
+    return this.mouseButtonsJustPressed.has(buttonId);
+  }
+
+  /**
+   * Check if a mouse button was just released on this exact frame
+   */
+  isMouseButtonJustReleased(buttonId) {
+    return this.mouseButtonsJustReleased.has(buttonId);
   }
 
   /**

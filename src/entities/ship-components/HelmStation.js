@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
-import { ShipBuoyancy } from './ShipBuoyancy.js';
 import config from '../../config.json';
 
 /**
@@ -44,13 +43,10 @@ export class HelmStation extends BaseStation {
     this.heading = 0; // Yaw angle in world radians
     this.rudderAngle = 0; // Current rudder steer [-1, 1]
 
-    // Buoyancy subsystem
-    this.buoyancy = new ShipBuoyancy({
-      draft: options.draft || buoyCfg.draft,
-      heaveScale: options.heaveScale || buoyCfg.heaveScale,
-      pitchScale: options.pitchScale || buoyCfg.pitchScale,
-      rollScale: options.rollScale || buoyCfg.rollScale
-    });
+    // Fixed waterline properties (buoyancy completely disabled)
+    this.draft = options.draft !== undefined ? options.draft : (buoyCfg?.draft ?? 1.0);
+    this.currentPitch = 0;
+    this.currentRoll = 0;
 
     this._forwardVec = new THREE.Vector3();
 
@@ -63,11 +59,6 @@ export class HelmStation extends BaseStation {
     // 3. UI overlays (prompt and navigation HUD)
     this._createUI();
   }
-
-  get draft() { return this.buoyancy.draft; }
-  set draft(val) { this.buoyancy.draft = val; }
-  get currentPitch() { return this.buoyancy.currentPitch; }
-  get currentRoll() { return this.buoyancy.currentRoll; }
 
   /**
    * Creates standard vehicle chase camera placed behind the vessel (+Z) looking forward (-Z)
@@ -311,9 +302,10 @@ export class HelmStation extends BaseStation {
     }
 
     // -------------------------------------------------------------
-    // C. WAVE BUOYANCY SIMULATION (Delegated to ShipBuoyancy)
+    // C. BUOYANCY DISABLED: Keep vessel level with zero pitch and roll
     // -------------------------------------------------------------
-    this.buoyancy.update(mesh, water, delta);
+    mesh.rotation.x = 0;
+    mesh.rotation.z = 0;
   }
 
   dispose() {

@@ -84,7 +84,7 @@ export class TestLevel extends BaseLevel {
       sprintSpeed: 16.0,
       jumpForce: 11.0
     });
-    // Position player on forward deck
+    // Position player on forward walking deck
     this.player.setPosition(0.46, 6.2, -14.0);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);

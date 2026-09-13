@@ -29,6 +29,12 @@ export class Player extends BaseEntity {
     this.gravity = options.gravity || locCfg.gravity;
     this.mouseSensitivity = options.mouseSensitivity || locCfg.mouseSensitivity;
 
+    // Capsule dimensions: radius 0.45, halfHeight 0.55 => total height 2.0m, center at 1.0m
+    this.capsuleRadius = options.capsuleRadius || 0.45;
+    this.capsuleHalfHeight = options.capsuleHalfHeight || 0.55;
+    // Controller offset: clearance margin (in meters) between collider and ground/obstacles
+    this.controllerOffset = options.controllerOffset !== undefined ? options.controllerOffset : 0.01;
+
     // Position & Kinematics
     this.position = options.position ? options.position.clone() : new THREE.Vector3(0, 0, 0);
     this.velocity = new THREE.Vector3(0, 0, 0);
@@ -58,24 +64,34 @@ export class Player extends BaseEntity {
     this._camForward = new THREE.Vector3();
     this._camRight = new THREE.Vector3();
     this._moveDir = new THREE.Vector3();
+    this._groundNormal = new THREE.Vector3(0, 1, 0);
+    this._slopeMove = new THREE.Vector3();
+    this._groundRay = null;
+    this._aheadRay = null;
 
     // Rapier physics handles
     this.rigidBody = null;
     this.collider = null;
     this.characterController = null;
 
-    // Create the 3D capsule mesh
+    // 1. Visual representation
     this._createMesh();
+
+    // 2. Optional collider debug visualization (green capsule)
+    this._createColliderDebugMesh();
 
     // Initialize Rapier Kinematic Character Controller
     this._initPhysics();
 
-    // Request pointer lock when canvas is clicked (unless in dev aerial camera)
-    this._onCanvasClick = () => {
+    // Request pointer lock on canvas pointerdown/click (unless in dev aerial camera)
+    this._onPointerDown = () => {
       if (this.isDevSuspended) return;
-      this.input.requestPointerLock(this.gameWorld.canvas);
+      if (!this.input.isPointerLocked) {
+        this.input.requestPointerLock(this.gameWorld.canvas);
+      }
     };
-    this.gameWorld.canvas.addEventListener('click', this._onCanvasClick);
+    this.gameWorld.canvas.addEventListener('pointerdown', this._onPointerDown);
+    this.gameWorld.canvas.addEventListener('click', this._onPointerDown);
   }
 
   /**
@@ -85,19 +101,28 @@ export class Player extends BaseEntity {
     if (!this.physicsWorld || !this.physicsWorld.world) return;
     const RAPIER = this.physicsWorld.RAPIER;
 
-    // Kinematic position-based body centered at y + 1.0 (capsule center)
+    // Kinematic position-based body centered at y + capsuleCenter
+    const capsuleCenter = this.capsuleHalfHeight + this.capsuleRadius;
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
-      .setTranslation(this.position.x, this.position.y + 1.0, this.position.z);
+      .setTranslation(this.position.x, this.position.y + capsuleCenter, this.position.z);
     this.rigidBody = this.physicsWorld.world.createRigidBody(bodyDesc);
 
-    // 1 Capsule Collider (halfHeight = 0.5, radius = 0.5 => Total Height = 2.0)
-    const colliderDesc = RAPIER.ColliderDesc.capsule(0.5, 0.5);
+    // 1 Capsule Collider (halfHeight = 0.55, radius = 0.45 => Total Height = 2.0m)
+    const colliderDesc = RAPIER.ColliderDesc.capsule(this.capsuleHalfHeight, this.capsuleRadius);
     this.collider = this.physicsWorld.world.createCollider(colliderDesc, this.rigidBody);
 
     // Rapier Kinematic Character Controller (auto-step, slope slide, snap-to-ground)
+    // offset: distance that keeps collider floating cleanly above deck loop cuts
     this.characterController = this.physicsWorld.createCharacterController({
-      offset: 0.1
+      offset: this.controllerOffset,
+      maxStepHeight: 0.45,
+      minStepWidth: 0.0,
+      maxSlope: (60 * Math.PI) / 180
     });
+
+    // Initialize ground and slope lookahead probe rays
+    this._groundRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+    this._aheadRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
 
     console.log('CharacterController: Rapier KinematicCharacterController ready.');
   }
@@ -109,8 +134,8 @@ export class Player extends BaseEntity {
     this.mesh = new THREE.Group();
     this.mesh.name = 'HumanCharacter';
 
-    // 1. Capsule Body (Height: 2.0, Radius: 0.5)
-    const capsuleGeo = new THREE.CapsuleGeometry(0.5, 1.0, 4, 12);
+    // 1. Capsule Body (Height: 2.0, Radius: 0.45)
+    const capsuleGeo = new THREE.CapsuleGeometry(this.capsuleRadius, this.capsuleHalfHeight * 2, 4, 12);
     const capsuleMat = new THREE.MeshStandardMaterial({
       color: 0x2a9d8f, // Stylized Narrow One teal
       roughness: 0.6,
@@ -118,7 +143,7 @@ export class Player extends BaseEntity {
       flatShading: true
     });
     this.bodyMesh = new THREE.Mesh(capsuleGeo, capsuleMat);
-    this.bodyMesh.position.y = 1.0;
+    this.bodyMesh.position.y = this.capsuleHalfHeight + this.capsuleRadius;
     this.bodyMesh.castShadow = true;
     this.bodyMesh.receiveShadow = true;
     this.mesh.add(this.bodyMesh);
@@ -163,7 +188,10 @@ export class Player extends BaseEntity {
     this.colliderDebugGroup.name = 'Character_Collider_Debug';
     this.colliderDebugGroup.userData = { noCollision: true };
 
-    const capsuleGeo = new THREE.CapsuleGeometry(0.5, 1.0, 8, 16);
+    const radius = this.capsuleRadius || 0.45;
+    const length = (this.capsuleHalfHeight || 0.55) * 2;
+    const centerY = (this.capsuleHalfHeight || 0.55) + radius;
+    const capsuleGeo = new THREE.CapsuleGeometry(radius, length, 8, 16);
 
     const surfaceMat = new THREE.MeshBasicMaterial({
       color: 0x00f5d4,
@@ -181,12 +209,12 @@ export class Player extends BaseEntity {
     });
 
     const surfMesh = new THREE.Mesh(capsuleGeo, surfaceMat);
-    surfMesh.position.set(0, 1.0, 0); // Center of 2.0m tall capsule
+    surfMesh.position.set(0, centerY, 0);
     surfMesh.userData = { noCollision: true };
     this.colliderDebugGroup.add(surfMesh);
 
     const wireMesh = new THREE.Mesh(capsuleGeo, wireframeMat);
-    wireMesh.position.set(0, 1.0, 0);
+    wireMesh.position.set(0, centerY, 0);
     wireMesh.userData = { noCollision: true };
     this.colliderDebugGroup.add(wireMesh);
 
@@ -210,7 +238,8 @@ export class Player extends BaseEntity {
     this.position.set(x, y, z);
     this.mesh.position.copy(this.position);
     if (this.rigidBody) {
-      this.rigidBody.setTranslation({ x, y: y + 1.0, z }, true);
+      const capsuleCenter = (this.capsuleHalfHeight || 0.55) + (this.capsuleRadius || 0.45);
+      this.rigidBody.setTranslation({ x, y: y + capsuleCenter, z }, true);
     }
   }
 
@@ -221,7 +250,8 @@ export class Player extends BaseEntity {
     this.position.set(x, y, z);
     this.mesh.position.copy(this.position);
     if (this.rigidBody) {
-      this.rigidBody.setTranslation({ x, y: y + 1.0, z }, true);
+      const capsuleCenter = (this.capsuleHalfHeight || 0.55) + (this.capsuleRadius || 0.45);
+      this.rigidBody.setTranslation({ x, y: y + capsuleCenter, z }, true);
       this.rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
       this.rigidBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     }
@@ -276,20 +306,23 @@ export class Player extends BaseEntity {
       this.toggleCameraMode();
     }
 
-    // 2. Mouse Look (Pointer Lock)
-    if (this.input.isPointerLocked) {
+    // 2. Mouse Look (Pointer Lock or Mouse Drag)
+    const isDragging = this.input.isMouseButtonDown('Mouse0') || this.input.isMouseButtonDown('Mouse2');
+    if (this.input.isPointerLocked || isDragging) {
       const deltaX = this.input.mouseDelta.x;
       const deltaY = this.input.mouseDelta.y;
 
-      // Mouse Right (deltaX > 0) -> Turn Right
-      this.yaw -= deltaX * this.mouseSensitivity;
+      if (deltaX !== 0 || deltaY !== 0) {
+        // Mouse Right (deltaX > 0) -> Turn Right
+        this.yaw -= deltaX * this.mouseSensitivity;
 
-      // Mouse Up (deltaY < 0) -> Look Up
-      this.pitch -= deltaY * this.mouseSensitivity;
+        // Mouse Up (deltaY < 0) -> Look Up
+        this.pitch -= deltaY * this.mouseSensitivity;
 
-      // Clamp vertical look between -80 deg and +80 deg
-      const maxPitch = 1.4;
-      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
+        // Clamp vertical look between -80 deg and +80 deg
+        const maxPitch = 1.4;
+        this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch));
+      }
     }
 
     // 3. Directional vectors based on current Yaw
@@ -338,24 +371,96 @@ export class Player extends BaseEntity {
         }
       }
 
-      // Jump & gravity
+      // Jump, gravity & slope tangent movement projection
+      let desiredMovement;
       if (this.isGrounded) {
         if (this.input.isActionJustPressed('jump')) {
           this.verticalVelocity = this.jumpForce;
           this.isGrounded = false;
+          desiredMovement = {
+            x: this.velocity.x * delta + (platformDisplacement ? platformDisplacement.x : 0),
+            y: this.verticalVelocity * delta + (platformDisplacement ? platformDisplacement.y : 0),
+            z: this.velocity.z * delta + (platformDisplacement ? platformDisplacement.z : 0)
+          };
         } else {
-          // Grounded: keep vertical velocity neutral (platform heave displacement tracks wave motion)
           this.verticalVelocity = 0;
+
+          // Downward raycast to probe ground normal beneath character
+          const currPos = this.rigidBody.translation();
+          let groundHit = null;
+          if (this._groundRay && this.physicsWorld && this.physicsWorld.world) {
+            this._groundRay.origin.x = currPos.x;
+            this._groundRay.origin.y = currPos.y;
+            this._groundRay.origin.z = currPos.z;
+            // Ray length 1.6m probes up to 0.6m below capsule bottom (capsule center = 1.0m)
+            groundHit = this.physicsWorld.world.castRayAndGetNormal(
+              this._groundRay,
+              1.6,
+              true,
+              undefined,
+              undefined,
+              this.collider
+            );
+
+            // Probe ground ahead at the leading edge of the capsule to anticipate slopes before collision
+            const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+            if (horizSpeed > 0.001 && this._aheadRay) {
+              const probeDist = (this.capsuleRadius || 0.45) * 0.9;
+              this._aheadRay.origin.x = currPos.x + (this.velocity.x / horizSpeed) * probeDist;
+              this._aheadRay.origin.y = currPos.y;
+              this._aheadRay.origin.z = currPos.z + (this.velocity.z / horizSpeed) * probeDist;
+
+              const aheadHit = this.physicsWorld.world.castRayAndGetNormal(
+                this._aheadRay,
+                1.6,
+                true,
+                undefined,
+                undefined,
+                this.collider
+              );
+
+              if (aheadHit && aheadHit.normal && aheadHit.normal.y > 0.5 && aheadHit.normal.y < 0.98) {
+                // Only anticipate an UPWARD incline (velocity vector moves towards/against the slope normal: dot < 0)
+                const dotAhead = (this.velocity.x * aheadHit.normal.x + this.velocity.z * aheadHit.normal.z) / horizSpeed;
+                if (dotAhead < -0.05) {
+                  groundHit = aheadHit;
+                }
+              }
+            }
+          }
+
+          if (groundHit && groundHit.normal && groundHit.normal.y > 0.5) {
+            this._groundNormal.set(groundHit.normal.x, groundHit.normal.y, groundHit.normal.z).normalize();
+
+            // Project horizontal movement vector onto ground surface tangent plane
+            this._slopeMove.set(this.velocity.x * delta, 0, this.velocity.z * delta);
+            const dot = this._slopeMove.dot(this._groundNormal);
+            if (dot < 0) {
+              // Climbing up: lift movement along the incline tangent to prevent capsule face wedging
+              this._slopeMove.addScaledVector(this._groundNormal, -dot);
+            }
+
+            desiredMovement = {
+              x: this._slopeMove.x + (platformDisplacement ? platformDisplacement.x : 0),
+              y: this._slopeMove.y + (platformDisplacement ? platformDisplacement.y : 0),
+              z: this._slopeMove.z + (platformDisplacement ? platformDisplacement.z : 0)
+            };
+          } else {
+            desiredMovement = {
+              x: this.velocity.x * delta + (platformDisplacement ? platformDisplacement.x : 0),
+              y: (platformDisplacement ? platformDisplacement.y : 0),
+              z: this.velocity.z * delta + (platformDisplacement ? platformDisplacement.z : 0)
+            };
+          }
         }
       } else {
         this.verticalVelocity -= this.gravity * delta;
+        desiredMovement = {
+          x: this.velocity.x * delta + (platformDisplacement ? platformDisplacement.x : 0),
+          y: this.verticalVelocity * delta + (platformDisplacement ? platformDisplacement.y : 0),
+          z: this.velocity.z * delta + (platformDisplacement ? platformDisplacement.z : 0)
+        };
       }
-
-      const desiredMovement = {
-        x: this.velocity.x * delta + (platformDisplacement ? platformDisplacement.x : 0),
-        y: this.verticalVelocity * delta + (platformDisplacement ? platformDisplacement.y : 0),
-        z: this.velocity.z * delta + (platformDisplacement ? platformDisplacement.z : 0)
-      };
 
       // Rapier sweeps 1 capsule collider and returns resolved movement
       this.characterController.computeColliderMovement(
@@ -374,8 +479,14 @@ export class Player extends BaseEntity {
       };
       this.rigidBody.setNextKinematicTranslation(nextPos);
 
-      // Sync character visual position to collision-resolved position (feet at y = capsuleCenter - 1.0)
-      this.position.set(nextPos.x, nextPos.y - 1.0, nextPos.z);
+      // Sync character visual position to collision-resolved position.
+      // Both collider and mesh are perfectly aligned with zero vertical desync.
+      const capsuleCenter = this.capsuleHalfHeight + this.capsuleRadius;
+      this.position.set(
+        nextPos.x,
+        nextPos.y - capsuleCenter,
+        nextPos.z
+      );
 
     } else {
       // Fallback ground collision if physics is pending
@@ -427,7 +538,8 @@ export class Player extends BaseEntity {
    * Clean up
    */
   dispose() {
-    this.gameWorld.canvas.removeEventListener('click', this._onCanvasClick);
+    this.gameWorld.canvas.removeEventListener('pointerdown', this._onPointerDown);
+    this.gameWorld.canvas.removeEventListener('click', this._onPointerDown);
 
     if (this.physicsWorld && this.physicsWorld.world) {
       if (this.collider) {
