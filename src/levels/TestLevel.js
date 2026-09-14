@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import { BaseLevel } from './BaseLevel.js';
 import { Player } from '../entities/Player.js';
 import { Battleship } from '../entities/Battleship.js';
-import { ArtilleryTurret } from '../entities/ship-components/ArtilleryTurret.js';
-import { FlakTurret } from '../entities/ship-components/FlakTurret.js';
 import { ProjectilePool } from '../entities/projectiles/ProjectilePool.js';
 
 /**
@@ -16,8 +14,6 @@ export class TestLevel extends BaseLevel {
     super(gameWorld, 'Test Level (Flat Ground)');
     this.player = null;
     this.battleship = null;
-    this.mainGun = null;
-    this.flakTurret = null;
     this.projectilePool = null;
   }
 
@@ -74,38 +70,26 @@ export class TestLevel extends BaseLevel {
     this.gameWorld.addEntity(this.projectilePool);
     this.gameWorld.projectilePool = this.projectilePool;
 
-    // 4. Instantiate Modern Battleship Placeholder & Collisions
+    // 4. Instantiate Modern Battleship with Imported Mesh & Colliders
     this.battleship = new Battleship(this.gameWorld, {
       position: new THREE.Vector3(0, 0, 0)
     });
+    await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);
     this.battleship.initPhysics(this.gameWorld.physics);
 
-    // 5. Spawn Human Player alongside the battleship
+    // 5. Spawn Human Player on the Battleship Walking Deck
     this.player = new Player(this.gameWorld, {
       walkSpeed: 9.0,
       sprintSpeed: 16.0,
       jumpForce: 11.0
     });
-    // Position player on the right side of the ship facing the ramp
-    this.player.setPosition(18, 0.2, 0);
-    this.player.yaw = -Math.PI / 2;
+    // Position player on forward walking deck
+    this.player.setPosition(0.46, 6.2, -14.0);
+    this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
-    // 6. Instantiate Standalone Artillery & Flak Turret on the ground testing area
-    this.mainGun = new ArtilleryTurret({
-      position: new THREE.Vector3(30, 0, -16),
-      gameWorld: this.gameWorld
-    });
-    this.gameWorld.addEntity(this.mainGun);
-
-    this.flakTurret = new FlakTurret({
-      position: new THREE.Vector3(30, 0, 16),
-      gameWorld: this.gameWorld
-    });
-    this.gameWorld.addEntity(this.flakTurret);
-
-    console.log(`${this.name} initialized with Battleship, MainGun, FlakTurret, ProjectilePool`);
+    console.log(`${this.name} initialized with Battleship (imported GLB & colliders), Player, and ProjectilePool`);
   }
 
   update(delta) {
@@ -128,16 +112,7 @@ export class TestLevel extends BaseLevel {
       }
     }
 
-    if (this.mainGun) {
-      this.gameWorld.removeEntity(this.mainGun);
-      this.mainGun.dispose();
-      this.mainGun = null;
-    }
-    if (this.flakTurret) {
-      this.gameWorld.removeEntity(this.flakTurret);
-      this.flakTurret.dispose();
-      this.flakTurret = null;
-    }
+
     if (this.player) {
       this.gameWorld.removeEntity(this.player);
       this.player = null;

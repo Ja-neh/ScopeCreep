@@ -26,7 +26,7 @@ export class GameWorld {
 
     // 2. Core Three.js Scene & Scenegraph Hierarchy
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87ceeb); // Daylight skybox default
+    this.scene.background = new THREE.Color(0x87ceeb);
     this.scene.fog = new THREE.FogExp2(0x87ceeb, 0.0015);
 
     // Dedicated scenegraph organizational groups

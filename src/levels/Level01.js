@@ -81,6 +81,7 @@ export class Level01 extends BaseLevel {
       position: new THREE.Vector3(0, 0, 0),
       water: this.water
     });
+    await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);
     this.battleship.initPhysics(this.gameWorld.physics);
 
@@ -90,8 +91,8 @@ export class Level01 extends BaseLevel {
       sprintSpeed: 14.0,
       jumpForce: 10.0
     });
-    // Position player on forward deck between bridge and main gun
-    this.player.setPosition(0, 5.0, -15);
+    // Position player on forward walking deck
+    this.player.setPosition(0.46, 6.2, -14.0);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
@@ -377,9 +378,9 @@ export class Level01 extends BaseLevel {
       }
     }
 
-    // 3. Void fall recovery: respawn player back to forward deck if fallen below -15m
+    // 3. Void fall recovery: respawn player back to forward walking deck if fallen below -15m
     if (this.player && this.player.position && this.player.position.y < -15 && this.battleship && this.battleship.mesh) {
-      const respawnWorld = new THREE.Vector3(0, 5.0, -15);
+      const respawnWorld = new THREE.Vector3(0.46, 6.2, -14.0);
       this.battleship.mesh.localToWorld(respawnWorld);
       this.player.teleport(respawnWorld.x, respawnWorld.y + 0.2, respawnWorld.z);
     }

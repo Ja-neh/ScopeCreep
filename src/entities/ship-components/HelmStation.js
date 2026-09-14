@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
-import { ShipBuoyancy } from './ShipBuoyancy.js';
 import config from '../../config.json';
 
 /**
@@ -11,13 +10,17 @@ import config from '../../config.json';
  */
 export class HelmStation extends BaseStation {
   constructor(battleship, options = {}) {
+    const defaultHelmPos = battleship?.stations?.helmsman
+      ? battleship.stations.helmsman.clone()
+      : new THREE.Vector3(5.47, 5.26, 17.22);
+
     super({
       ...options,
       battleship,
-      gameWorld: battleship.gameWorld || options.gameWorld || null,
+      gameWorld: battleship?.gameWorld || options.gameWorld || null,
       name: 'HelmStation',
-      detectionRadius: 2.2,
-      position: new THREE.Vector3(0, 8.05, -10.5),
+      detectionRadius: 2.8,
+      position: options.position || defaultHelmPos,
       releasePointerLockOnMount: true
     });
 
@@ -40,13 +43,10 @@ export class HelmStation extends BaseStation {
     this.heading = 0; // Yaw angle in world radians
     this.rudderAngle = 0; // Current rudder steer [-1, 1]
 
-    // Buoyancy subsystem
-    this.buoyancy = new ShipBuoyancy({
-      draft: options.draft || buoyCfg.draft,
-      heaveScale: options.heaveScale || buoyCfg.heaveScale,
-      pitchScale: options.pitchScale || buoyCfg.pitchScale,
-      rollScale: options.rollScale || buoyCfg.rollScale
-    });
+    // Fixed waterline properties (buoyancy completely disabled)
+    this.draft = options.draft !== undefined ? options.draft : (buoyCfg?.draft ?? 1.0);
+    this.currentPitch = 0;
+    this.currentRoll = 0;
 
     this._forwardVec = new THREE.Vector3();
 
@@ -60,11 +60,6 @@ export class HelmStation extends BaseStation {
     this._createUI();
   }
 
-  get draft() { return this.buoyancy.draft; }
-  set draft(val) { this.buoyancy.draft = val; }
-  get currentPitch() { return this.buoyancy.currentPitch; }
-  get currentRoll() { return this.buoyancy.currentRoll; }
-
   /**
    * Creates standard vehicle chase camera placed behind the vessel (+Z) looking forward (-Z)
    */
@@ -77,12 +72,23 @@ export class HelmStation extends BaseStation {
     );
     this.camera.name = 'Ship_VehicleCamera';
 
-    // Positioned at the back of the vehicle elevated above stern, looking over bridge and bow
-    this.camera.position.set(0, 24, 58);
-    this.camera.lookAt(0, 8, -15);
+    // Positioned behind vessel elevated above stern, looking over bridge and bow
+    this.camera.position.set(0, 28, 75);
+    this.camera.lookAt(0, 8, -20);
 
     // Attached directly to the battleship mesh hierarchy to follow heading, position, and wave motion
     this.battleship.mesh.add(this.camera);
+  }
+
+  /**
+   * Sets the helm station coordinates dynamically when model AreaHelm is loaded
+   */
+  setStationPosition(pos) {
+    this.position.copy(pos);
+    if (this.detectFieldGroup) {
+      this.detectFieldGroup.position.copy(pos);
+    }
+    this.localMountPosition = pos.clone();
   }
 
   /**
@@ -90,9 +96,9 @@ export class HelmStation extends BaseStation {
    */
   _createDetectField() {
     this.detectFieldGroup = this.createDetectField({ radius: this.detectionRadius, color: 0x00f5d4 });
-    this.detectFieldGroup.position.set(0, 8.05, -10.5);
+    this.detectFieldGroup.position.copy(this.position);
     this.detectFieldGroup.userData = { noCollision: true };
-    this.localMountPosition = new THREE.Vector3(0, 8.1, -10.5);
+    this.localMountPosition = this.position.clone();
 
     // Floating Holographic Diamond & Ship Wheel Beacon (compact, waist-level)
     this.beaconGroup = new THREE.Group();
@@ -296,9 +302,10 @@ export class HelmStation extends BaseStation {
     }
 
     // -------------------------------------------------------------
-    // C. WAVE BUOYANCY SIMULATION (Delegated to ShipBuoyancy)
+    // C. BUOYANCY DISABLED: Keep vessel level with zero pitch and roll
     // -------------------------------------------------------------
-    this.buoyancy.update(mesh, water, delta);
+    mesh.rotation.x = 0;
+    mesh.rotation.z = 0;
   }
 
   dispose() {

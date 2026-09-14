@@ -50,9 +50,9 @@
     },
     "buoyancy": {
       "draft": 1.0,
-      "heaveScale": 0.25,
-      "pitchScale": 0.20,
-      "rollScale": 0.15
+      "heaveScale": 0.06,
+      "pitchScale": 0.04,
+      "rollScale": 0.03
     }
   },
   "turrets": {
