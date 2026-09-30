@@ -280,7 +280,7 @@ export class BaseStation {
   }
 
   /**
-   * Clean up DOM elements and meshes.
+   * Clean up UI registrations and meshes.
    */
   dispose() {
     if (this.gameWorld && this.gameWorld.ui) {

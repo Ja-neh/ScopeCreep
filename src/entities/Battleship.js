@@ -314,13 +314,7 @@ export class Battleship extends BaseEntity {
     }
   }
 
-
   dispose() {
-    if (this.healthPanel && this.healthPanel.parentNode) {
-      this.healthPanel.parentNode.removeChild(this.healthPanel);
-    }
-    this.healthPanel = null;
-
     // Disposes hull collider, rigid body, dynamic gun colliders, and all wireframe meshes
     this.colliders.dispose();
 

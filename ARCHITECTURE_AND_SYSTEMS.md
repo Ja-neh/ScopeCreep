@@ -105,6 +105,7 @@ The engine infrastructure is stage-agnostic and located in `src/core/`:
 - **`GameWorld`:** Master engine coordinator. Owns the animation loop, Three.js scene graph hierarchy (`environmentGroup`, `entitiesGroup`, `projectilesGroup`, `effectsGroup`), master clock, camera selection, stage lifecycle management (`loadLevel`, `restartCurrentLevel`), and dispatches the execution pipeline.
 - **`PhysicsWorld`:** Wrapper for `@dimforge/rapier3d-compat` (WebAssembly). Manages gravity, rigid bodies, colliders, character controllers, and extracts high-contrast debug lines via `debugRender()`.
 - **`InputManager`:** Centralized input mapper. Captures raw keyboard and mouse events, manages browser pointer lock for FPS mouselook, and maps keys to semantic action bindings (`forward`, `jump`, `toggleColliders`). Clears single-frame transitions at the end of every frame.
+- **`UIManager` (`src/ui/UIManager.js`):** Central UI coordinator owned by `GameWorld` (`gameWorld.ui`). Manages modular DOM overlays (interaction prompts, station telemetry HUDs, crosshairs, warship health meter, toast notifications, FPS display, controls helpers, and dev tools) styled exclusively through `src/ui/ui.css`. Entities and levels never inject inline DOM or CSS.
 - **`FPSTracker`:** Real-time on-screen HUD performance and framerate diagnostic widget.
 
 ---
@@ -160,6 +161,7 @@ Levels represent isolated game stages that extend the abstract `BaseLevel` class
   - Downward ground snapping ($0.3\text{m}$) to eliminate hopping when descending stairs/ramps.
 - **Compound Cuboids vs. Trimeshes:** Decks and ramps are modeled using compound cuboid boxes rather than raw trimeshes. Cuboid primitives eliminate internal edge "snagging" where characters trip over triangle seams.
 - **Anti-Tunneling Slabs:** Decks feature $3.5\text{m}$ deep solid collision volumes, ensuring that even during high-velocity drops or severe wave pitches, characters cannot phase through floors.
+- **Encapsulation via `PhysicsWorld`:** Entities and levels never import `@dimforge/rapier3d-compat` directly. All physics bodies, colliders, character controllers, and raycasts are routed through `PhysicsWorld` (or helper adapters like `ThreePhysicsAdapter` / `BattleshipColliders`), ensuring proper native resource disposal and debug visualization.
 
 ---
 
@@ -300,6 +302,10 @@ ScopeCreep/
 │   │   └── shaders/        # GPU shader programs (GLSL)
 │   │       ├── ocean.vert.glsl # Vertex displacement shader (Gerstner wave math)
 │   │       └── ocean.frag.glsl # Fragment shader (Fresnel reflections, foam, depth colors)
+│   ├── ui/                 # Centralized HTML/DOM HUD overlay subsystem
+│   │   ├── UIManager.js    # Central UI orchestrator attached to GameWorld.ui
+│   │   ├── ui.css          # Unified stylesheet for all HUD and overlay elements
+│   │   └── components/     # Modular UI widgets (InteractionPrompt, StationHUD, HealthBar, etc.)
 │   ├── main.css            # Base stylesheet, reset, HUD typography
 │   └── main.js             # Client application bootstrap
 ├── index.html              # Single-page HTML container with WebGL canvas & UI overlays
@@ -335,11 +341,19 @@ ScopeCreep/
 - `getAxis(negAction, posAction)`: Returns float between $-1$ and $+1$.
 - `update()`: Flushes single-frame key states at frame end.
 
+### `UIManager` (`src/ui/UIManager.js`)
+- Attached to `gameWorld.ui` and acts as the single point of entry for all DOM UI overlays.
+- `showPrompt(key, label, accentColor, sourceId)` / `hidePrompt(sourceId)`: Interactive station entry/exit prompts.
+- `showStationHUD(type, config)` / `updateStationHUD(type, data)` / `hideStationHUD()`: Full-screen station cockpits and telemetry panels.
+- `showCrosshair(type)` / `hideCrosshair()`: Weapon reticles and crosshairs.
+- `updateHealthBar(current, max)` / `hideHealthBar()`: Battleship integrity HUD meter.
+- `showToast(message, type, duration)`: Mission notifications and gameplay toasts.
+- `dispose()`: Cleans up DOM containers and child components during engine teardown.
+
 ### `FPSTracker` (`src/core/FPSTracker.js`)
-- Top-left HUD performance and framerate diagnostic widget (`#fps-tracker`).
+- Performance diagnostic widget delegating rendering to `UIManager.fpsDisplay`.
 - `update()`: Measures frame delta using `performance.now()`, updates rolling FPS and frame time in milliseconds (`ms`) every 150ms without visual jitter.
 - Dynamic color-coding: Green/emerald ($\ge 55$ FPS), Amber/yellow ($30-54$ FPS), Red ($< 30$ FPS).
-- `pointer-events: none` ensuring zero interference with mouse clicks or pointer lock.
 - `dispose()`: Safely unmounts DOM element upon engine cleanup.
 
 ### `BaseEntity` (`src/entities/BaseEntity.js`)
