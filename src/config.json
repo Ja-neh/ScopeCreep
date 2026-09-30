@@ -28,6 +28,12 @@
       "gravity": 25.0,
       "mouseSensitivity": 0.002
     },
+    "capsule": {
+      "radius": 0.45,
+      "halfHeight": 0.55,
+      "controllerOffset": 0.01,
+      "maxStepHeight": 0.45
+    },
     "camera": {
       "eyeHeight": 1.7,
       "thirdPersonDistance": 4.5,

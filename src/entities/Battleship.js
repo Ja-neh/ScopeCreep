@@ -222,6 +222,7 @@ export class Battleship extends BaseEntity {
         if (gunGeom) {
           const rapierCol = physicsWorld.createTrimeshCollider(gunGeom.vertices, gunGeom.indices, body);
           if (rapierCol) {
+            rapierCol.userData = { entity: this };
             this.gunColliders.push({
               mesh: colMesh,
               rapierCollider: rapierCol
