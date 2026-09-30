@@ -9,11 +9,11 @@ export const CameraMode = Object.freeze({
  * SpringArmCamera
  * Dedicated 3rd-person spring arm and 1st-person eye camera controller.
  * Features:
- * - Dynamic obstacle occlusion raycasting against Rapier colliders (walls, hulls)
- * - Fast compression (28/s) and smooth spring extension (10/s)
+ * - Dynamic obstacle occlusion raycasting against Rapier colliders (walls, hulls, islands)
+ * - Fast compression (28/s) and smooth spring extension (24/s)
+ * - Configurable focal height, distance, shoulder offset, and minimum elevation
  * - Seamless toggle between 1st and 3rd person views
- * - Proximity near-plane mesh occlusion detection
- * - Zero GC overhead (preallocated math vectors)
+ * - Zero GC overhead in hot loops (preallocated math vectors)
  */
 export class SpringArmCamera {
   constructor(camera, physicsWorld = null, options = {}) {
@@ -31,12 +31,23 @@ export class SpringArmCamera {
     this.cameraCollisionMargin = options.cameraCollisionMargin || 0.25;
     this.thirdPersonTargetHeight = options.thirdPersonTargetHeight || 1.3;
     this.shoulderOffset = options.shoulderOffset || 0.0;
+    this.minCameraY = options.minCameraY !== undefined ? options.minCameraY : 0.35;
 
     // Preallocated math scratchpads (eliminating GC)
     this._targetFocalPoint = new THREE.Vector3();
     this._desiredCamOffset = new THREE.Vector3();
     this._lookDir = new THREE.Vector3();
     this._camRayDir = new THREE.Vector3();
+    this._cameraRay = null;
+  }
+
+  setPhysicsWorld(physicsWorld) {
+    this.physicsWorld = physicsWorld;
+  }
+
+  setDistance(distance) {
+    this.thirdPersonDistance = distance;
+    this.currentCameraDistance = distance;
   }
 
   toggleMode() {
@@ -53,15 +64,16 @@ export class SpringArmCamera {
   }
 
   /**
-   * Updates camera position and orientation based on player position and look angles.
+   * Updates camera position and orientation based on target position and look angles.
    * @param {number} delta - Frame delta time
-   * @param {THREE.Vector3} targetPos - Player world position
-   * @param {number} yaw - Player horizontal look angle (rad)
-   * @param {number} pitch - Player vertical look angle (rad)
-   * @param {RAPIER.Collider|null} [excludeCollider=null] - Collider to ignore during spring arm raycast
+   * @param {THREE.Vector3} targetPos - Target world position
+   * @param {number} yaw - Horizontal look angle (rad)
+   * @param {number} pitch - Vertical look angle (rad)
+   * @param {RAPIER.Collider|null} [excludeCollider=null] - Collider to ignore during occlusion raycast
+   * @param {RAPIER.RigidBody|null} [excludeRigidBody=null] - RigidBody to ignore during occlusion raycast
    * @returns {{ isTooClose: boolean, mode: string }}
    */
-  update(delta, targetPos, yaw, pitch, excludeCollider = null) {
+  update(delta, targetPos, yaw, pitch, excludeCollider = null, excludeRigidBody = null) {
     if (!this.camera) return { isTooClose: false, mode: this.mode };
 
     // Compute spherical look direction vector
@@ -130,7 +142,8 @@ export class SpringArmCamera {
           true,
           undefined,
           undefined,
-          excludeCollider
+          excludeCollider,
+          excludeRigidBody
         );
 
         if (hit && hit.timeOfImpact < maxRayDist) {
@@ -150,13 +163,13 @@ export class SpringArmCamera {
     }
 
     const camX = this._targetFocalPoint.x + this._camRayDir.x * this.currentCameraDistance;
-    const camY = Math.max(0.35, this._targetFocalPoint.y + this._camRayDir.y * this.currentCameraDistance);
+    const camY = Math.max(this.minCameraY, this._targetFocalPoint.y + this._camRayDir.y * this.currentCameraDistance);
     const camZ = this._targetFocalPoint.z + this._camRayDir.z * this.currentCameraDistance;
 
     this.camera.position.set(camX, camY, camZ);
     this.camera.lookAt(this._targetFocalPoint);
 
-    const isTooClose = this.currentCameraDistance < 0.9;
+    const isTooClose = this.currentCameraDistance < (this.minCameraDistance + 0.3);
     return { isTooClose, mode: this.mode };
   }
 }

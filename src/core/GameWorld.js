@@ -156,7 +156,7 @@ export class GameWorld {
 
   /**
    * Add a game entity to the world
-   * @param {Object} entity - Must have an optional mesh/group and optional update(dt) method
+   * @param {Object} entity - Entity implementing phased lifecycle methods (prePhysicsUpdate, postPhysicsUpdate, gameplayUpdate, lateUpdate)
    */
   addEntity(entity) {
     this.entities.add(entity);
@@ -306,14 +306,6 @@ export class GameWorld {
     for (const entity of this.entities) {
       if (entity.gameplayUpdate && typeof entity.gameplayUpdate === 'function') {
         entity.gameplayUpdate(delta, this);
-      } else if (
-        entity.update &&
-        typeof entity.update === 'function' &&
-        !entity.prePhysicsUpdate &&
-        !entity.postPhysicsUpdate
-      ) {
-        // Backward-compatible fallback for entities that only define update()
-        entity.update(delta, this);
       }
     }
 

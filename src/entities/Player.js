@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { BaseEntity } from './BaseEntity.js';
-import { SpringArmCamera, CameraMode } from './player-components/SpringArmCamera.js';
+import { SpringArmCamera, CameraMode } from './components/SpringArmCamera.js';
 import { PlayerModel } from './models/PlayerModel.js';
 import { GroundProbe } from './player-components/GroundProbe.js';
 import { PlatformTracker } from './player-components/PlatformTracker.js';
@@ -369,13 +369,6 @@ export class Player extends BaseEntity {
     }
   }
 
-  /**
-   * Backward-compatible update method (delegates to postPhysicsUpdate + lateUpdate)
-   */
-  update(delta) {
-    this.postPhysicsUpdate(delta);
-    this.lateUpdate(delta);
-  }
 
   /**
    * Clean up

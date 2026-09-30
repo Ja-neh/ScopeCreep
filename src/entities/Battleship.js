@@ -342,11 +342,15 @@ export class Battleship extends BaseEntity {
   }
 
   /**
-   * Backward-compatible update method (delegates to prePhysicsUpdate)
+   * Phase 6 (Late Update): Updates camera positioning and spring-arm obstacle raycasting
+   * after physical movements and platform displacements are complete.
    */
-  update(delta) {
-    this.prePhysicsUpdate(delta);
+  lateUpdate(delta, gameWorld) {
+    if (this.shipController && typeof this.shipController.lateUpdate === 'function') {
+      this.shipController.lateUpdate(delta, gameWorld);
+    }
   }
+
 
   dispose() {
     if (this.healthPanel && this.healthPanel.parentNode) {

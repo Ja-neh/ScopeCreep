@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BaseStation } from './BaseStation.js';
+import { SpringArmCamera } from '../components/SpringArmCamera.js';
 import config from '../../config.json';
 
 /**
@@ -21,7 +22,7 @@ export class HelmStation extends BaseStation {
       name: 'HelmStation',
       detectionRadius: 2.8,
       position: options.position || defaultHelmPos,
-      releasePointerLockOnMount: true
+      releasePointerLockOnMount: false
     });
 
     this.battleship = battleship;
@@ -48,10 +49,19 @@ export class HelmStation extends BaseStation {
     this.currentPitch = 0;
     this.currentRoll = 0;
 
+    // Camera tuning & mouse orbit look
+    const camCfg = config.ship.camera || {};
+    this.defaultPitch = options.cameraPitch !== undefined ? options.cameraPitch : (camCfg.pitch ?? 0.20);
+    this.pitch = this.defaultPitch;
+    this.orbitYaw = 0;
+    this.mouseSensitivity = options.mouseSensitivity || 0.0022;
+    this.minPitch = options.minPitch !== undefined ? options.minPitch : -0.35;
+    this.maxPitch = options.maxPitch !== undefined ? options.maxPitch : 0.85;
+
     this._forwardVec = new THREE.Vector3();
 
-    // 1. Vehicle Chase Camera
-    this._createVehicleCamera();
+    // 1. Vehicle Chase Camera with SpringArm
+    this._createVehicleCamera(options);
 
     // 2. Helmsman Proximity Detection Field on Bridge
     this._createDetectField();
@@ -61,9 +71,9 @@ export class HelmStation extends BaseStation {
   }
 
   /**
-   * Creates standard vehicle chase camera placed behind the vessel (+Z) looking forward (-Z)
+   * Creates vehicle chase camera managed by SpringArmCamera for smooth obstacle avoidance and mouse orbit
    */
-  _createVehicleCamera() {
+  _createVehicleCamera(options = {}) {
     this.camera = new THREE.PerspectiveCamera(
       60,
       window.innerWidth / window.innerHeight,
@@ -72,12 +82,16 @@ export class HelmStation extends BaseStation {
     );
     this.camera.name = 'Ship_VehicleCamera';
 
-    // Positioned behind vessel elevated above stern, looking over bridge and bow
-    this.camera.position.set(0, 28, 75);
-    this.camera.lookAt(0, 8, -20);
+    const camCfg = config.ship.camera || {};
+    const physicsWorld = this.battleship?.physicsWorld || this.gameWorld?.physicsWorld || null;
 
-    // Attached directly to the battleship mesh hierarchy to follow heading, position, and wave motion
-    this.battleship.mesh.add(this.camera);
+    this.springArm = new SpringArmCamera(this.camera, physicsWorld, {
+      thirdPersonDistance: options.thirdPersonDistance || camCfg.distance || 85.0,
+      thirdPersonTargetHeight: options.thirdPersonTargetHeight || camCfg.targetHeight || 12.0,
+      minCameraDistance: options.minCameraDistance || camCfg.minDistance || 20.0,
+      cameraCollisionMargin: options.cameraCollisionMargin || camCfg.collisionMargin || 2.0,
+      minCameraY: options.minCameraY !== undefined ? options.minCameraY : (camCfg.minCameraY ?? 3.5),
+    });
   }
 
   /**
@@ -308,11 +322,60 @@ export class HelmStation extends BaseStation {
     mesh.rotation.z = 0;
   }
 
+  /**
+   * Hook called when player mounts the helm
+   */
+  onMounted(player, gameWorld) {
+    this.orbitYaw = 0;
+    this.pitch = this.defaultPitch;
+    if (this.springArm) {
+      this.springArm.currentCameraDistance = this.springArm.thirdPersonDistance;
+      if (!this.springArm.physicsWorld) {
+        this.springArm.physicsWorld = this.battleship?.physicsWorld || gameWorld?.physicsWorld || null;
+      }
+    }
+  }
+
+  /**
+   * Phase 6 (Late Update): Updates ship spring-arm camera tracking, occlusion, and mouse orbit
+   * after physical movements and platform displacement are fully applied.
+   */
+  lateUpdate(delta, gameWorld = this.gameWorld) {
+    if (!this.isMounted || !this.springArm) return;
+
+    const input = gameWorld?.input || this.input;
+    if (input && input.isPointerLocked) {
+      this.orbitYaw -= input.mouseDelta.x * this.mouseSensitivity;
+      this.pitch -= input.mouseDelta.y * this.mouseSensitivity;
+      this.pitch = THREE.MathUtils.clamp(this.pitch, this.minPitch, this.maxPitch);
+    }
+
+    if (!this.springArm.physicsWorld && this.battleship?.physicsWorld) {
+      this.springArm.physicsWorld = this.battleship.physicsWorld;
+    }
+
+    const shipPos = this.battleship.mesh.position;
+    const totalYaw = this.heading + this.orbitYaw;
+    const hullCollider = this.battleship.colliders?.collider || null;
+    const shipRigidBody = this.battleship.colliders?.rigidBody || null;
+
+    this.springArm.update(
+      delta,
+      shipPos,
+      totalYaw,
+      this.pitch,
+      hullCollider,
+      shipRigidBody
+    );
+  }
+
   dispose() {
     super.dispose();
     if (this.camera && this.camera.parent) {
       this.camera.parent.remove(this.camera);
     }
+    this.springArm = null;
+    this.camera = null;
   }
 }
 
