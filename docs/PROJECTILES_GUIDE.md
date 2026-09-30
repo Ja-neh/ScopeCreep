@@ -1,8 +1,8 @@
 # Projectile System Developer Guide (Card 2.1 & Card 2.2 Integration)
 
 > **Audience:** Combat / Ballistics Developer assigned to **Card 2.2** (*Wire up weapon firing inputs, rate of fire, recoil, turret mount controls*).  
-> **Subsystem:** [ProjectilePool.js](file:///c:/School/3rd/Sem2/CGV/Project/ScopeCreep/src/entities/projectiles/ProjectilePool.js) & [Projectile.js](file:///c:/School/3rd/Sem2/CGV/Project/ScopeCreep/src/entities/projectiles/Projectile.js).  
-> **Architecture Reference:** [ARCHITECTURE_AND_SYSTEMS.md](./ARCHITECTURE_AND_SYSTEMS.md) and [AGENTS.md](./AGENTS.md).
+> **Subsystem:** [ProjectilePool.js](../src/entities/ProjectilePool.js) & [Projectile.js](../src/entities/projectile-components/Projectile.js).  
+> **Architecture Reference:** [ARCHITECTURE_AND_SYSTEMS.md](../ARCHITECTURE_AND_SYSTEMS.md) and [AGENTS.md](../AGENTS.md).
 
 ---
 
@@ -10,7 +10,7 @@
 
 The **Card 2.1 Projectile System** is a zero-allocation, high-performance ballistics engine designed to handle rapid flak fire (up to 12+ rounds per second) and heavy naval artillery shells with continuous collision detection (CCD) and zero Garbage Collection (GC) pauses.
 
-As the developer implementing **Card 2.2** in [ArtilleryTurret.js](file:///c:/School/3rd/Sem2/CGV/Project/ScopeCreep/src/entities/ship-components/ArtilleryTurret.js) (aliased as `MainGun`) and [FlakTurret.js](file:///c:/School/3rd/Sem2/CGV/Project/ScopeCreep/src/entities/ship-components/FlakTurret.js), you do **not** need to create meshes, colliders, or physics raycasts when shooting. You only need to query muzzle positions and invoke the pre-allocated pool.
+As the developer implementing **Card 2.2** in [ArtilleryTurret.js](../src/entities/ship-components/ArtilleryTurret.js) (aliased as `MainGun`) and [FlakTurret.js](../src/entities/ship-components/FlakTurret.js), you do **not** need to create meshes, colliders, or physics raycasts when shooting. You only need to query muzzle positions and invoke the pre-allocated pool.
 
 ---
 
@@ -210,7 +210,7 @@ You do **not** need to handle hit detection or damage logic in the turret.
 ## 8. Summary Checklist for Card 2.2 Dev
 
 - [ ] Query `this.gameWorld.projectilePool`.
-- [ ] Use `fireFlak()` for [FlakTurret.js](file:///c:/School/3rd/Sem2/CGV/Project/ScopeCreep/src/entities/ship-components/FlakTurret.js) and `fireArtillery()` for [ArtilleryTurret.js](file:///c:/School/3rd/Sem2/CGV/Project/ScopeCreep/src/entities/ship-components/ArtilleryTurret.js).
+- [ ] Use `fireFlak()` for [FlakTurret.js](../src/entities/ship-components/FlakTurret.js) and `fireArtillery()` for [ArtilleryTurret.js](../src/entities/ship-components/ArtilleryTurret.js).
 - [ ] Pre-allocate `_muzzleWorldPos` and `_barrelWorldDir` (zero `new` in updates).
 - [ ] Implement cooldown timers for rate of fire.
 - [ ] Add smooth barrel kickback recoil animation.
