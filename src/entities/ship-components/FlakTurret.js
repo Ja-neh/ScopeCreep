@@ -19,6 +19,11 @@ export class FlakTurret extends BaseStation {
     super({
       ...options,
       name: 'FlakTurret',
+      promptText: options.promptText || 'OPERATE FLAK TURRET',
+      accentColor: '#f4a261',
+      stationType: 'flak',
+      crosshairType: 'flak',
+      hudConfig: { title: 'ANTI-AIR FLAK BATTERY' },
       detectionRadius: 4.8,
       position: options.position || new THREE.Vector3(0, 6.8, 16)
     });
@@ -72,9 +77,6 @@ export class FlakTurret extends BaseStation {
     if (this.turretMesh && this.barrelMesh) {
       this.attachTurretNodes(this.turretMesh, this.barrelMesh);
     }
-
-    // 3. UI overlays (prompt and crosshair)
-    this._createUI();
   }
 
   attachTurretNodes(turretMesh, barrelMesh) {
@@ -155,128 +157,7 @@ export class FlakTurret extends BaseStation {
     }
   }
 
-  /**
-   * On-screen HUD elements for detection prompt and anti-air aiming
-   */
-  _createUI() {
-    // 1. Proximity interaction prompt: [E] OPERATE FLAK TURRET
-    this.promptEl = document.createElement('div');
-    this.promptEl.id = 'flakturret-prompt';
-    this.promptEl.style.cssText = `
-      position: fixed;
-      bottom: 110px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.92);
-      border: 2px solid #f4a261;
-      box-shadow: 0 0 20px rgba(244, 162, 97, 0.5);
-      color: #f8fafc;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      pointer-events: none;
-      display: none;
-      z-index: 9999;
-      user-select: none;
-      transition: opacity 0.15s ease-out;
-    `;
-    this.promptEl.innerHTML = `
-      <span style="background: #f4a261; color: #1e293b; padding: 3px 9px; border-radius: 4px; margin-right: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.4);">E</span>
-      OPERATE FLAK TURRET
-    `;
-    document.body.appendChild(this.promptEl);
 
-    // 2. Turret Gunner HUD (Anti-Air Reticle & Dismount guide)
-    this.hudEl = document.createElement('div');
-    this.hudEl.id = 'flakturret-hud';
-    this.hudEl.style.cssText = `
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      display: none;
-      z-index: 9999;
-      user-select: none;
-    `;
-    this.hudEl.innerHTML = `
-      <div style="
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 48px;
-        height: 48px;
-        transform: translate(-50%, -50%);
-        border: 2px dashed rgba(244, 162, 97, 0.9);
-        border-radius: 50%;
-        box-shadow: 0 0 14px rgba(244, 162, 97, 0.5);
-      ">
-        <div style="position: absolute; top: 22px; left: 22px; width: 4px; height: 4px; background: #f4a261; border-radius: 50%;"></div>
-        <div style="position: absolute; top: 23px; left: -14px; width: 12px; height: 2px; background: #f4a261;"></div>
-        <div style="position: absolute; top: 23px; right: -14px; width: 12px; height: 2px; background: #f4a261;"></div>
-        <div style="position: absolute; top: -14px; left: 23px; width: 2px; height: 12px; background: #f4a261;"></div>
-        <div style="position: absolute; bottom: -14px; left: 23px; width: 2px; height: 12px; background: #f4a261;"></div>
-      </div>
-      <div style="
-        position: absolute;
-        bottom: 35px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(15, 23, 42, 0.88);
-        border: 1px solid rgba(244, 162, 97, 0.6);
-        color: #f1f5f9;
-        padding: 10px 20px;
-        border-radius: 8px;
-        font-family: monospace;
-        font-size: 14px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-      ">
-        <strong style="color: #f4a261;">ANTI-AIR FLAK BATTERY</strong> &nbsp;|&nbsp; 
-        <strong>[E]</strong> or <strong>[ESC]</strong> Dismount &nbsp;|&nbsp; 
-        <strong>Mouse</strong> Aim
-      </div>
-      <div style="
-        position: absolute;
-        bottom: 100px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 180px;
-        text-align: center;
-        font-family: monospace;
-      ">
-        <div data-role="reload-label" style="
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 1px;
-          color: #f4a261;
-          margin-bottom: 4px;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-        ">READY</div>
-        <div style="
-          width: 100%;
-          height: 6px;
-          border-radius: 3px;
-          background: rgba(15, 23, 42, 0.7);
-          border: 1px solid rgba(244, 162, 97, 0.5);
-          overflow: hidden;
-        ">
-          <div data-role="reload-fill" style="
-            height: 100%;
-            width: 100%;
-            background: #f4a261;
-            box-shadow: 0 0 8px rgba(244, 162, 97, 0.8);
-            transition: width 0.05s linear, background-color 0.15s ease;
-          "></div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(this.hudEl);
-
-    // Cache reload indicator elements for per-frame updates (avoid re-querying DOM)
-    this.reloadLabelEl = this.hudEl.querySelector('[data-role="reload-label"]');
-    this.reloadFillEl = this.hudEl.querySelector('[data-role="reload-fill"]');
-  }
 
   /**
    * Aim flak turret
@@ -351,22 +232,17 @@ export class FlakTurret extends BaseStation {
   /**
    * Refreshes the gunner HUD's reload progress bar/label to reflect fireCooldown.
    */
-  _updateReloadIndicator() {
-    if (!this.reloadFillEl) return;
+  _updateReloadIndicator(gameWorld = this.gameWorld) {
+    if (!gameWorld || !gameWorld.ui) return;
 
     const ready = this.fireCooldown <= 0;
     const pct = ready ? 100 : THREE.MathUtils.clamp(100 - (this.fireCooldown / this.fireRate) * 100, 0, 100);
 
-    this.reloadFillEl.style.width = `${pct}%`;
-    this.reloadFillEl.style.background = ready ? '#7fd992' : '#f4a261';
-    this.reloadFillEl.style.boxShadow = ready
-      ? '0 0 8px rgba(127, 217, 146, 0.8)'
-      : '0 0 8px rgba(244, 162, 97, 0.8)';
-
-    if (this.reloadLabelEl) {
-      this.reloadLabelEl.textContent = ready ? 'READY' : 'CYCLING';
-      this.reloadLabelEl.style.color = ready ? '#7fd992' : '#f4a261';
-    }
+    gameWorld.ui.updateStationHUD('flak', {
+      ready,
+      pct,
+      label: ready ? 'READY' : 'CYCLING'
+    });
   }
 
   /**
@@ -395,17 +271,17 @@ export class FlakTurret extends BaseStation {
         }
 
         // Mouse Aiming (Fast tracking for anti-air)
-        const isDragging = input.isMouseButtonDown('Mouse0') || input.isMouseButtonDown('Mouse2');
+        const isDragging = input.isActionDown('mouseLook');
         if (input.isPointerLocked || isDragging) {
           this.yaw -= input.mouseDelta.x * 0.0025;
           this.pitch -= input.mouseDelta.y * 0.0025;
         }
 
-        // Keyboard Aiming (Arrow keys)
-        if (input.isKeyDown('ArrowLeft')) this.yaw += 1.2 * delta;
-        if (input.isKeyDown('ArrowRight')) this.yaw -= 1.2 * delta;
-        if (input.isKeyDown('ArrowUp')) this.pitch += 0.9 * delta;
-        if (input.isKeyDown('ArrowDown')) this.pitch -= 0.9 * delta;
+        // Keyboard Aiming
+        const yawAxis = input.getAxis('aimRight', 'aimLeft');
+        const pitchAxis = input.getAxis('aimDown', 'aimUp');
+        if (yawAxis !== 0) this.yaw += yawAxis * 1.2 * delta;
+        if (pitchAxis !== 0) this.pitch += pitchAxis * 0.9 * delta;
 
         this.setAim(this.yaw, this.pitch);
 
@@ -416,7 +292,7 @@ export class FlakTurret extends BaseStation {
           this._fireWeapon();
         }
 
-        this._updateReloadIndicator();
+        this._updateReloadIndicator(gameWorld);
       }
       return;
     }

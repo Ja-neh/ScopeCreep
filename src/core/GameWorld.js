@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { InputManager } from './InputManager.js';
 import { PhysicsWorld } from './PhysicsWorld.js';
 import { FPSTracker } from './FPSTracker.js';
+import { UIManager } from '../ui/UIManager.js';
 
 /**
  * GameWorld
@@ -69,21 +70,25 @@ export class GameWorld {
     this.activeCamera = null; // When null, falls back to this.camera
 
     // 5. Input Subsystem
-    this.input = new InputManager(window);
+    this.input = new InputManager();
 
     // 6. Registered entities list (for per-frame updates)
     this.entities = new Set();
 
-    // 7. LevelManager reference (optional)
-    this.levelManager = null;
+    // 7. Active level lifecycle tracking
+    this.currentLevel = null;
+    this.isLevelLoading = false;
 
     // 8. Event bindings
     this._onResize = this._onResize.bind(this);
     this._loop = this._loop.bind(this);
     window.addEventListener('resize', this._onResize);
 
-    // 9. On-Screen Performance & FPS Monitor (Top-Left HUD)
-    this.fpsTracker = new FPSTracker();
+    // 9. UI Subsystem (HUD, prompts, health bars, overlays)
+    this.ui = new UIManager();
+
+    // 10. On-Screen Performance & FPS Monitor (Top-Left HUD)
+    this.fpsTracker = new FPSTracker(this);
   }
 
   /**
@@ -97,10 +102,43 @@ export class GameWorld {
   }
 
   /**
-   * Assign the LevelManager to this world
+   * Loads and initializes a new level stage.
+   * Tears down any previously active level and frees GPU and physics resources.
+   * @param {BaseLevel} newLevel - Instance of a class extending BaseLevel
    */
-  setLevelManager(levelManager) {
-    this.levelManager = levelManager;
+  async loadLevel(newLevel) {
+    if (this.isLevelLoading) return;
+    this.isLevelLoading = true;
+
+    // 1. Tear down previous level
+    if (this.currentLevel) {
+      console.log(`Tearing down previous stage: ${this.currentLevel.name}`);
+      this.currentLevel.dispose();
+      this.clearEntities();
+      this.clearEnvironment();
+      this.currentLevel = null;
+    }
+
+    // 2. Set and initialize new level
+    this.currentLevel = newLevel;
+    try {
+      await this.currentLevel.init();
+      console.log(`Successfully loaded stage: ${this.currentLevel.name}`);
+    } catch (error) {
+      console.error(`Failed to initialize level:`, error);
+    } finally {
+      this.isLevelLoading = false;
+    }
+  }
+
+  /**
+   * Restarts the currently active level from scratch without refreshing the page.
+   */
+  async restartCurrentLevel() {
+    if (!this.currentLevel) return;
+    const LevelConstructor = this.currentLevel.constructor;
+    console.log(`Restarting stage: ${this.currentLevel.name}...`);
+    await this.loadLevel(new LevelConstructor(this));
   }
 
   /**
@@ -121,7 +159,7 @@ export class GameWorld {
 
   /**
    * Add a game entity to the world
-   * @param {Object} entity - Must have an optional mesh/group and optional update(dt) method
+   * @param {Object} entity - Entity implementing phased lifecycle methods (prePhysicsUpdate, postPhysicsUpdate, gameplayUpdate, lateUpdate)
    */
   addEntity(entity) {
     this.entities.add(entity);
@@ -232,10 +270,7 @@ export class GameWorld {
     // PHASE 1: INPUT & GLOBAL HOTKEYS
     // =========================================================================
     if (this.input.isActionJustPressed('toggleColliders')) {
-      const isVisible = this.toggleColliderDebug();
-      if (this.levelManager && this.levelManager.currentLevel && this.levelManager.currentLevel._updateCollidersBtn) {
-        this.levelManager.currentLevel._updateCollidersBtn(isVisible);
-      }
+      this.toggleColliderDebug();
     }
 
     // =========================================================================
@@ -268,20 +303,14 @@ export class GameWorld {
     // =========================================================================
     // PHASE 5: GAMEPLAY & LEVEL LOGIC (Weapons, Projectiles, Health, Level Timers)
     // =========================================================================
-    if (this.levelManager) {
-      this.levelManager.update(delta);
+    if (this.currentLevel && this.currentLevel.isInitialized && !this.isLevelLoading) {
+      if (this.currentLevel.gameplayUpdate && typeof this.currentLevel.gameplayUpdate === 'function') {
+        this.currentLevel.gameplayUpdate(delta, this);
+      }
     }
     for (const entity of this.entities) {
       if (entity.gameplayUpdate && typeof entity.gameplayUpdate === 'function') {
         entity.gameplayUpdate(delta, this);
-      } else if (
-        entity.update &&
-        typeof entity.update === 'function' &&
-        !entity.prePhysicsUpdate &&
-        !entity.postPhysicsUpdate
-      ) {
-        // Backward-compatible fallback for entities that only define update()
-        entity.update(delta, this);
       }
     }
 
@@ -295,11 +324,6 @@ export class GameWorld {
       }
     }
 
-    // Custom external update hooks
-    if (this.onUpdate) {
-      this.onUpdate(delta);
-    }
-
     // =========================================================================
     // PHASE 7: WEBGL RENDER
     // =========================================================================
@@ -307,7 +331,7 @@ export class GameWorld {
 
     // Update on-screen FPS & performance diagnostics
     if (this.fpsTracker) {
-      this.fpsTracker.update();
+      this.fpsTracker.update(this);
     }
 
     // =========================================================================
@@ -320,16 +344,8 @@ export class GameWorld {
    * Toggles collider debug visibility across physics engine and entities (e.g. Battleship)
    */
   toggleColliderDebug() {
-    const isNowVisible = this.physics.toggleDebug();
-
-    // Toggle collider debug on registered entities (e.g. Battleship)
-    for (const entity of this.entities) {
-      if (entity && entity.setColliderDebugVisible && typeof entity.setColliderDebugVisible === 'function') {
-        entity.setColliderDebugVisible(isNowVisible);
-      }
-    }
-
-    this._showColliderToast(isNowVisible);
+    const isNowVisible = !this.physics.debugMesh.visible;
+    this.setColliderDebugVisible(isNowVisible);
     return isNowVisible;
   }
 
@@ -340,55 +356,14 @@ export class GameWorld {
         entity.setColliderDebugVisible(visible);
       }
     }
-    this._showColliderToast(visible);
-  }
 
-  _showColliderToast(visible) {
-    let toast = document.querySelector('#collider-debug-toast');
-    if (!toast) {
-      toast = document.createElement('div');
-      toast.id = 'collider-debug-toast';
-      toast.style.cssText = `
-        position: fixed;
-        bottom: 80px;
-        right: 20px;
-        padding: 10px 18px;
-        border-radius: 8px;
-        font-family: monospace;
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        pointer-events: none;
-        z-index: 10001;
-        transition: all 0.25s ease;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-      `;
-      document.body.appendChild(toast);
+    if (this.currentLevel && typeof this.currentLevel.onColliderDebugToggled === 'function') {
+      this.currentLevel.onColliderDebugToggled(visible);
     }
 
-    if (visible) {
-      toast.style.background = 'rgba(16, 185, 129, 0.92)';
-      toast.style.border = '1px solid #34d399';
-      toast.style.color = '#ffffff';
-      toast.innerHTML = '🛡️ BATTLESHIP COLLIDERS: VISIBLE';
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    } else {
-      toast.style.background = 'rgba(15, 23, 42, 0.9)';
-      toast.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-      toast.style.color = '#94a3b8';
-      toast.innerHTML = '🛡️ BATTLESHIP COLLIDERS: HIDDEN';
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
+    if (this.ui) {
+      this.ui.showToast(visible ? '🛡️ COLLIDERS: VISIBLE' : '🛡️ COLLIDERS: HIDDEN', visible ? 'success' : 'info', 2200);
     }
-
-    clearTimeout(this._toastTimeout);
-    this._toastTimeout = setTimeout(() => {
-      if (toast) {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(10px)';
-      }
-    }, 2200);
   }
 
   /**
@@ -412,7 +387,7 @@ export class GameWorld {
   }
 
   /**
-   * Full cleanup of geometries, materials, listeners, and physics
+   * Full cleanup of geometries, materials, listeners, physics, and DOM elements
    */
   dispose() {
     this.stop();
@@ -422,8 +397,9 @@ export class GameWorld {
     this.clearEntities();
     this.clearEnvironment();
 
-    if (this.levelManager) {
-      this.levelManager.dispose();
+    if (this.currentLevel) {
+      this.currentLevel.dispose();
+      this.currentLevel = null;
     }
 
     this.physics.dispose();
@@ -432,6 +408,11 @@ export class GameWorld {
     if (this.fpsTracker) {
       this.fpsTracker.dispose();
       this.fpsTracker = null;
+    }
+
+    if (this.ui) {
+      this.ui.dispose();
+      this.ui = null;
     }
   }
 }

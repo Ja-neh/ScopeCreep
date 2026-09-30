@@ -20,11 +20,15 @@ export class ArtilleryTurret extends BaseStation {
       ...options,
       name: options.name || 'ArtilleryTurret',
       detectionRadius: options.detectionRadius || 4.5,
-      position: options.position || new THREE.Vector3(0, 4.2, -22)
+      position: options.position || new THREE.Vector3(0, 4.2, -22),
+      stationType: 'artillery',
+      crosshairType: 'artillery',
+      hudConfig: { title: options.title || 'MAIN ARTILLERY TURRET' }
     });
 
     this.turretTitle = options.title || 'MAIN ARTILLERY TURRET';
     this.promptText = options.promptText || 'OPERATE MAIN ARTILLERY GUN';
+    this.accentColor = '#e76f51';
 
     // Turret orientation angles
     this.yaw = 0;   // Left/Right rotation relative to ship heading
@@ -75,9 +79,6 @@ export class ArtilleryTurret extends BaseStation {
     if (this.turretMesh && this.barrelMesh) {
       this.attachTurretNodes(this.turretMesh, this.barrelMesh);
     }
-
-    // 3. UI overlays (prompt and crosshair)
-    this._createUI();
   }
 
   attachTurretNodes(turretMesh, barrelMesh) {
@@ -139,127 +140,7 @@ export class ArtilleryTurret extends BaseStation {
     }
   }
 
-  /**
-   * On-screen HUD elements for detection prompt and gunner aiming
-   */
-  _createUI() {
-    // 1. Proximity interaction prompt: [E] OPERATE ARTILLERY GUN
-    this.promptEl = document.createElement('div');
-    this.promptEl.id = `${this.stationName.toLowerCase()}-prompt`;
-    this.promptEl.style.cssText = `
-      position: fixed;
-      bottom: 110px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.92);
-      border: 2px solid #e76f51;
-      box-shadow: 0 0 20px rgba(231, 111, 81, 0.5);
-      color: #f8fafc;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      pointer-events: none;
-      display: none;
-      z-index: 9999;
-      user-select: none;
-      transition: opacity 0.15s ease-out;
-    `;
-    this.promptEl.innerHTML = `
-      <span style="background: #e76f51; color: #fff; padding: 3px 9px; border-radius: 4px; margin-right: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.4);">E</span>
-      ${this.promptText}
-    `;
-    document.body.appendChild(this.promptEl);
 
-    // 2. Turret Gunner HUD (Center Crosshair & Dismount guide)
-    this.hudEl = document.createElement('div');
-    this.hudEl.id = `${this.stationName.toLowerCase()}-hud`;
-    this.hudEl.style.cssText = `
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      display: none;
-      z-index: 9999;
-      user-select: none;
-    `;
-    this.hudEl.innerHTML = `
-      <div style="
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 38px;
-        height: 38px;
-        transform: translate(-50%, -50%);
-        border: 2px solid rgba(231, 111, 81, 0.9);
-        border-radius: 50%;
-        box-shadow: 0 0 12px rgba(231, 111, 81, 0.6);
-      ">
-        <div style="position: absolute; top: 17px; left: -12px; width: 10px; height: 2px; background: #e76f51;"></div>
-        <div style="position: absolute; top: 17px; right: -12px; width: 10px; height: 2px; background: #e76f51;"></div>
-        <div style="position: absolute; top: -12px; left: 17px; width: 2px; height: 10px; background: #e76f51;"></div>
-        <div style="position: absolute; bottom: -12px; left: 17px; width: 2px; height: 10px; background: #e76f51;"></div>
-      </div>
-      <div style="
-        position: absolute;
-        bottom: 35px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(15, 23, 42, 0.88);
-        border: 1px solid rgba(231, 111, 81, 0.6);
-        color: #f1f5f9;
-        padding: 10px 20px;
-        border-radius: 8px;
-        font-family: monospace;
-        font-size: 14px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-      ">
-        <strong style="color: #e76f51;">${this.turretTitle}</strong> &nbsp;|&nbsp; 
-        <strong>[E]</strong> or <strong>[ESC]</strong> Dismount &nbsp;|&nbsp; 
-        <strong>Mouse</strong> Aim
-      </div>
-      <div style="
-        position: absolute;
-        bottom: 90px;
-        left: 50%;
-        transform: translateX(-50%);
-        width: 180px;
-        text-align: center;
-        font-family: monospace;
-      ">
-        <div data-role="reload-label" style="
-          font-size: 11px;
-          font-weight: 700;
-          letter-spacing: 1px;
-          color: #e76f51;
-          margin-bottom: 4px;
-          text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-        ">READY</div>
-        <div style="
-          width: 100%;
-          height: 6px;
-          border-radius: 3px;
-          background: rgba(15, 23, 42, 0.7);
-          border: 1px solid rgba(231, 111, 81, 0.5);
-          overflow: hidden;
-        ">
-          <div data-role="reload-fill" style="
-            height: 100%;
-            width: 100%;
-            background: #e76f51;
-            box-shadow: 0 0 8px rgba(231, 111, 81, 0.8);
-            transition: width 0.05s linear, background-color 0.15s ease;
-          "></div>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(this.hudEl);
-
-    // Cache reload indicator elements for per-frame updates (avoid re-querying DOM)
-    this.reloadLabelEl = this.hudEl.querySelector('[data-role="reload-label"]');
-    this.reloadFillEl = this.hudEl.querySelector('[data-role="reload-fill"]');
-  }
 
   /**
    * Aim turret at local yaw (azimuth) and pitch (elevation)
@@ -336,22 +217,17 @@ export class ArtilleryTurret extends BaseStation {
   /**
    * Refreshes the gunner HUD's reload progress bar/label to reflect fireCooldown.
    */
-  _updateReloadIndicator() {
-    if (!this.reloadFillEl) return;
+  _updateReloadIndicator(gameWorld = this.gameWorld) {
+    if (!gameWorld || !gameWorld.ui) return;
 
     const ready = this.fireCooldown <= 0;
     const pct = ready ? 100 : THREE.MathUtils.clamp(100 - (this.fireCooldown / this.fireRate) * 100, 0, 100);
 
-    this.reloadFillEl.style.width = `${pct}%`;
-    this.reloadFillEl.style.background = ready ? '#7fd992' : '#e76f51';
-    this.reloadFillEl.style.boxShadow = ready
-      ? '0 0 8px rgba(127, 217, 146, 0.8)'
-      : '0 0 8px rgba(231, 111, 81, 0.8)';
-
-    if (this.reloadLabelEl) {
-      this.reloadLabelEl.textContent = ready ? 'READY' : 'RELOADING';
-      this.reloadLabelEl.style.color = ready ? '#7fd992' : '#e76f51';
-    }
+    gameWorld.ui.updateStationHUD('artillery', {
+      ready,
+      pct,
+      label: ready ? 'READY' : 'RELOADING'
+    });
   }
 
   /**
@@ -380,17 +256,17 @@ export class ArtilleryTurret extends BaseStation {
         }
 
         // Mouse Aiming
-        const isDragging = input.isMouseButtonDown('Mouse0') || input.isMouseButtonDown('Mouse2');
+        const isDragging = input.isActionDown('mouseLook');
         if (input.isPointerLocked || isDragging) {
           this.yaw -= input.mouseDelta.x * 0.002;
           this.pitch -= input.mouseDelta.y * 0.002;
         }
 
-        // Keyboard Aiming (Arrow keys)
-        if (input.isKeyDown('ArrowLeft')) this.yaw += 0.8 * delta;
-        if (input.isKeyDown('ArrowRight')) this.yaw -= 0.8 * delta;
-        if (input.isKeyDown('ArrowUp')) this.pitch += 0.6 * delta;
-        if (input.isKeyDown('ArrowDown')) this.pitch -= 0.6 * delta;
+        // Keyboard Aiming
+        const yawAxis = input.getAxis('aimRight', 'aimLeft');
+        const pitchAxis = input.getAxis('aimDown', 'aimUp');
+        if (yawAxis !== 0) this.yaw += yawAxis * 0.8 * delta;
+        if (pitchAxis !== 0) this.pitch += pitchAxis * 0.6 * delta;
 
         this.setAim(this.yaw, this.pitch);
 
@@ -401,7 +277,7 @@ export class ArtilleryTurret extends BaseStation {
           this._fireWeapon();
         }
 
-        this._updateReloadIndicator();
+        this._updateReloadIndicator(gameWorld);
       }
       return;
     }

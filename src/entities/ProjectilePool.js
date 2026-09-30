@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { BaseEntity } from '../BaseEntity.js';
-import { Projectile } from './Projectile.js';
-import { DamageType } from '../components/HealthComponent.js';
-import config from '../../config.json';
+import { BaseEntity } from './BaseEntity.js';
+import { Projectile } from './projectile-components/Projectile.js';
+import { DamageType } from './components/HealthComponent.js';
+import config from '../config.json';
 
 /**
  * ProjectilePool

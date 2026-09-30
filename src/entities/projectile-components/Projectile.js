@@ -135,7 +135,7 @@ export class Projectile {
         this._ray.dir.y = this._stepDir.y;
         this._ray.dir.z = this._stepDir.z;
 
-        const hit = physicsWorld.world.castRay(
+        const hit = physicsWorld.castRay(
           this._ray,
           stepDist,
           true,

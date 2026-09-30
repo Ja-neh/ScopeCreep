@@ -28,6 +28,12 @@
       "gravity": 25.0,
       "mouseSensitivity": 0.002
     },
+    "capsule": {
+      "radius": 0.45,
+      "halfHeight": 0.55,
+      "controllerOffset": 0.01,
+      "maxStepHeight": 0.45
+    },
     "camera": {
       "eyeHeight": 1.7,
       "thirdPersonDistance": 4.5,
@@ -53,6 +59,20 @@
       "heaveScale": 0.06,
       "pitchScale": 0.04,
       "rollScale": 0.03
+    },
+    "platform": {
+      "halfWidth": 12.0,
+      "halfLength": 52.0,
+      "minHeight": -6.0,
+      "maxHeight": 40.0
+    },
+    "camera": {
+      "distance": 85.0,
+      "targetHeight": 12.0,
+      "minDistance": 20.0,
+      "collisionMargin": 2.0,
+      "minCameraY": 3.5,
+      "pitch": 0.20
     }
   },
   "turrets": {

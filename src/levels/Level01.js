@@ -4,7 +4,7 @@ import { BaseLevel } from './BaseLevel.js';
 import { Ocean } from '../rendering/Ocean.js';
 import { Battleship } from '../entities/Battleship.js';
 import { Player } from '../entities/Player.js';
-import { ProjectilePool } from '../entities/projectiles/ProjectilePool.js';
+import { ProjectilePool } from '../entities/ProjectilePool.js';
 
 /**
  * Level01
@@ -28,7 +28,6 @@ export class Level01 extends BaseLevel {
     this.cameraMode = 'PLAYER'; // 'PLAYER' | 'AERIAL'
     this.aerialCamera = null;
     this.orbitControls = null;
-    this.devToolsEl = null;
     this._onKeyDown = null;
   }
 
@@ -103,12 +102,7 @@ export class Level01 extends BaseLevel {
     this._initDevTools();
 
     // 8. Ocean surface safety floor (catches players falling overboard so they don't fall into the void)
-    const oceanSafetyColliderDesc = this.gameWorld.physics.RAPIER.ColliderDesc.cuboid(1500, 0.5, 1500)
-      .setTranslation(0, -1.0, 0);
-    const oceanSafetyBody = this.gameWorld.physics.world.createRigidBody(
-      this.gameWorld.physics.RAPIER.RigidBodyDesc.fixed()
-    );
-    this.oceanSafetyCollider = this.gameWorld.physics.world.createCollider(oceanSafetyColliderDesc, oceanSafetyBody);
+    this.oceanSafetyCollider = this.gameWorld.physics.createGround(3000, -1.0);
 
     console.log(`${this.name} initialized with Battleship, Deck Player, and Dev Camera Tools.`);
   }
@@ -143,9 +137,6 @@ export class Level01 extends BaseLevel {
     if (mode === this.cameraMode) return;
     this.cameraMode = mode;
 
-    const btnPlayer = document.querySelector('#dev-btn-player');
-    const btnAerial = document.querySelector('#dev-btn-aerial');
-
     if (mode === 'AERIAL') {
       // Exit pointer lock for smooth orbit mouse interaction
       if (document.exitPointerLock) {
@@ -171,19 +162,6 @@ export class Level01 extends BaseLevel {
 
       // Switch rendering to Aerial camera
       this.gameWorld.setActiveCamera(this.aerialCamera);
-
-      // Update UI button highlights
-      if (btnPlayer) {
-        btnPlayer.style.background = 'rgba(255, 255, 255, 0.08)';
-        btnPlayer.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-        btnPlayer.style.color = '#94a3b8';
-      }
-      if (btnAerial) {
-        btnAerial.style.background = '#0284c7';
-        btnAerial.style.borderColor = '#38bdf8';
-        btnAerial.style.color = '#ffffff';
-      }
-
       console.log('Level1 DevTools: Switched to [AERIAL ORBIT CAMERA].');
     } else {
       // Return to PLAYER mode
@@ -197,20 +175,11 @@ export class Level01 extends BaseLevel {
 
       // Restore active camera to null (master player camera)
       this.gameWorld.setActiveCamera(null);
-
-      // Update UI button highlights
-      if (btnPlayer) {
-        btnPlayer.style.background = '#0d9488';
-        btnPlayer.style.borderColor = '#2dd4bf';
-        btnPlayer.style.color = '#ffffff';
-      }
-      if (btnAerial) {
-        btnAerial.style.background = 'rgba(255, 255, 255, 0.08)';
-        btnAerial.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-        btnAerial.style.color = '#94a3b8';
-      }
-
       console.log('Level1 DevTools: Switched to [PLAYER CONTROLLER CAMERA].');
+    }
+
+    if (this.gameWorld && this.gameWorld.ui) {
+      this.gameWorld.ui.updateDevToolsCamera(mode);
     }
   }
 
@@ -218,105 +187,16 @@ export class Level01 extends BaseLevel {
    * Creates the on-screen Dev Tools widget and attaches hotkey listeners
    */
   _initDevTools() {
-    this.devToolsEl = document.createElement('div');
-    this.devToolsEl.id = 'level1-dev-tools';
-    this.devToolsEl.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: rgba(15, 23, 42, 0.88);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      backdrop-filter: blur(10px);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-      border-radius: 10px;
-      padding: 12px 16px;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      z-index: 10000;
-      user-select: none;
-      min-width: 220px;
-    `;
-
-    this.devToolsEl.innerHTML = `
-      <div style="font-size: 11px; font-weight: 700; letter-spacing: 0.8px; color: #94a3b8; text-transform: uppercase; margin-bottom: 8px;">
-        🛠️ Dev Camera Tools
-      </div>
-      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
-        <button id="dev-btn-player" style="
-          flex: 1;
-          background: #0d9488;
-          color: #ffffff;
-          border: 1px solid #2dd4bf;
-          border-radius: 6px;
-          padding: 7px 10px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        ">
-          🏃 Player [1]
-        </button>
-        <button id="dev-btn-aerial" style="
-          flex: 1;
-          background: rgba(255, 255, 255, 0.08);
-          color: #94a3b8;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 6px;
-          padding: 7px 10px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s ease;
-        ">
-          🛸 Aerial [2]
-        </button>
-      </div>
-      <div style="margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 8px;">
-        <button id="dev-btn-colliders" style="
-          width: 100%;
-          background: rgba(255, 255, 255, 0.08);
-          color: #94a3b8;
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 6px;
-          padding: 7px 10px;
-          font-size: 12px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.15s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 6px;
-        ">
-          🛡️ Colliders: OFF [B]
-        </button>
-      </div>
-      <div style="font-size: 11px; color: #64748b; line-height: 1.4; margin-top: 6px;">
-        Cameras: <strong>[1]</strong> / <strong>[2]</strong> &nbsp;|&nbsp; Colliders: <strong>[B]</strong> / <strong>[F2]</strong>
-      </div>
-    `;
-
-    document.body.appendChild(this.devToolsEl);
-
-    // Button click listeners
-    const btnPlayer = this.devToolsEl.querySelector('#dev-btn-player');
-    const btnAerial = this.devToolsEl.querySelector('#dev-btn-aerial');
-    const btnColliders = this.devToolsEl.querySelector('#dev-btn-colliders');
-
-    btnPlayer.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setCameraMode('PLAYER');
-    });
-
-    btnAerial.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setCameraMode('AERIAL');
-    });
-
-    if (btnColliders) {
-      btnColliders.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isVisible = this.gameWorld.toggleColliderDebug();
-        this._updateCollidersBtn(isVisible);
+    if (this.gameWorld && this.gameWorld.ui) {
+      this.gameWorld.ui.showDevTools({
+        onSelectPlayerCamera: () => this.setCameraMode('PLAYER'),
+        onSelectAerialCamera: () => this.setCameraMode('AERIAL'),
+        onToggleColliders: () => {
+          const isVisible = this.gameWorld.toggleColliderDebug();
+          if (this.gameWorld.ui) {
+            this.gameWorld.ui.updateDevToolsColliders(isVisible);
+          }
+        }
       });
     }
 
@@ -337,24 +217,14 @@ export class Level01 extends BaseLevel {
     window.addEventListener('keydown', this._onKeyDown);
   }
 
-  _updateCollidersBtn(visible) {
-    const btn = this.devToolsEl ? this.devToolsEl.querySelector('#dev-btn-colliders') : null;
-    if (!btn) return;
-    if (visible) {
-      btn.style.background = '#059669';
-      btn.style.borderColor = '#34d399';
-      btn.style.color = '#ffffff';
-      btn.innerHTML = '🛡️ Colliders: ON [B]';
-    } else {
-      btn.style.background = 'rgba(255, 255, 255, 0.08)';
-      btn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-      btn.style.color = '#94a3b8';
-      btn.innerHTML = '🛡️ Colliders: OFF [B]';
+  onColliderDebugToggled(visible) {
+    if (this.gameWorld && this.gameWorld.ui) {
+      this.gameWorld.ui.updateDevToolsColliders(visible);
     }
   }
 
-  update(delta) {
-    super.update(delta);
+  gameplayUpdate(delta, gameWorld = this.gameWorld) {
+    super.gameplayUpdate(delta, gameWorld);
 
     // 1. Animate the custom ocean wave displacement
     if (this.water) {
@@ -390,8 +260,8 @@ export class Level01 extends BaseLevel {
     console.log(`Disposing ${this.name}...`);
 
     // Teardown ocean safety collider
-    if (this.oceanSafetyCollider && this.gameWorld.physics && this.gameWorld.physics.world) {
-      this.gameWorld.physics.world.removeCollider(this.oceanSafetyCollider);
+    if (this.oceanSafetyCollider && this.gameWorld.physics) {
+      this.gameWorld.physics.removeCollider(this.oceanSafetyCollider);
       this.oceanSafetyCollider = null;
     }
 
@@ -400,9 +270,8 @@ export class Level01 extends BaseLevel {
       window.removeEventListener('keydown', this._onKeyDown);
       this._onKeyDown = null;
     }
-    if (this.devToolsEl && this.devToolsEl.parentNode) {
-      this.devToolsEl.parentNode.removeChild(this.devToolsEl);
-      this.devToolsEl = null;
+    if (this.gameWorld && this.gameWorld.ui) {
+      this.gameWorld.ui.hideDevTools();
     }
     if (this.orbitControls) {
       this.orbitControls.dispose();
@@ -412,26 +281,14 @@ export class Level01 extends BaseLevel {
     // Restore master camera
     this.gameWorld.setActiveCamera(null);
 
-    if (this.projectilePool) {
-      this.gameWorld.removeEntity(this.projectilePool);
-      this.projectilePool.dispose();
-      this.projectilePool = null;
-      if (this.gameWorld.projectilePool === this.projectilePool) {
-        this.gameWorld.projectilePool = null;
-      }
+    if (this.gameWorld.projectilePool === this.projectilePool) {
+      this.gameWorld.projectilePool = null;
     }
+    this.projectilePool = null;
+    this.player = null;
+    this.battleship = null;
 
-    if (this.player) {
-      this.gameWorld.removeEntity(this.player);
-      this.player = null;
-    }
-    if (this.battleship) {
-      this.gameWorld.removeEntity(this.battleship);
-      this.battleship = null;
-    }
     super.dispose();
     this.water = null;
   }
 }
-
-export { Level01 as Level1 };

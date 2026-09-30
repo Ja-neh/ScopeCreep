@@ -62,14 +62,13 @@ A foundational principle of this project is the strict decoupling of **Visual Re
 
 ### 2.1 High-Level Architecture
 
-The game follows a decoupled coordinator architecture. A central `GameWorld` owns the canvas, WebGL renderer, root scene, clock, and physics engine. Game stages are managed by `LevelManager`, while domain-specific actors live as modular `Entities`.
+The game follows a decoupled coordinator architecture. A central `GameWorld` owns the canvas, WebGL renderer, root scene, clock, physics engine, and level stage lifecycle (`loadLevel`). Domain-specific actors live as modular `Entities`.
 
 ```mermaid
 flowchart TD
     subgraph Client Application
         M[main.js] --> GW[GameWorld]
-        M --> LM[LevelManager]
-        LM --> LVL[Active Level: Level1 / TestLevel]
+        GW --> LVL[Active Level: Level1 / TestLevel]
         
         GW -->|Reads| IM[InputManager]
         GW -->|Steps| PW[PhysicsWorld Rapier WASM]
@@ -103,10 +102,11 @@ flowchart TD
 ### 2.2 Core Systems
 
 The engine infrastructure is stage-agnostic and located in `src/core/`:
-- **`GameWorld`:** Master engine coordinator. Owns the animation loop, Three.js scene graph hierarchy (`environmentGroup`, `entitiesGroup`, `projectilesGroup`, `effectsGroup`), master clock, camera selection, and dispatches the execution pipeline.
+- **`GameWorld`:** Master engine coordinator. Owns the animation loop, Three.js scene graph hierarchy (`environmentGroup`, `entitiesGroup`, `projectilesGroup`, `effectsGroup`), master clock, camera selection, stage lifecycle management (`loadLevel`, `restartCurrentLevel`), and dispatches the execution pipeline.
 - **`PhysicsWorld`:** Wrapper for `@dimforge/rapier3d-compat` (WebAssembly). Manages gravity, rigid bodies, colliders, character controllers, and extracts high-contrast debug lines via `debugRender()`.
 - **`InputManager`:** Centralized input mapper. Captures raw keyboard and mouse events, manages browser pointer lock for FPS mouselook, and maps keys to semantic action bindings (`forward`, `jump`, `toggleColliders`). Clears single-frame transitions at the end of every frame.
-- **`LevelManager`:** Handles level lifecycle. Responsible for loading new stages, tearing down previous stage assets from GPU memory, and delegating frame updates.
+- **`UIManager` (`src/ui/UIManager.js`):** Central UI coordinator owned by `GameWorld` (`gameWorld.ui`). Manages modular DOM overlays (interaction prompts, station telemetry HUDs, crosshairs, warship health meter, toast notifications, FPS display, controls helpers, and dev tools) styled exclusively through `src/ui/ui.css`. Entities and levels never inject inline DOM or CSS.
+- **`FPSTracker`:** Real-time on-screen HUD performance and framerate diagnostic widget.
 
 ---
 
@@ -161,6 +161,7 @@ Levels represent isolated game stages that extend the abstract `BaseLevel` class
   - Downward ground snapping ($0.3\text{m}$) to eliminate hopping when descending stairs/ramps.
 - **Compound Cuboids vs. Trimeshes:** Decks and ramps are modeled using compound cuboid boxes rather than raw trimeshes. Cuboid primitives eliminate internal edge "snagging" where characters trip over triangle seams.
 - **Anti-Tunneling Slabs:** Decks feature $3.5\text{m}$ deep solid collision volumes, ensuring that even during high-velocity drops or severe wave pitches, characters cannot phase through floors.
+- **Encapsulation via `PhysicsWorld`:** Entities and levels never import `@dimforge/rapier3d-compat` directly. All physics bodies, colliders, character controllers, and raycasts are routed through `PhysicsWorld` (or helper adapters like `ThreePhysicsAdapter` / `BattleshipColliders`), ensuring proper native resource disposal and debug visualization.
 
 ---
 
@@ -210,14 +211,13 @@ The edge server runs headless without DOM, WebGL, GPU, or Three.js. If and when 
 1. Browser loads `index.html` and executes `src/main.js`.
 2. `bootstrap()` instantiates `GameWorld(canvas)` and awaits `gameWorld.init()`.
 3. `PhysicsWorld.init()` downloads, compiles, and initializes the Rapier 3D WebAssembly binary.
-4. `LevelManager` is instantiated and bound to `GameWorld`.
-5. `levelManager.loadLevel()` loads the initial stage (e.g. `Level1` or `TestLevel`).
-6. `gameWorld.start()` ignites the 60 FPS animation loop.
+4. `gameWorld.loadLevel()` loads the initial stage (e.g. `Level1` or `TestLevel`).
+5. `gameWorld.start()` ignites the 60 FPS animation loop.
 
 ---
 
 ### 3.2 Level Loading & Teardown
-1. `levelManager.loadLevel(newLevel)` is invoked.
+1. `gameWorld.loadLevel(newLevel)` is invoked.
 2. If a stage is currently active, its `dispose()` method is called:
    - Level-specific colliders (e.g. ocean safety plane or ground plane) are removed from Rapier.
    - Dev tools DOM elements and event listeners are detached.
@@ -270,10 +270,9 @@ ScopeCreep/
 ├── public/                 # Static public assets (icons, sounds, models)
 ├── src/
 │   ├── core/               # Engine foundation (Stage-agnostic systems)
-│   │   ├── GameWorld.js    # Central coordinator: canvas, loop, scene, renderer, clock
+│   │   ├── GameWorld.js    # Central coordinator: canvas, loop, scene, renderer, clock, levels
 │   │   ├── PhysicsWorld.js # Rapier 3D WASM physics wrapper & debug line generator
 │   │   ├── InputManager.js # Keyboard, mouse, pointer lock, and semantic action map
-│   │   ├── LevelManager.js # Stage transitions, lifecycle, and GPU memory cleanup
 │   │   └── FPSTracker.js   # Real-time framerate and frame time HUD performance monitor
 │   ├── entities/           # Concrete game actors and interactive objects
 │   │   ├── BaseEntity.js   # Abstract lifecycle contract (prePhysics/postPhysics/gameplay/lateUpdate)
@@ -303,6 +302,10 @@ ScopeCreep/
 │   │   └── shaders/        # GPU shader programs (GLSL)
 │   │       ├── ocean.vert.glsl # Vertex displacement shader (Gerstner wave math)
 │   │       └── ocean.frag.glsl # Fragment shader (Fresnel reflections, foam, depth colors)
+│   ├── ui/                 # Centralized HTML/DOM HUD overlay subsystem
+│   │   ├── UIManager.js    # Central UI orchestrator attached to GameWorld.ui
+│   │   ├── ui.css          # Unified stylesheet for all HUD and overlay elements
+│   │   └── components/     # Modular UI widgets (InteractionPrompt, StationHUD, HealthBar, etc.)
 │   ├── main.css            # Base stylesheet, reset, HUD typography
 │   └── main.js             # Client application bootstrap
 ├── index.html              # Single-page HTML container with WebGL canvas & UI overlays
@@ -338,16 +341,19 @@ ScopeCreep/
 - `getAxis(negAction, posAction)`: Returns float between $-1$ and $+1$.
 - `update()`: Flushes single-frame key states at frame end.
 
-### `LevelManager` (`src/core/LevelManager.js`)
-- `loadLevel(newLevel)`: Disposes old level and asynchronously boots new stage.
-- `restartCurrentLevel()`: Reloads current stage without browser refresh.
-- `update(delta)`: Dispatches frame update to active level.
+### `UIManager` (`src/ui/UIManager.js`)
+- Attached to `gameWorld.ui` and acts as the single point of entry for all DOM UI overlays.
+- `showPrompt(key, label, accentColor, sourceId)` / `hidePrompt(sourceId)`: Interactive station entry/exit prompts.
+- `showStationHUD(type, config)` / `updateStationHUD(type, data)` / `hideStationHUD()`: Full-screen station cockpits and telemetry panels.
+- `showCrosshair(type)` / `hideCrosshair()`: Weapon reticles and crosshairs.
+- `updateHealthBar(current, max)` / `hideHealthBar()`: Battleship integrity HUD meter.
+- `showToast(message, type, duration)`: Mission notifications and gameplay toasts.
+- `dispose()`: Cleans up DOM containers and child components during engine teardown.
 
 ### `FPSTracker` (`src/core/FPSTracker.js`)
-- Top-left HUD performance and framerate diagnostic widget (`#fps-tracker`).
+- Performance diagnostic widget delegating rendering to `UIManager.fpsDisplay`.
 - `update()`: Measures frame delta using `performance.now()`, updates rolling FPS and frame time in milliseconds (`ms`) every 150ms without visual jitter.
 - Dynamic color-coding: Green/emerald ($\ge 55$ FPS), Amber/yellow ($30-54$ FPS), Red ($< 30$ FPS).
-- `pointer-events: none` ensuring zero interference with mouse clicks or pointer lock.
 - `dispose()`: Safely unmounts DOM element upon engine cleanup.
 
 ### `BaseEntity` (`src/entities/BaseEntity.js`)
@@ -469,7 +475,7 @@ ScopeCreep/
    ```
 2. Load it in `src/main.js`:
    ```javascript
-   await levelManager.loadLevel(new MyTestLevel(gameWorld));
+   await gameWorld.loadLevel(new MyTestLevel(gameWorld));
    ```
 
 ### Debugging Physics & Colliders
@@ -480,13 +486,13 @@ ScopeCreep/
   - **Cyan Capsule (`#00f5d4`):** CharacterController physical hitbox ($r=0.5\text{m}, h=2.0\text{m}$).
 
 ### Switching Between Levels
-In `src/main.js`, toggle lines 16–17:
+In `src/main.js`:
 ```javascript
 // Load Level 1 (At Sea Mission):
-await levelManager.loadLevel(new Level1(gameWorld));
+await gameWorld.loadLevel(new Level1(gameWorld));
 
 // Load TestLevel (Flat Ground Sandbox):
-await levelManager.loadLevel(new TestLevel(gameWorld));
+await gameWorld.loadLevel(new TestLevel(gameWorld));
 ```
 
 ---

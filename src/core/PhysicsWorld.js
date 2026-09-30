@@ -6,7 +6,7 @@ const GRAVITY = { x: 0.0, y: -24.0, z: 0.0 };
 /**
  * PhysicsWorld
  * Encapsulates the Rapier3D physics engine, integration step,
- * and collider factory helpers (Trimesh, Box, Kinematic Character Controller).
+ * and collider factory helpers (Trimesh, Kinematic Character Controller, Ground).
  */
 export class PhysicsWorld {
   constructor() {
@@ -33,18 +33,20 @@ export class PhysicsWorld {
    */
   step(delta) {
     if (!this.isInitialized || !this.world) return;
-    // Step simulation (Rapier default timestep is 1/60)
     this.world.step();
   }
 
   /**
    * Creates a static ground collider
+   * @param {number} size - Width and depth in meters
+   * @param {number} yPosition - Vertical translation in meters
    */
-  createGround(size = 1000) {
-    const groundBodyDesc = RAPIER.RigidBodyDesc.fixed();
+  createGround(size = 1000, yPosition = -0.5) {
+    if (!this.world) return null;
+    const groundBodyDesc = this.RAPIER.RigidBodyDesc.fixed();
     const groundBody = this.world.createRigidBody(groundBodyDesc);
-    const groundColliderDesc = RAPIER.ColliderDesc.cuboid(size / 2, 0.5, size / 2)
-      .setTranslation(0, -0.5, 0);
+    const groundColliderDesc = this.RAPIER.ColliderDesc.cuboid(size / 2, 0.5, size / 2)
+      .setTranslation(0, yPosition, 0);
     return this.world.createCollider(groundColliderDesc, groundBody);
   }
 
@@ -80,265 +82,83 @@ export class PhysicsWorld {
   }
 
   /**
-   * Creates static box colliders
+   * Casts a ray through the physics world and returns the closest hit.
    */
-  createBox(halfX, halfY, halfZ, posX = 0, posY = 0, posZ = 0, rotY = 0) {
-    const bodyDesc = RAPIER.RigidBodyDesc.fixed()
-      .setTranslation(posX, posY, posZ)
-      .setRotation({ x: 0, y: Math.sin(rotY / 2), z: 0, w: Math.cos(rotY / 2) });
-    const body = this.world.createRigidBody(bodyDesc);
-    const colliderDesc = RAPIER.ColliderDesc.cuboid(halfX, halfY, halfZ);
-    return this.world.createCollider(colliderDesc, body);
+  castRay(ray, maxToi = 100, solid = true, flags, groups, excludeCollider) {
+    if (!this.world) return null;
+    return this.world.castRay(ray, maxToi, solid, flags, groups, excludeCollider);
   }
 
   /**
-   * Creates TriMesh colliders from a Three.js Object3D hierarchy
-   * Extracts all geometries, transforms them to the root object's local coordinate space,
-   * and binds them to a kinematicPositionBased rigid body initialized at object3d's position/quaternion.
+   * Casts a ray and returns the impact normal along with the hit info.
    */
-  createTrimeshFromObject(object3d) {
-    object3d.updateMatrixWorld(true);
+  castRayAndGetNormal(ray, maxToi = 100, solid = true, flags, groups, excludeCollider) {
+    if (!this.world) return null;
+    return this.world.castRayAndGetNormal(ray, maxToi, solid, flags, groups, excludeCollider);
+  }
 
-    const vertices = [];
-    const indices = [];
-    const vertMap = new Map();
-
-    // Inverse of root object's world matrix to convert child vertices into object3d's LOCAL coordinate frame
-    const rootInverse = new THREE.Matrix4().copy(object3d.matrixWorld).invert();
-
-    object3d.traverse((child) => {
-      // Skip meshes or hierarchies marked as noCollision (e.g. trigger fields, visual markers)
-      let curr = child;
-      let ignore = false;
-      while (curr) {
-        if (curr.userData && curr.userData.noCollision) {
-          ignore = true;
-          break;
-        }
-        if (curr === object3d) break;
-        curr = curr.parent;
-      }
-      if (ignore) return;
-
-      if (child.isMesh && child.geometry) {
-        const geom = child.geometry;
-        const positionAttr = geom.getAttribute('position');
-        if (!positionAttr) return;
-
-        // Transform vertices to root object's LOCAL space
-        const localToRoot = new THREE.Matrix4().multiplyMatrices(rootInverse, child.matrixWorld);
-
-        const childVerts = [];
-        for (let i = 0; i < positionAttr.count; i++) {
-          const v = new THREE.Vector3(
-            positionAttr.getX(i),
-            positionAttr.getY(i),
-            positionAttr.getZ(i)
-          );
-          v.applyMatrix4(localToRoot);
-          childVerts.push(v);
-        }
-
-        const count = geom.index ? geom.index.count : positionAttr.count;
-        for (let i = 0; i < count; i += 3) {
-          const triIdx = i / 3;
-          const i0 = geom.index ? geom.index.getX(i) : i;
-          const i1 = geom.index ? geom.index.getX(i + 1) : i + 1;
-          const i2 = geom.index ? geom.index.getX(i + 2) : i + 2;
-          if (i0 === i1 || i1 === i2 || i0 === i2) continue;
-
-          let v0 = childVerts[i0].clone();
-          let v1 = childVerts[i1].clone();
-          let v2 = childVerts[i2].clone();
-
-          // Filter degenerate zero-area triangles
-          const cross = new THREE.Vector3().crossVectors(
-            new THREE.Vector3().subVectors(v1, v0),
-            new THREE.Vector3().subVectors(v2, v0)
-          );
-          if (cross.lengthSq() < 1e-8) continue;
-
-          function getOrAddVert(v) {
-            const key = `${v.x.toFixed(4)},${v.y.toFixed(4)},${v.z.toFixed(4)}`;
-            if (vertMap.has(key)) return vertMap.get(key);
-            const newIdx = vertices.length / 3;
-            vertices.push(v.x, v.y, v.z);
-            vertMap.set(key, newIdx);
-            return newIdx;
-          }
-
-          indices.push(getOrAddVert(v0), getOrAddVert(v1), getOrAddVert(v2));
-        }
-      }
-    });
-
-    if (vertices.length === 0 || indices.length === 0) {
-      console.warn('createTrimeshFromObject: No geometry found in object.');
-      return null;
+  /**
+   * Safely removes a collider from the physics simulation.
+   */
+  removeCollider(collider, wakeUp = true) {
+    if (this.world && collider) {
+      this.world.removeCollider(collider, wakeUp);
     }
+  }
 
-    // Kinematic position-based body initialized to object3d's exact world position and orientation
+  /**
+   * Safely removes a rigid body from the physics simulation.
+   */
+  removeRigidBody(rigidBody) {
+    if (this.world && rigidBody) {
+      this.world.removeRigidBody(rigidBody);
+    }
+  }
+
+  /**
+   * Creates a rigid body in the physics simulation.
+   */
+  createRigidBody(bodyDesc) {
+    if (!this.world || !bodyDesc) return null;
+    return this.world.createRigidBody(bodyDesc);
+  }
+
+  /**
+   * Creates a collider attached to a rigid body in the physics simulation.
+   */
+  createCollider(colliderDesc, rigidBody) {
+    if (!this.world || !colliderDesc || !rigidBody) return null;
+    return this.world.createCollider(colliderDesc, rigidBody);
+  }
+
+  /**
+   * Creates a position-based kinematic rigid body.
+   */
+  createKinematicRigidBody({ position = { x: 0, y: 0, z: 0 }, rotation = { x: 0, y: 0, z: 0, w: 1 } } = {}) {
+    if (!this.world) return null;
     const bodyDesc = this.RAPIER.RigidBodyDesc.kinematicPositionBased()
-      .setTranslation(object3d.position.x, object3d.position.y, object3d.position.z)
-      .setRotation({
-        x: object3d.quaternion.x,
-        y: object3d.quaternion.y,
-        z: object3d.quaternion.z,
-        w: object3d.quaternion.w
-      });
-    const body = this.world.createRigidBody(bodyDesc);
-
-    const colliderDesc = this.RAPIER.ColliderDesc.trimesh(
-      new Float32Array(vertices),
-      new Uint32Array(indices)
-    );
-
-    const collider = this.world.createCollider(colliderDesc, body);
-    collider.debugGeometry = { vertices, indices };
-    collider.rigidBody = body;
-
-    return collider;
+      .setTranslation(position.x, position.y, position.z)
+      .setRotation(rotation);
+    return this.world.createRigidBody(bodyDesc);
   }
 
   /**
-   * Creates a single TriMesh collider from a Three.js Mesh geometry and attaches it to an existing rigid body.
-   * Useful for dynamic sub-parts (like rotating gun turrets and elevating barrels).
+   * Creates a TriMesh collider from raw vertex and index arrays and attaches it to a rigid body.
+   * @param {Float32Array|number[]} vertices
+   * @param {Uint32Array|number[]} indices
+   * @param {RAPIER.RigidBody} rigidBody
+   * @returns {RAPIER.Collider|null}
    */
-  createTrimeshColliderForMesh(mesh, rigidBody) {
-    if (!mesh || !mesh.geometry) return null;
-    const geom = mesh.geometry;
-    const posAttr = geom.getAttribute('position');
-    if (!posAttr) return null;
+  createTrimeshCollider(vertices, indices, rigidBody) {
+    if (!this.world || !rigidBody || !vertices || !indices) return null;
+    const vArray = vertices instanceof Float32Array ? vertices : new Float32Array(vertices);
+    const iArray = indices instanceof Uint32Array ? indices : new Uint32Array(indices);
 
-    const vertices = [];
-    const indices = [];
-
-    for (let i = 0; i < posAttr.count; i++) {
-      vertices.push(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
-    }
-
-    if (geom.index) {
-      for (let i = 0; i < geom.index.count; i++) {
-        indices.push(geom.index.getX(i));
-      }
-    } else {
-      for (let i = 0; i < posAttr.count; i++) {
-        indices.push(i);
-      }
-    }
-
-    const colliderDesc = this.RAPIER.ColliderDesc.trimesh(
-      new Float32Array(vertices),
-      new Uint32Array(indices)
-    );
-
+    const colliderDesc = this.RAPIER.ColliderDesc.trimesh(vArray, iArray);
     const collider = this.world.createCollider(colliderDesc, rigidBody);
-    collider.debugGeometry = { vertices, indices };
+    collider.debugGeometry = { vertices: vArray, indices: iArray };
+    collider.rigidBody = rigidBody;
     return collider;
-  }
-
-  /**
-   * Creates compound cuboid colliders from a Three.js Object3D hierarchy
-   * Converts meshes into RAPIER.ColliderDesc.cuboid() primitives attached
-   * to a single kinematicPositionBased rigid body.
-   * Completely eliminates internal edge / triangle catching on walking decks and ramps.
-   */
-  createCompoundCuboidsFromObject(object3d) {
-    object3d.updateMatrixWorld(true);
-
-    const rootInverse = new THREE.Matrix4().copy(object3d.matrixWorld).invert();
-
-    const bodyDesc = this.RAPIER.RigidBodyDesc.kinematicPositionBased()
-      .setTranslation(object3d.position.x, object3d.position.y, object3d.position.z)
-      .setRotation({
-        x: object3d.quaternion.x,
-        y: object3d.quaternion.y,
-        z: object3d.quaternion.z,
-        w: object3d.quaternion.w
-      });
-    const body = this.world.createRigidBody(bodyDesc);
-
-    const colliders = [];
-    const debugBoxes = [];
-
-    object3d.traverse((child) => {
-      // Skip meshes or hierarchies marked as noCollision (e.g. trigger fields, visual markers)
-      let curr = child;
-      let ignore = false;
-      while (curr) {
-        if (curr.userData && curr.userData.noCollision) {
-          ignore = true;
-          break;
-        }
-        if (curr === object3d) break;
-        curr = curr.parent;
-      }
-      if (ignore) return;
-
-      if (child.isMesh && child.geometry) {
-        const geom = child.geometry;
-        const localToRoot = new THREE.Matrix4().multiplyMatrices(rootInverse, child.matrixWorld);
-
-        let entity = object3d.userData?.entity || null;
-        let owner = child;
-        while (owner) {
-          if (owner.userData?.entity) {
-            entity = owner.userData.entity;
-            break;
-          }
-          if (owner === object3d) break;
-          owner = owner.parent;
-        }
-
-        const pos = new THREE.Vector3();
-        const quat = new THREE.Quaternion();
-        const scale = new THREE.Vector3();
-        localToRoot.decompose(pos, quat, scale);
-
-        let halfX, halfY, halfZ;
-        const centerOffset = new THREE.Vector3(0, 0, 0);
-
-        if (geom.parameters && geom.parameters.width !== undefined) {
-          const p = geom.parameters;
-          halfX = Math.max(0.05, (p.width * scale.x) / 2);
-          halfY = Math.max(0.05, (p.height * scale.y) / 2);
-          halfZ = Math.max(0.05, (p.depth * scale.z) / 2);
-        } else {
-          if (!geom.boundingBox) geom.computeBoundingBox();
-          const bbox = geom.boundingBox;
-          if (!bbox) return;
-          halfX = Math.max(0.05, ((bbox.max.x - bbox.min.x) * scale.x) / 2);
-          halfY = Math.max(0.05, ((bbox.max.y - bbox.min.y) * scale.y) / 2);
-          halfZ = Math.max(0.05, ((bbox.max.z - bbox.min.z) * scale.z) / 2);
-          centerOffset.addVectors(bbox.min, bbox.max).multiplyScalar(0.5);
-          centerOffset.applyQuaternion(quat);
-        }
-
-        const finalPos = new THREE.Vector3().copy(pos).add(centerOffset);
-
-        const colliderDesc = this.RAPIER.ColliderDesc.cuboid(halfX, halfY, halfZ)
-          .setTranslation(finalPos.x, finalPos.y, finalPos.z)
-          .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w });
-
-        const collider = this.world.createCollider(colliderDesc, body);
-        collider.userData = { entity };
-        const boxData = {
-          halfExtents: new THREE.Vector3(halfX, halfY, halfZ),
-          position: finalPos.clone(),
-          quaternion: quat.clone()
-        };
-        collider.debugBox = boxData;
-        colliders.push(collider);
-        debugBoxes.push(boxData);
-      }
-    });
-
-    return {
-      body,
-      rigidBody: body,
-      colliders,
-      debugBoxes
-    };
   }
 
   /**

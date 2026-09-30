@@ -25,11 +25,15 @@ export class BaseStation {
     this._detectWorldPos = new THREE.Vector3();
     this.releasePointerLockOnMount = options.releasePointerLockOnMount ?? false;
 
-    // Scene & UI references (to be populated by subclasses)
+    this.promptText = options.promptText || 'INTERACT';
+    this.accentColor = options.accentColor || '#2a9d8f';
+    this.stationType = options.stationType || null;
+    this.crosshairType = options.crosshairType || null;
+    this.hudConfig = options.hudConfig || null;
+
+    // Scene references (to be populated by subclasses)
     this.mesh = null;
     this.camera = null;
-    this.promptEl = null;
-    this.hudEl = null;
     this.detectRing = null;
     this.detectDisc = null;
   }
@@ -139,8 +143,15 @@ export class BaseStation {
       gameWorld.setActiveCamera(this.camera);
     }
 
-    if (this.promptEl) this.promptEl.style.display = 'none';
-    if (this.hudEl) this.hudEl.style.display = 'block';
+    if (gameWorld && gameWorld.ui) {
+      gameWorld.ui.hidePrompt(this);
+      if (this.stationType) {
+        gameWorld.ui.showStationHUD(this.stationType, this.hudConfig);
+      }
+      if (this.crosshairType) {
+        gameWorld.ui.showCrosshair(this.crosshairType);
+      }
+    }
 
     this.onMounted(player, gameWorld);
     console.log(`${this.stationName}: Player mounted. Switched to station camera.`);
@@ -185,7 +196,10 @@ export class BaseStation {
     this.currentOperator = null;
     this.mountCooldown = 0.25;
 
-    if (this.hudEl) this.hudEl.style.display = 'none';
+    if (gameWorld && gameWorld.ui) {
+      gameWorld.ui.hideStationHUD();
+      gameWorld.ui.hideCrosshair();
+    }
 
     this.onDismounted(player, gameWorld);
     console.log(`${this.stationName}: Player dismounted. Returned to deck.`);
@@ -247,14 +261,18 @@ export class BaseStation {
     }
 
     if (nearbyPlayer) {
-      if (this.promptEl) this.promptEl.style.display = 'block';
+      if (gameWorld && gameWorld.ui) {
+        gameWorld.ui.showPrompt('E', this.promptText, this.accentColor, this);
+      }
       if (this.detectDisc) this.detectDisc.material.opacity = 0.45;
 
-      if (gameWorld.input && gameWorld.input.isActionJustPressed('specialAction') && this.mountCooldown <= 0) {
+      if (gameWorld && gameWorld.input && gameWorld.input.isActionJustPressed('specialAction') && this.mountCooldown <= 0) {
         this.mount(nearbyPlayer, gameWorld);
       }
     } else {
-      if (this.promptEl) this.promptEl.style.display = 'none';
+      if (gameWorld && gameWorld.ui) {
+        gameWorld.ui.hidePrompt(this);
+      }
       if (this.detectDisc) this.detectDisc.material.opacity = 0.15;
     }
 
@@ -262,16 +280,15 @@ export class BaseStation {
   }
 
   /**
-   * Clean up DOM elements and meshes.
+   * Clean up UI registrations and meshes.
    */
   dispose() {
-    if (this.promptEl && this.promptEl.parentNode) {
-      this.promptEl.parentNode.removeChild(this.promptEl);
-      this.promptEl = null;
-    }
-    if (this.hudEl && this.hudEl.parentNode) {
-      this.hudEl.parentNode.removeChild(this.hudEl);
-      this.hudEl = null;
+    if (this.gameWorld && this.gameWorld.ui) {
+      this.gameWorld.ui.hidePrompt(this);
+      if (this.isMounted) {
+        this.gameWorld.ui.hideStationHUD();
+        this.gameWorld.ui.hideCrosshair();
+      }
     }
 
     if (this.mesh) {
