@@ -337,6 +337,10 @@ export class Level01 extends BaseLevel {
     window.addEventListener('keydown', this._onKeyDown);
   }
 
+  onColliderDebugToggled(visible) {
+    this._updateCollidersBtn(visible);
+  }
+
   _updateCollidersBtn(visible) {
     const btn = this.devToolsEl ? this.devToolsEl.querySelector('#dev-btn-colliders') : null;
     if (!btn) return;

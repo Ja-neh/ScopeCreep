@@ -29,6 +29,14 @@ export class BaseLevel {
   }
 
   /**
+   * Optional callback invoked when collider debug visualization is toggled.
+   * @param {boolean} visible
+   */
+  onColliderDebugToggled(visible) {
+    // Override in subclass
+  }
+
+  /**
    * Helper to register a Three.js object/resource for automatic disposal
    */
   trackDisposable(resource) {

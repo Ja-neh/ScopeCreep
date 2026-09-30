@@ -1,5 +1,4 @@
 import { GameWorld } from './core/GameWorld.js';
-import { LevelManager } from './core/LevelManager.js';
 import { Level01 as Level1 } from './levels/Level01.js';
 import { TestLevel } from './levels/TestLevel.js';
 
@@ -9,14 +8,10 @@ async function bootstrap() {
   const gameWorld = new GameWorld(canvas);
   await gameWorld.init(); // Initialize Rapier Physics
 
-  // 2. Initialize LevelManager
-  const levelManager = new LevelManager(gameWorld);
-  gameWorld.setLevelManager(levelManager);
+  // 2. Load Level (TestLevel or Level1)
+  await gameWorld.loadLevel(new Level1(gameWorld));
 
-  // 3. Load Level(TestLevel/Level1)
-  await levelManager.loadLevel(new Level1(gameWorld));
-
-  // 4. Start the main game loop
+  // 3. Start the main game loop
   gameWorld.start();
 
   // 5. Mount on-screen controls helper
@@ -53,7 +48,7 @@ async function bootstrap() {
     overlay.appendChild(controlsHelp);
   }
 
-  console.log('GameWorld & LevelManager initialized. Level active.');
+  console.log('GameWorld initialized. Level active.');
 }
 
 bootstrap().catch(console.error);

@@ -74,8 +74,9 @@ export class GameWorld {
     // 6. Registered entities list (for per-frame updates)
     this.entities = new Set();
 
-    // 7. LevelManager reference (optional)
-    this.levelManager = null;
+    // 7. Active level lifecycle tracking
+    this.currentLevel = null;
+    this.isLevelLoading = false;
 
     // 8. Event bindings
     this._onResize = this._onResize.bind(this);
@@ -97,10 +98,43 @@ export class GameWorld {
   }
 
   /**
-   * Assign the LevelManager to this world
+   * Loads and initializes a new level stage.
+   * Tears down any previously active level and frees GPU and physics resources.
+   * @param {BaseLevel} newLevel - Instance of a class extending BaseLevel
    */
-  setLevelManager(levelManager) {
-    this.levelManager = levelManager;
+  async loadLevel(newLevel) {
+    if (this.isLevelLoading) return;
+    this.isLevelLoading = true;
+
+    // 1. Tear down previous level
+    if (this.currentLevel) {
+      console.log(`Tearing down previous stage: ${this.currentLevel.name}`);
+      this.currentLevel.dispose();
+      this.clearEntities();
+      this.clearEnvironment();
+      this.currentLevel = null;
+    }
+
+    // 2. Set and initialize new level
+    this.currentLevel = newLevel;
+    try {
+      await this.currentLevel.init();
+      console.log(`Successfully loaded stage: ${this.currentLevel.name}`);
+    } catch (error) {
+      console.error(`Failed to initialize level:`, error);
+    } finally {
+      this.isLevelLoading = false;
+    }
+  }
+
+  /**
+   * Restarts the currently active level from scratch without refreshing the page.
+   */
+  async restartCurrentLevel() {
+    if (!this.currentLevel) return;
+    const LevelConstructor = this.currentLevel.constructor;
+    console.log(`Restarting stage: ${this.currentLevel.name}...`);
+    await this.loadLevel(new LevelConstructor(this));
   }
 
   /**
@@ -232,10 +266,7 @@ export class GameWorld {
     // PHASE 1: INPUT & GLOBAL HOTKEYS
     // =========================================================================
     if (this.input.isActionJustPressed('toggleColliders')) {
-      const isVisible = this.toggleColliderDebug();
-      if (this.levelManager && this.levelManager.currentLevel && this.levelManager.currentLevel._updateCollidersBtn) {
-        this.levelManager.currentLevel._updateCollidersBtn(isVisible);
-      }
+      this.toggleColliderDebug();
     }
 
     // =========================================================================
@@ -268,8 +299,8 @@ export class GameWorld {
     // =========================================================================
     // PHASE 5: GAMEPLAY & LEVEL LOGIC (Weapons, Projectiles, Health, Level Timers)
     // =========================================================================
-    if (this.levelManager) {
-      this.levelManager.update(delta);
+    if (this.currentLevel && this.currentLevel.isInitialized && !this.isLevelLoading) {
+      this.currentLevel.update(delta);
     }
     for (const entity of this.entities) {
       if (entity.gameplayUpdate && typeof entity.gameplayUpdate === 'function') {
@@ -329,6 +360,14 @@ export class GameWorld {
       }
     }
 
+    if (this.currentLevel) {
+      if (typeof this.currentLevel.onColliderDebugToggled === 'function') {
+        this.currentLevel.onColliderDebugToggled(isNowVisible);
+      } else if (typeof this.currentLevel._updateCollidersBtn === 'function') {
+        this.currentLevel._updateCollidersBtn(isNowVisible);
+      }
+    }
+
     this._showColliderToast(isNowVisible);
     return isNowVisible;
   }
@@ -340,6 +379,15 @@ export class GameWorld {
         entity.setColliderDebugVisible(visible);
       }
     }
+
+    if (this.currentLevel) {
+      if (typeof this.currentLevel.onColliderDebugToggled === 'function') {
+        this.currentLevel.onColliderDebugToggled(visible);
+      } else if (typeof this.currentLevel._updateCollidersBtn === 'function') {
+        this.currentLevel._updateCollidersBtn(visible);
+      }
+    }
+
     this._showColliderToast(visible);
   }
 
@@ -422,8 +470,9 @@ export class GameWorld {
     this.clearEntities();
     this.clearEnvironment();
 
-    if (this.levelManager) {
-      this.levelManager.dispose();
+    if (this.currentLevel) {
+      this.currentLevel.dispose();
+      this.currentLevel = null;
     }
 
     this.physics.dispose();
