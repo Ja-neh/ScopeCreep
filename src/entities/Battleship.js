@@ -5,7 +5,7 @@ import { FlakTurret } from './ship-components/FlakTurret.js';
 import { HelmStation } from './ship-components/HelmStation.js';
 import { loadBattleshipModel } from './models/BattleshipModel.js';
 import { HealthComponent } from './components/HealthComponent.js';
-import { extractTrimeshGeometryFromObject, extractMeshGeometry } from '../core/ThreePhysicsAdapter.js';
+import { BattleshipColliders } from './ship-components/BattleshipColliders.js';
 import config from '../config.json';
 
 /**
@@ -31,13 +31,20 @@ export class Battleship extends BaseEntity {
       this._updateHealthUI();
     };
 
+    // Platform dimensions from config
+    const platCfg = config.ship.platform || { halfWidth: 12.0, halfLength: 52.0, minHeight: -6.0, maxHeight: 40.0 };
+    this.platformHalfWidth = platCfg.halfWidth;
+    this.platformHalfLength = platCfg.halfLength;
+    this.platformMinHeight = platCfg.minHeight;
+    this.platformMaxHeight = platCfg.maxHeight;
+
     // Relative operational stations matching imported model Areas
     this.stations = {
-      helmsman: new THREE.Vector3(5.47, 5.26, 17.22),          // Bridge AreaHelm
-      artilleryGunner: new THREE.Vector3(0.46, 5.30, -17.09),    // Fore deck main gun AreaMainGunFront
-      artilleryGunnerBack: new THREE.Vector3(0.46, 6.75, -5.82),// Raised fore deck main gun AreaMainGunBack
-      flakGunner: new THREE.Vector3(0.46, 5.36, 25.63),         // Aft deck anti-air gun AreaAntiAirGun
-      engineer: new THREE.Vector3(0, 5.3, 0)                   // Midship citadel
+      helmsman: new THREE.Vector3(5.47, 5.26, 17.22),           // Bridge AreaHelm
+      artilleryGunner: new THREE.Vector3(0.46, 5.30, -17.09),     // Fore deck main gun AreaMainGunFront
+      artilleryGunnerBack: new THREE.Vector3(0.46, 6.75, -5.82), // Raised fore deck main gun AreaMainGunBack
+      flakGunner: new THREE.Vector3(0.46, 5.36, 25.63),          // Aft deck anti-air gun AreaAntiAirGun
+      engineer: new THREE.Vector3(0, 5.3, 0)                    // Midship citadel
     };
 
     // 1. Root group representing the battleship vessel
@@ -81,11 +88,11 @@ export class Battleship extends BaseEntity {
       input: options.input || null
     });
 
-    // Model loading & Physics tracking
+    // 4. Collider & Physics Rigging Subsystem
+    this.colliders = new BattleshipColliders(this);
     this.modelData = null;
     this.physicsWorld = null;
     this._pendingPhysicsWorld = null;
-    this.colliderDebugGroup = null;
 
     // Platform delta kinematics tracking for walking characters (multiplayer-ready)
     this._prevMatrixWorld = new THREE.Matrix4();
@@ -94,16 +101,21 @@ export class Battleship extends BaseEntity {
     this._hasPrevMatrix = false;
     this._tempPoint = new THREE.Vector3();
 
-    // Dynamic rotating gun and barrel colliders tracking
-    this.gunColliders = [];
-    this._tempShipInv = new THREE.Matrix4();
-    this._tempLocalMat = new THREE.Matrix4();
-    this._tempColPos = new THREE.Vector3();
-    this._tempColQuat = new THREE.Quaternion();
-    this._tempColScale = new THREE.Vector3();
-
     // Begin asynchronous model load immediately
     this.ready = this.loadModel(options.modelUrl);
+  }
+
+  // Backward-compatible accessors
+  get collider() {
+    return this.colliders.collider;
+  }
+
+  get colliderDebugGroup() {
+    return this.colliders.colliderDebugGroup;
+  }
+
+  get gunColliders() {
+    return this.colliders.gunColliders;
   }
 
   /**
@@ -161,8 +173,8 @@ export class Battleship extends BaseEntity {
       }
 
       // If initPhysics was called while the model was still loading, create colliders now
-      if (this._pendingPhysicsWorld && !this.collider) {
-        this._buildPhysicsColliders(this._pendingPhysicsWorld);
+      if (this._pendingPhysicsWorld && !this.colliders.collider) {
+        this.colliders.buildColliders(this._pendingPhysicsWorld, this.modelData);
         this._pendingPhysicsWorld = null;
       }
 
@@ -188,137 +200,24 @@ export class Battleship extends BaseEntity {
     if (!physicsWorld || !physicsWorld.world) return;
 
     if (this.modelData) {
-      this._buildPhysicsColliders(physicsWorld);
+      this.colliders.buildColliders(physicsWorld, this.modelData);
     } else {
       this._pendingPhysicsWorld = physicsWorld;
     }
-  }
-
-  _buildPhysicsColliders(physicsWorld) {
-    if (!physicsWorld || this.collider) return;
-
-    // 1. Static ship TriMesh (Hull & Superstructure)
-    // extractTrimeshGeometryFromObject filters out nodes with userData.noCollision = true
-    const geomData = extractTrimeshGeometryFromObject(this.mesh);
-    if (!geomData) return;
-
-    const body = physicsWorld.createKinematicRigidBody({
-      position: this.mesh.position,
-      rotation: this.mesh.quaternion
-    });
-    if (!body) return;
-
-    this.collider = physicsWorld.createTrimeshCollider(geomData.vertices, geomData.indices, body);
-    if (!this.collider) return;
-    this.collider.userData = { entity: this };
-
-    console.log('Battleship Rapier TriMesh static colliders created from imported model.');
-
-    // 2. Rig dynamic rotating gun & barrel TriMesh colliders attached to the ship's kinematic rigid body
-    this.gunColliders = [];
-    if (this.modelData && this.modelData.dynamicGunColliders) {
-      for (const colMesh of this.modelData.dynamicGunColliders) {
-        const gunGeom = extractMeshGeometry(colMesh);
-        if (gunGeom) {
-          const rapierCol = physicsWorld.createTrimeshCollider(gunGeom.vertices, gunGeom.indices, body);
-          if (rapierCol) {
-            rapierCol.userData = { entity: this };
-            this.gunColliders.push({
-              mesh: colMesh,
-              rapierCollider: rapierCol
-            });
-            this._syncGunColliderTransform(colMesh, rapierCol);
-          }
-        }
-      }
-      console.log(`Battleship rigged ${this.gunColliders.length} dynamic gun & barrel colliders to track rotation.`);
-    }
-
-    this._createColliderDebugMesh();
-  }
-
-  /**
-   * Synchronizes a dynamic gun collider's transform with respect to the ship rigid body
-   */
-  _syncGunColliderTransform(colMesh, rapierCol) {
-    this._tempShipInv.copy(this.mesh.matrixWorld).invert();
-    this._tempLocalMat.multiplyMatrices(this._tempShipInv, colMesh.matrixWorld);
-    this._tempLocalMat.decompose(this._tempColPos, this._tempColQuat, this._tempColScale);
-    rapierCol.setTranslationWrtParent(this._tempColPos);
-    rapierCol.setRotationWrtParent(this._tempColQuat);
-  }
-
-  /**
-   * Generates a wireframe visual mesh representing the exact colliders loaded into Rapier.
-   */
-  _createColliderDebugMesh() {
-    if (!this.collider) return;
-
-    this.colliderDebugGroup = new THREE.Group();
-    this.colliderDebugGroup.name = 'Battleship_Collider_Debug';
-    this.colliderDebugGroup.userData = { noCollision: true };
-
-    const wireframeMat = new THREE.MeshBasicMaterial({
-      color: 0x39ff14,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.85
-    });
-
-    // 1. Static ship hull & superstructure collider wireframe
-    if (this.collider.debugGeometry) {
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.Float32BufferAttribute(this.collider.debugGeometry.vertices, 3));
-      geom.setIndex(this.collider.debugGeometry.indices);
-      const debugMesh = new THREE.Mesh(geom, wireframeMat);
-      debugMesh.userData = { noCollision: true };
-      this.colliderDebugGroup.add(debugMesh);
-    }
-
-    // 2. Dynamic gun & barrel colliders wireframes (parented to colMesh so they visually rotate with the guns)
-    this.dynamicColliderDebugMeshes = [];
-    if (this.gunColliders) {
-      for (const entry of this.gunColliders) {
-        if (entry.mesh && entry.mesh.geometry) {
-          const gunDebugMesh = new THREE.Mesh(entry.mesh.geometry, wireframeMat);
-          gunDebugMesh.userData = { noCollision: true };
-          gunDebugMesh.visible = false;
-          entry.mesh.add(gunDebugMesh);
-          this.dynamicColliderDebugMeshes.push(gunDebugMesh);
-        }
-      }
-    }
-
-    this.colliderDebugGroup.visible = false;
-    this.mesh.add(this.colliderDebugGroup);
   }
 
   /**
    * Set visibility of the battleship collider debug wireframe
    */
   setColliderDebugVisible(visible) {
-    if (this.colliderDebugGroup) {
-      this.colliderDebugGroup.visible = visible;
-      this.colliderDebugGroup.traverse((child) => {
-        if (child.isMesh) child.visible = visible;
-      });
-    }
-    if (this.dynamicColliderDebugMeshes) {
-      for (const m of this.dynamicColliderDebugMeshes) {
-        m.visible = visible;
-      }
-    }
+    this.colliders.setColliderDebugVisible(visible);
   }
 
   /**
    * Toggle visibility of the battleship collider debug wireframe
    */
   toggleColliderDebug() {
-    if (this.colliderDebugGroup) {
-      this.setColliderDebugVisible(!this.colliderDebugGroup.visible);
-      return this.colliderDebugGroup.visible;
-    }
-    return false;
+    return this.colliders.toggleColliderDebug();
   }
 
   _createHealthUI() {
@@ -357,7 +256,6 @@ export class Battleship extends BaseEntity {
   _updateHealthUI() {
     if (!this.healthText || !this.healthFill) return;
     const ratio = Math.max(0, this.health.currentHealth / this.health.maxHealth);
-    const pct = Math.round(ratio * 100);
     this.healthText.textContent = this.isDestroyed
       ? 'DESTROYED'
       : `${Math.ceil(this.health.currentHealth)} / ${this.health.maxHealth}`;
@@ -372,13 +270,11 @@ export class Battleship extends BaseEntity {
     if (!this.mesh) return false;
     this._tempPoint.copy(worldPos);
     this.mesh.worldToLocal(this._tempPoint);
-    // Local bounds: hull width ~21.4m (halfX=10.7), deck length ~99.6m (halfZ=49.8)
-    // Generous vertical margins (-6m to +40m) to catch lower decks, ramps, and pitched hulls
     return (
-      Math.abs(this._tempPoint.x) <= 12.0 &&
-      Math.abs(this._tempPoint.z) <= 52.0 &&
-      this._tempPoint.y >= -6.0 &&
-      this._tempPoint.y <= 40.0
+      Math.abs(this._tempPoint.x) <= this.platformHalfWidth &&
+      Math.abs(this._tempPoint.z) <= this.platformHalfLength &&
+      this._tempPoint.y >= this.platformMinHeight &&
+      this._tempPoint.y <= this.platformMaxHeight
     );
   }
 
@@ -428,23 +324,7 @@ export class Battleship extends BaseEntity {
     this._currMatrixWorld.copy(this.mesh.matrixWorld);
 
     // 2. Synchronize Rapier Kinematic Rigid Body with Ship Mesh Transform BEFORE physics step.
-    // Set next kinematic translation and rotation so Rapier integrates genuine velocity during step(),
-    // preventing the platform from teleporting and sinking/clipping walking characters.
-    if (this.collider && this.collider.rigidBody) {
-      const pos = {
-        x: this.mesh.position.x,
-        y: this.mesh.position.y,
-        z: this.mesh.position.z
-      };
-      const rot = {
-        x: this.mesh.quaternion.x,
-        y: this.mesh.quaternion.y,
-        z: this.mesh.quaternion.z,
-        w: this.mesh.quaternion.w
-      };
-      this.collider.rigidBody.setNextKinematicTranslation(pos);
-      this.collider.rigidBody.setNextKinematicRotation(rot);
-    }
+    this.colliders.syncRigidBodyTransform();
 
     // 3. Update Gun Systems
     if (this.mainGun) {
@@ -458,12 +338,7 @@ export class Battleship extends BaseEntity {
     }
 
     // 4. Synchronize dynamic gun & barrel colliders with Rapier before physics step
-    if (this.gunColliders && this.gunColliders.length > 0) {
-      this.mesh.updateMatrixWorld(true);
-      for (const entry of this.gunColliders) {
-        this._syncGunColliderTransform(entry.mesh, entry.rapierCollider);
-      }
-    }
+    this.colliders.syncGunColliders();
   }
 
   /**
@@ -479,42 +354,8 @@ export class Battleship extends BaseEntity {
     }
     this.healthPanel = null;
 
-    if (this.colliderDebugGroup) {
-      if (this.colliderDebugGroup.parent) {
-        this.colliderDebugGroup.parent.remove(this.colliderDebugGroup);
-      }
-      this.colliderDebugGroup.traverse((child) => {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach(m => m.dispose());
-          } else {
-            child.material.dispose();
-          }
-        }
-      });
-      this.colliderDebugGroup = null;
-    }
-
-    if (this.gunColliders && this.gunColliders.length > 0) {
-      if (this.physicsWorld) {
-        for (const entry of this.gunColliders) {
-          if (entry.rapierCollider) {
-            this.physicsWorld.removeCollider(entry.rapierCollider, true);
-          }
-        }
-      }
-      this.gunColliders = [];
-    }
-
-    if (this.collider && this.physicsWorld) {
-      if (this.collider.rigidBody) {
-        this.physicsWorld.removeRigidBody(this.collider.rigidBody);
-      } else {
-        this.physicsWorld.removeCollider(this.collider, true);
-      }
-      this.collider = null;
-    }
+    // Disposes hull collider, rigid body, dynamic gun colliders, and all wireframe meshes
+    this.colliders.dispose();
 
     if (this.shipController) {
       this.shipController.dispose();

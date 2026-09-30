@@ -59,6 +59,12 @@
       "heaveScale": 0.06,
       "pitchScale": 0.04,
       "rollScale": 0.03
+    },
+    "platform": {
+      "halfWidth": 12.0,
+      "halfLength": 52.0,
+      "minHeight": -6.0,
+      "maxHeight": 40.0
     }
   },
   "turrets": {

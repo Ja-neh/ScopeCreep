@@ -4,7 +4,7 @@ import { BaseLevel } from './BaseLevel.js';
 import { Ocean } from '../rendering/Ocean.js';
 import { Battleship } from '../entities/Battleship.js';
 import { Player } from '../entities/Player.js';
-import { ProjectilePool } from '../entities/projectiles/ProjectilePool.js';
+import { ProjectilePool } from '../entities/ProjectilePool.js';
 
 /**
  * Level01

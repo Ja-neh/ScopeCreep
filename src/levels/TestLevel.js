@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { BaseLevel } from './BaseLevel.js';
 import { Player } from '../entities/Player.js';
 import { Battleship } from '../entities/Battleship.js';
-import { ProjectilePool } from '../entities/projectiles/ProjectilePool.js';
+import { ProjectilePool } from '../entities/ProjectilePool.js';
 
 /**
  * TestLevel

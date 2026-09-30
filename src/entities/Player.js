@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BaseEntity } from './BaseEntity.js';
 import { SpringArmCamera, CameraMode } from './player-components/SpringArmCamera.js';
-import { PlayerVisuals } from './player-components/PlayerVisuals.js';
+import { PlayerModel } from './models/PlayerModel.js';
 import { GroundProbe } from './player-components/GroundProbe.js';
 import { PlatformTracker } from './player-components/PlatformTracker.js';
 import config from '../config.json';
@@ -76,13 +76,13 @@ export class Player extends BaseEntity {
     this.collider = null;
     this.characterController = null;
 
-    // 1. Procedural Visuals & Debug Wireframe
-    this.visuals = new PlayerVisuals(this.capsuleRadius, this.capsuleHalfHeight, this.capsuleCenter);
-    this.mesh = this.visuals.mesh;
-    this.bodyMesh = this.visuals.bodyMesh;
-    this.visorMesh = this.visuals.visorMesh;
-    this.packMesh = this.visuals.packMesh;
-    this.colliderDebugGroup = this.visuals.colliderDebugGroup;
+    // 1. Procedural Visual Model & Debug Wireframe
+    this.model = new PlayerModel(this.capsuleRadius, this.capsuleHalfHeight, this.capsuleCenter);
+    this.mesh = this.model.mesh;
+    this.bodyMesh = this.model.bodyMesh;
+    this.visorMesh = this.model.visorMesh;
+    this.packMesh = this.model.packMesh;
+    this.colliderDebugGroup = this.model.colliderDebugGroup;
 
     // 2. Initialize Rapier Kinematic Character Controller
     this._initPhysics();
@@ -142,8 +142,8 @@ export class Player extends BaseEntity {
    * Set visibility of the character capsule collider debug
    */
   setColliderDebugVisible(visible) {
-    if (this.visuals) {
-      this.visuals.setColliderDebugVisible(visible);
+    if (this.model) {
+      this.model.setColliderDebugVisible(visible);
     }
   }
 
@@ -178,8 +178,8 @@ export class Player extends BaseEntity {
    */
   setMounted(mounted) {
     this.isMounted = mounted;
-    if (this.visuals) {
-      this.visuals.setVisible(!mounted);
+    if (this.model) {
+      this.model.setVisible(!mounted);
     }
     if (mounted) {
       this.velocity.set(0, 0, 0);
@@ -201,8 +201,8 @@ export class Player extends BaseEntity {
   toggleCameraMode() {
     const newMode = this.springArm.toggleMode();
     const isFirstPerson = newMode === CameraMode.FIRST_PERSON;
-    if (this.visuals) {
-      this.visuals.setFirstPerson(isFirstPerson);
+    if (this.model) {
+      this.model.setFirstPerson(isFirstPerson);
     }
     return newMode;
   }
@@ -364,8 +364,8 @@ export class Player extends BaseEntity {
     );
 
     const hideMesh = isTooClose || mode === CameraMode.FIRST_PERSON;
-    if (this.visuals) {
-      this.visuals.setFirstPerson(hideMesh);
+    if (this.model) {
+      this.model.setFirstPerson(hideMesh);
     }
   }
 
@@ -399,9 +399,9 @@ export class Player extends BaseEntity {
       this.characterController = null;
     }
 
-    if (this.visuals) {
-      this.visuals.dispose();
-      this.visuals = null;
+    if (this.model) {
+      this.model.dispose();
+      this.model = null;
     }
 
     super.dispose();

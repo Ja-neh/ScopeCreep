@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 
 /**
- * PlayerVisuals
+ * PlayerModel
  * Procedural low-poly humanoid mesh and collider debug wireframe.
  * Handles avatar mesh generation, shadows, visibility states, and resource disposal.
  */
-export class PlayerVisuals {
+export class PlayerModel {
   /**
    * @param {number} radius - Capsule radius in meters
    * @param {number} halfHeight - Capsule half-height in meters
