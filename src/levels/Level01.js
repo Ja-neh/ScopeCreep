@@ -103,12 +103,7 @@ export class Level01 extends BaseLevel {
     this._initDevTools();
 
     // 8. Ocean surface safety floor (catches players falling overboard so they don't fall into the void)
-    const oceanSafetyColliderDesc = this.gameWorld.physics.RAPIER.ColliderDesc.cuboid(1500, 0.5, 1500)
-      .setTranslation(0, -1.0, 0);
-    const oceanSafetyBody = this.gameWorld.physics.world.createRigidBody(
-      this.gameWorld.physics.RAPIER.RigidBodyDesc.fixed()
-    );
-    this.oceanSafetyCollider = this.gameWorld.physics.world.createCollider(oceanSafetyColliderDesc, oceanSafetyBody);
+    this.oceanSafetyCollider = this.gameWorld.physics.createGround(3000, -1.0);
 
     console.log(`${this.name} initialized with Battleship, Deck Player, and Dev Camera Tools.`);
   }
@@ -394,8 +389,8 @@ export class Level01 extends BaseLevel {
     console.log(`Disposing ${this.name}...`);
 
     // Teardown ocean safety collider
-    if (this.oceanSafetyCollider && this.gameWorld.physics && this.gameWorld.physics.world) {
-      this.gameWorld.physics.world.removeCollider(this.oceanSafetyCollider);
+    if (this.oceanSafetyCollider && this.gameWorld.physics) {
+      this.gameWorld.physics.removeCollider(this.oceanSafetyCollider);
       this.oceanSafetyCollider = null;
     }
 

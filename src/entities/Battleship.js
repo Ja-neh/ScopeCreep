@@ -5,6 +5,7 @@ import { FlakTurret } from './ship-components/FlakTurret.js';
 import { HelmStation } from './ship-components/HelmStation.js';
 import { loadBattleshipModel } from './models/BattleshipModel.js';
 import { HealthComponent } from './components/HealthComponent.js';
+import { extractTrimeshGeometryFromObject, extractMeshGeometry } from '../core/ThreePhysicsAdapter.js';
 import config from '../config.json';
 
 /**
@@ -194,12 +195,20 @@ export class Battleship extends BaseEntity {
   }
 
   _buildPhysicsColliders(physicsWorld) {
-    if (!physicsWorld || !physicsWorld.world || this.collider) return;
+    if (!physicsWorld || this.collider) return;
 
     // 1. Static ship TriMesh (Hull & Superstructure)
-    // createTrimeshFromObject filters out nodes with userData.noCollision = true
-    // (set on visual meshes, stations, and dynamic gun colliders)
-    this.collider = physicsWorld.createTrimeshFromObject(this.mesh);
+    // extractTrimeshGeometryFromObject filters out nodes with userData.noCollision = true
+    const geomData = extractTrimeshGeometryFromObject(this.mesh);
+    if (!geomData) return;
+
+    const body = physicsWorld.createKinematicRigidBody({
+      position: this.mesh.position,
+      rotation: this.mesh.quaternion
+    });
+    if (!body) return;
+
+    this.collider = physicsWorld.createTrimeshCollider(geomData.vertices, geomData.indices, body);
     if (!this.collider) return;
     this.collider.userData = { entity: this };
 
@@ -209,13 +218,16 @@ export class Battleship extends BaseEntity {
     this.gunColliders = [];
     if (this.modelData && this.modelData.dynamicGunColliders) {
       for (const colMesh of this.modelData.dynamicGunColliders) {
-        const rapierCol = physicsWorld.createTrimeshColliderForMesh(colMesh, this.collider.rigidBody);
-        if (rapierCol) {
-          this.gunColliders.push({
-            mesh: colMesh,
-            rapierCollider: rapierCol
-          });
-          this._syncGunColliderTransform(colMesh, rapierCol);
+        const gunGeom = extractMeshGeometry(colMesh);
+        if (gunGeom) {
+          const rapierCol = physicsWorld.createTrimeshCollider(gunGeom.vertices, gunGeom.indices, body);
+          if (rapierCol) {
+            this.gunColliders.push({
+              mesh: colMesh,
+              rapierCollider: rapierCol
+            });
+            this._syncGunColliderTransform(colMesh, rapierCol);
+          }
         }
       }
       console.log(`Battleship rigged ${this.gunColliders.length} dynamic gun & barrel colliders to track rotation.`);
@@ -484,21 +496,21 @@ export class Battleship extends BaseEntity {
     }
 
     if (this.gunColliders && this.gunColliders.length > 0) {
-      if (this.physicsWorld && this.physicsWorld.world) {
+      if (this.physicsWorld) {
         for (const entry of this.gunColliders) {
           if (entry.rapierCollider) {
-            this.physicsWorld.world.removeCollider(entry.rapierCollider, true);
+            this.physicsWorld.removeCollider(entry.rapierCollider, true);
           }
         }
       }
       this.gunColliders = [];
     }
 
-    if (this.collider && this.physicsWorld && this.physicsWorld.world) {
+    if (this.collider && this.physicsWorld) {
       if (this.collider.rigidBody) {
-        this.physicsWorld.world.removeRigidBody(this.collider.rigidBody);
+        this.physicsWorld.removeRigidBody(this.collider.rigidBody);
       } else {
-        this.physicsWorld.world.removeCollider(this.collider, true);
+        this.physicsWorld.removeCollider(this.collider, true);
       }
       this.collider = null;
     }

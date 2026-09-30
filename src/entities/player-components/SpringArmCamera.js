@@ -111,7 +111,7 @@ export class SpringArmCamera {
     let targetDist = this.thirdPersonDistance;
 
     // Obstacle raycasting against Rapier physics world
-    if (this.physicsWorld && this.physicsWorld.world) {
+    if (this.physicsWorld) {
       if (!this._cameraRay && this.physicsWorld.RAPIER) {
         this._cameraRay = new this.physicsWorld.RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 0 });
       }
@@ -124,7 +124,7 @@ export class SpringArmCamera {
         this._cameraRay.dir.y = this._camRayDir.y;
         this._cameraRay.dir.z = this._camRayDir.z;
 
-        const hit = this.physicsWorld.world.castRay(
+        const hit = this.physicsWorld.castRay(
           this._cameraRay,
           maxRayDist,
           true,

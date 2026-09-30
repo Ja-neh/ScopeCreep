@@ -98,8 +98,8 @@ export class TestLevel extends BaseLevel {
 
   dispose() {
     console.log(`Disposing ${this.name}...`);
-    if (this.groundCollider && this.gameWorld.physics.world) {
-      this.gameWorld.physics.world.removeCollider(this.groundCollider, true);
+    if (this.groundCollider && this.gameWorld.physics) {
+      this.gameWorld.physics.removeCollider(this.groundCollider, true);
       this.groundCollider = null;
     }
 

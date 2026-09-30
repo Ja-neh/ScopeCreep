@@ -98,18 +98,18 @@ export class Player extends BaseEntity {
    * Initializes Rapier rigid body, 1 capsule collider, and KinematicCharacterController
    */
   _initPhysics() {
-    if (!this.physicsWorld || !this.physicsWorld.world) return;
+    if (!this.physicsWorld || !this.physicsWorld.isInitialized) return;
     const RAPIER = this.physicsWorld.RAPIER;
 
     // Kinematic position-based body centered at y + capsuleCenter
     const capsuleCenter = this.capsuleHalfHeight + this.capsuleRadius;
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
       .setTranslation(this.position.x, this.position.y + capsuleCenter, this.position.z);
-    this.rigidBody = this.physicsWorld.world.createRigidBody(bodyDesc);
+    this.rigidBody = this.physicsWorld.createRigidBody(bodyDesc);
 
     // 1 Capsule Collider (halfHeight = 0.55, radius = 0.45 => Total Height = 2.0m)
     const colliderDesc = RAPIER.ColliderDesc.capsule(this.capsuleHalfHeight, this.capsuleRadius);
-    this.collider = this.physicsWorld.world.createCollider(colliderDesc, this.rigidBody);
+    this.collider = this.physicsWorld.createCollider(colliderDesc, this.rigidBody);
 
     // Rapier Kinematic Character Controller (auto-step, slope slide, snap-to-ground)
     // offset: distance that keeps collider floating cleanly above deck loop cuts
@@ -388,12 +388,12 @@ export class Player extends BaseEntity {
           // Downward raycast to probe ground normal beneath character
           const currPos = this.rigidBody.translation();
           let groundHit = null;
-          if (this._groundRay && this.physicsWorld && this.physicsWorld.world) {
+          if (this._groundRay && this.physicsWorld) {
             this._groundRay.origin.x = currPos.x;
             this._groundRay.origin.y = currPos.y;
             this._groundRay.origin.z = currPos.z;
             // Ray length 1.6m probes up to 0.6m below capsule bottom (capsule center = 1.0m)
-            groundHit = this.physicsWorld.world.castRayAndGetNormal(
+            groundHit = this.physicsWorld.castRayAndGetNormal(
               this._groundRay,
               1.6,
               true,
@@ -410,7 +410,7 @@ export class Player extends BaseEntity {
               this._aheadRay.origin.y = currPos.y;
               this._aheadRay.origin.z = currPos.z + (this.velocity.z / horizSpeed) * probeDist;
 
-              const aheadHit = this.physicsWorld.world.castRayAndGetNormal(
+              const aheadHit = this.physicsWorld.castRayAndGetNormal(
                 this._aheadRay,
                 1.6,
                 true,
@@ -541,13 +541,13 @@ export class Player extends BaseEntity {
     this.gameWorld.canvas.removeEventListener('pointerdown', this._onPointerDown);
     this.gameWorld.canvas.removeEventListener('click', this._onPointerDown);
 
-    if (this.physicsWorld && this.physicsWorld.world) {
+    if (this.physicsWorld) {
       if (this.collider) {
-        this.physicsWorld.world.removeCollider(this.collider, true);
+        this.physicsWorld.removeCollider(this.collider, true);
         this.collider = null;
       }
       if (this.rigidBody) {
-        this.physicsWorld.world.removeRigidBody(this.rigidBody);
+        this.physicsWorld.removeRigidBody(this.rigidBody);
         this.rigidBody = null;
       }
     }
