@@ -352,8 +352,8 @@ export class Level01 extends BaseLevel {
     }
   }
 
-  update(delta) {
-    super.update(delta);
+  gameplayUpdate(delta, gameWorld = this.gameWorld) {
+    super.gameplayUpdate(delta, gameWorld);
 
     // 1. Animate the custom ocean wave displacement
     if (this.water) {
@@ -411,26 +411,14 @@ export class Level01 extends BaseLevel {
     // Restore master camera
     this.gameWorld.setActiveCamera(null);
 
-    if (this.projectilePool) {
-      this.gameWorld.removeEntity(this.projectilePool);
-      this.projectilePool.dispose();
-      this.projectilePool = null;
-      if (this.gameWorld.projectilePool === this.projectilePool) {
-        this.gameWorld.projectilePool = null;
-      }
+    if (this.gameWorld.projectilePool === this.projectilePool) {
+      this.gameWorld.projectilePool = null;
     }
+    this.projectilePool = null;
+    this.player = null;
+    this.battleship = null;
 
-    if (this.player) {
-      this.gameWorld.removeEntity(this.player);
-      this.player = null;
-    }
-    if (this.battleship) {
-      this.gameWorld.removeEntity(this.battleship);
-      this.battleship = null;
-    }
     super.dispose();
     this.water = null;
   }
 }
-
-export { Level01 as Level1 };

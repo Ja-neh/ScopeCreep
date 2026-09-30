@@ -92,8 +92,8 @@ export class TestLevel extends BaseLevel {
     console.log(`${this.name} initialized with Battleship (imported GLB & colliders), Player, and ProjectilePool`);
   }
 
-  update(delta) {
-    super.update(delta);
+  gameplayUpdate(delta, gameWorld = this.gameWorld) {
+    super.gameplayUpdate(delta, gameWorld);
   }
 
   dispose() {
@@ -103,24 +103,13 @@ export class TestLevel extends BaseLevel {
       this.groundCollider = null;
     }
 
-    if (this.projectilePool) {
-      this.gameWorld.removeEntity(this.projectilePool);
-      this.projectilePool.dispose();
-      this.projectilePool = null;
-      if (this.gameWorld.projectilePool === this.projectilePool) {
-        this.gameWorld.projectilePool = null;
-      }
+    if (this.gameWorld.projectilePool === this.projectilePool) {
+      this.gameWorld.projectilePool = null;
     }
+    this.projectilePool = null;
+    this.player = null;
+    this.battleship = null;
 
-
-    if (this.player) {
-      this.gameWorld.removeEntity(this.player);
-      this.player = null;
-    }
-    if (this.battleship) {
-      this.gameWorld.removeEntity(this.battleship);
-      this.battleship = null;
-    }
     super.dispose();
   }
 }

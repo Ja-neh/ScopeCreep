@@ -1,5 +1,5 @@
 import { GameWorld } from './core/GameWorld.js';
-import { Level01 as Level1 } from './levels/Level01.js';
+import { Level01 } from './levels/Level01.js';
 import { TestLevel } from './levels/TestLevel.js';
 
 async function bootstrap() {
@@ -8,8 +8,8 @@ async function bootstrap() {
   const gameWorld = new GameWorld(canvas);
   await gameWorld.init(); // Initialize Rapier Physics
 
-  // 2. Load Level (TestLevel or Level1)
-  await gameWorld.loadLevel(new Level1(gameWorld));
+  // 2. Load initial level
+  await gameWorld.loadLevel(new Level01(gameWorld));
 
   // 3. Start the main game loop
   gameWorld.start();

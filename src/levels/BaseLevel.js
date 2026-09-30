@@ -21,10 +21,11 @@ export class BaseLevel {
   }
 
   /**
-   * Called every frame from GameWorld loop.
+   * Phase 5 (Gameplay): Called every frame from GameWorld loop.
    * @param {number} delta - Frame delta time in seconds
+   * @param {GameWorld} gameWorld - Master world context
    */
-  update(delta) {
+  gameplayUpdate(delta, gameWorld = this.gameWorld) {
     // Override in subclass
   }
 

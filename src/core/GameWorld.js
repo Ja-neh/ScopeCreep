@@ -301,7 +301,9 @@ export class GameWorld {
     // PHASE 5: GAMEPLAY & LEVEL LOGIC (Weapons, Projectiles, Health, Level Timers)
     // =========================================================================
     if (this.currentLevel && this.currentLevel.isInitialized && !this.isLevelLoading) {
-      this.currentLevel.update(delta);
+      if (this.currentLevel.gameplayUpdate && typeof this.currentLevel.gameplayUpdate === 'function') {
+        this.currentLevel.gameplayUpdate(delta, this);
+      }
     }
     for (const entity of this.entities) {
       if (entity.gameplayUpdate && typeof entity.gameplayUpdate === 'function') {
