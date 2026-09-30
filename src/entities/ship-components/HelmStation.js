@@ -20,6 +20,9 @@ export class HelmStation extends BaseStation {
       battleship,
       gameWorld: battleship?.gameWorld || options.gameWorld || null,
       name: 'HelmStation',
+      promptText: 'TAKE SHIP HELM',
+      accentColor: '#2a9d8f',
+      stationType: 'helm',
       detectionRadius: 2.8,
       position: options.position || defaultHelmPos,
       releasePointerLockOnMount: false
@@ -65,9 +68,6 @@ export class HelmStation extends BaseStation {
 
     // 2. Helmsman Proximity Detection Field on Bridge
     this._createDetectField();
-
-    // 3. UI overlays (prompt and navigation HUD)
-    this._createUI();
   }
 
   /**
@@ -143,80 +143,7 @@ export class HelmStation extends BaseStation {
     this.battleship.mesh.add(this.detectFieldGroup);
   }
 
-  /**
-   * On-screen UI elements for interaction prompt and ship navigation HUD
-   */
-  _createUI() {
-    // 1. Proximity interaction prompt: [E] TAKE SHIP HELM
-    this.promptEl = document.createElement('div');
-    this.promptEl.id = 'helmsman-prompt';
-    this.promptEl.style.cssText = `
-      position: fixed;
-      bottom: 110px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.92);
-      border: 2px solid #2a9d8f;
-      box-shadow: 0 0 20px rgba(42, 157, 143, 0.5);
-      color: #f8fafc;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      font-size: 15px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      pointer-events: none;
-      display: none;
-      z-index: 9999;
-      user-select: none;
-      transition: opacity 0.15s ease-out;
-    `;
-    this.promptEl.innerHTML = `
-      <span style="background: #2a9d8f; color: #fff; padding: 3px 9px; border-radius: 4px; margin-right: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.4);">E</span>
-      TAKE SHIP HELM
-    `;
-    document.body.appendChild(this.promptEl);
 
-    // 2. Helmsman Vehicle Navigation HUD
-    this.hudEl = document.createElement('div');
-    this.hudEl.id = 'helmsman-hud';
-    this.hudEl.style.cssText = `
-      position: fixed;
-      bottom: 30px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(15, 23, 42, 0.9);
-      border: 1px solid rgba(42, 157, 143, 0.6);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), 0 0 16px rgba(42, 157, 143, 0.3);
-      border-radius: 10px;
-      padding: 14px 24px;
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      z-index: 9999;
-      user-select: none;
-      display: none;
-      text-align: center;
-      min-width: 320px;
-    `;
-    this.hudEl.innerHTML = `
-      <div style="font-size: 15px; font-weight: 700; color: #2a9d8f; letter-spacing: 0.6px; margin-bottom: 6px;">
-        ⚓ WARSHIP HELM ACTIVE
-      </div>
-      <div style="display: flex; justify-content: center; gap: 20px; font-family: monospace; font-size: 14px; color: #e2e8f0; margin-bottom: 8px;">
-        <div>SPEED: <strong id="helm-speed" style="color: #38bdf8;">0.0</strong> kts</div>
-        <div>HEADING: <strong id="helm-heading" style="color: #f59e0b;">000°</strong></div>
-        <div>RUDDER: <strong id="helm-rudder" style="color: #10b981;">MID</strong></div>
-      </div>
-      <div style="font-size: 12px; color: #94a3b8; font-family: monospace;">
-        <strong>[W]</strong> Ahead &nbsp;|&nbsp; <strong>[S]</strong> Astern &nbsp;|&nbsp; 
-        <strong>[A] / [D]</strong> Rudder &nbsp;|&nbsp; <strong>[E]</strong> Release Helm
-      </div>
-    `;
-    document.body.appendChild(this.hudEl);
-
-    this.speedDisplay = this.hudEl.querySelector('#helm-speed');
-    this.headingDisplay = this.hudEl.querySelector('#helm-heading');
-    this.rudderDisplay = this.hudEl.querySelector('#helm-rudder');
-  }
 
   /**
    * Updates ship locomotion, steering, wave buoyancy, and helmsman interaction
@@ -279,26 +206,25 @@ export class HelmStation extends BaseStation {
         mesh.rotation.y = this.heading;
 
         // Update HUD readouts
-        if (this.speedDisplay) {
+        if (gameWorld && gameWorld.ui) {
           const knots = (this.speed * 1.94384).toFixed(1);
-          this.speedDisplay.textContent = knots;
-        }
-        if (this.headingDisplay) {
           let deg = Math.round((-this.heading * 180 / Math.PI) % 360);
           if (deg < 0) deg += 360;
-          this.headingDisplay.textContent = `${deg.toString().padStart(3, '0')}°`;
-        }
-        if (this.rudderDisplay) {
+          let rudderText = 'MID';
+          let rudderColor = '#10b981';
           if (this.rudderAngle > 0.1) {
-            this.rudderDisplay.textContent = 'PORT';
-            this.rudderDisplay.style.color = '#ef4444';
+            rudderText = 'PORT';
+            rudderColor = '#ef4444';
           } else if (this.rudderAngle < -0.1) {
-            this.rudderDisplay.textContent = 'STBD';
-            this.rudderDisplay.style.color = '#22c55e';
-          } else {
-            this.rudderDisplay.textContent = 'MID';
-            this.rudderDisplay.style.color = '#10b981';
+            rudderText = 'STBD';
+            rudderColor = '#22c55e';
           }
+          gameWorld.ui.updateStationHUD('helm', {
+            speed: knots,
+            heading: `${deg.toString().padStart(3, '0')}°`,
+            rudder: rudderText,
+            rudderColor: rudderColor
+          });
         }
       }
     } else {

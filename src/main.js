@@ -14,39 +14,7 @@ async function bootstrap() {
   // 3. Start the main game loop
   gameWorld.start();
 
-  // 5. Mount on-screen controls helper
-  const overlay = document.querySelector('#ui-overlay');
-  if (overlay) {
-    const controlsHelp = document.createElement('div');
-    controlsHelp.id = 'controls-helper';
-    controlsHelp.style.pointerEvents = 'none';
-    controlsHelp.innerHTML = `
-      <div style="
-        position: absolute;
-        bottom: 20px;
-        left: 20px;
-        background: rgba(13, 17, 23, 0.88);
-        color: #e6edf3;
-        padding: 14px 20px;
-        border-radius: 8px;
-        border: 1px solid rgba(255, 255, 255, 0.15);
-        font-family: monospace;
-        font-size: 13px;
-        line-height: 1.6;
-        pointer-events: none;
-        box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-      ">
-        • <strong>Left Click:</strong> Lock Mouse<br/>
-        • <strong>Escape:</strong> Unlock Mouse<br/>
-        • <strong>W, A, S, D:</strong> Walk on Deck<br/>
-        • <strong>Shift:</strong> Sprint &nbsp;|&nbsp; <strong>Space:</strong> Jump<br/>
-        • <strong>[E]:</strong> Mount / Dismount Gun Turret (when in ring)<br/>
-        • <strong>[V] / [C]:</strong> Toggle 1st / 3rd Person View<br/>
-        • <strong>[B] / [F2]:</strong> Toggle Battleship Colliders<br/>
-      </div>
-    `;
-    overlay.appendChild(controlsHelp);
-  }
+
 
   console.log('GameWorld initialized. Level active.');
 }

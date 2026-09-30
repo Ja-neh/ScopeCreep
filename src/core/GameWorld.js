@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { InputManager } from './InputManager.js';
 import { PhysicsWorld } from './PhysicsWorld.js';
 import { FPSTracker } from './FPSTracker.js';
+import { UIManager } from '../ui/UIManager.js';
 
 /**
  * GameWorld
@@ -81,11 +82,13 @@ export class GameWorld {
     // 8. Event bindings
     this._onResize = this._onResize.bind(this);
     this._loop = this._loop.bind(this);
-    this._toastTimeout = null;
     window.addEventListener('resize', this._onResize);
 
-    // 9. On-Screen Performance & FPS Monitor (Top-Left HUD)
-    this.fpsTracker = new FPSTracker();
+    // 9. UI Subsystem (HUD, prompts, health bars, overlays)
+    this.ui = new UIManager();
+
+    // 10. On-Screen Performance & FPS Monitor (Top-Left HUD)
+    this.fpsTracker = new FPSTracker(this);
   }
 
   /**
@@ -328,7 +331,7 @@ export class GameWorld {
 
     // Update on-screen FPS & performance diagnostics
     if (this.fpsTracker) {
-      this.fpsTracker.update();
+      this.fpsTracker.update(this);
     }
 
     // =========================================================================
@@ -358,55 +361,9 @@ export class GameWorld {
       this.currentLevel.onColliderDebugToggled(visible);
     }
 
-    this._showColliderToast(visible);
-  }
-
-  _showColliderToast(visible) {
-    let toast = document.querySelector('#collider-debug-toast');
-    if (!toast) {
-      toast = document.createElement('div');
-      toast.id = 'collider-debug-toast';
-      toast.style.cssText = `
-        position: fixed;
-        bottom: 80px;
-        right: 20px;
-        padding: 10px 18px;
-        border-radius: 8px;
-        font-family: monospace;
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
-        pointer-events: none;
-        z-index: 10001;
-        transition: all 0.25s ease;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-      `;
-      document.body.appendChild(toast);
+    if (this.ui) {
+      this.ui.showToast(visible ? '🛡️ COLLIDERS: VISIBLE' : '🛡️ COLLIDERS: HIDDEN', visible ? 'success' : 'info', 2200);
     }
-
-    if (visible) {
-      toast.style.background = 'rgba(16, 185, 129, 0.92)';
-      toast.style.border = '1px solid #34d399';
-      toast.style.color = '#ffffff';
-      toast.innerHTML = '🛡️ COLLIDERS: VISIBLE';
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    } else {
-      toast.style.background = 'rgba(15, 23, 42, 0.9)';
-      toast.style.border = '1px solid rgba(255, 255, 255, 0.2)';
-      toast.style.color = '#94a3b8';
-      toast.innerHTML = '🛡️ COLLIDERS: HIDDEN';
-      toast.style.opacity = '1';
-      toast.style.transform = 'translateY(0)';
-    }
-
-    clearTimeout(this._toastTimeout);
-    this._toastTimeout = setTimeout(() => {
-      if (toast) {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(10px)';
-      }
-    }, 2200);
   }
 
   /**
@@ -437,15 +394,6 @@ export class GameWorld {
     window.removeEventListener('resize', this._onResize);
     this.input.dispose();
 
-    if (this._toastTimeout) {
-      clearTimeout(this._toastTimeout);
-      this._toastTimeout = null;
-    }
-    const toast = document.querySelector('#collider-debug-toast');
-    if (toast && toast.parentNode) {
-      toast.parentNode.removeChild(toast);
-    }
-
     this.clearEntities();
     this.clearEnvironment();
 
@@ -460,6 +408,11 @@ export class GameWorld {
     if (this.fpsTracker) {
       this.fpsTracker.dispose();
       this.fpsTracker = null;
+    }
+
+    if (this.ui) {
+      this.ui.dispose();
+      this.ui = null;
     }
   }
 }

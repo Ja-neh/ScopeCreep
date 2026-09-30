@@ -28,7 +28,7 @@ export class Battleship extends BaseEntity {
       this.isDestroyed = true;
       if (this.shipController) this.shipController.speed = 0;
       if (this.mesh) this.mesh.visible = false;
-      this._updateHealthUI();
+      this._updateHealth();
     };
 
     // Platform dimensions from config
@@ -52,7 +52,7 @@ export class Battleship extends BaseEntity {
     this.mesh.name = 'Battleship';
     this.mesh.position.copy(this.position);
     this.mesh.userData.entity = this;
-    this._createHealthUI();
+    this._updateHealth();
 
     // 2. Instantiate Gun Stations as Children of the Ship Hierarchy
     this.mainGun = new ArtilleryTurret({
@@ -220,47 +220,10 @@ export class Battleship extends BaseEntity {
     return this.colliders.toggleColliderDebug();
   }
 
-  _createHealthUI() {
-    this.healthPanel = document.createElement('div');
-    this.healthPanel.id = 'battleship-health';
-    this.healthPanel.style.cssText = `
-      position: fixed;
-      top: 18px;
-      left: 50%;
-      width: 230px;
-      transform: translateX(-50%);
-      padding: 10px 12px;
-      border: 1px solid rgba(148, 163, 184, 0.5);
-      border-radius: 6px;
-      background: rgba(15, 23, 42, 0.88);
-      color: #f8fafc;
-      font: 700 12px/1.3 monospace;
-      pointer-events: none;
-      z-index: 9999;
-    `;
-    this.healthPanel.innerHTML = `
-      <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-        <span>WARSHIP HULL</span><span data-role="health-text"></span>
-      </div>
-      <div style="height:8px;background:#334155;border-radius:4px;overflow:hidden;">
-        <div data-role="health-fill" style="height:100%;width:100%;background:#22c55e;transition:width .15s,background .15s;"></div>
-      </div>
-    `;
-    const mountContainer = document.querySelector('#ui-overlay') || document.body;
-    mountContainer.appendChild(this.healthPanel);
-    this.healthText = this.healthPanel.querySelector('[data-role="health-text"]');
-    this.healthFill = this.healthPanel.querySelector('[data-role="health-fill"]');
-    this._updateHealthUI();
-  }
-
-  _updateHealthUI() {
-    if (!this.healthText || !this.healthFill) return;
-    const ratio = Math.max(0, this.health.currentHealth / this.health.maxHealth);
-    this.healthText.textContent = this.isDestroyed
-      ? 'DESTROYED'
-      : `${Math.ceil(this.health.currentHealth)} / ${this.health.maxHealth}`;
-    this.healthFill.style.width = `${ratio * 100}%`;
-    this.healthFill.style.background = ratio > 0.5 ? '#22c55e' : ratio > 0.25 ? '#f59e0b' : '#ef4444';
+  _updateHealth() {
+    if (this.gameWorld && this.gameWorld.ui) {
+      this.gameWorld.ui.updateHealthBar(this.health.currentHealth, this.health.maxHealth, this.isDestroyed);
+    }
   }
 
   /**
@@ -301,7 +264,7 @@ export class Battleship extends BaseEntity {
    * platform displacement matrices, and sets Rapier rigid body transforms BEFORE physics step.
    */
   prePhysicsUpdate(delta) {
-    this._updateHealthUI();
+    this._updateHealth();
 
     // 0. Update previous world matrix for platform delta kinematics
     if (!this._hasPrevMatrix) {
@@ -392,6 +355,10 @@ export class Battleship extends BaseEntity {
 
     if (this.mesh.parent) {
       this.mesh.parent.remove(this.mesh);
+    }
+
+    if (this.gameWorld && this.gameWorld.ui) {
+      this.gameWorld.ui.hideHealthBar();
     }
 
     super.dispose();
