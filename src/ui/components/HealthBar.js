@@ -26,6 +26,8 @@ export class HealthBar {
     this.textEl = this.element.querySelector('[data-role="health-text"]');
     this.fillEl = this.element.querySelector('[data-role="health-fill"]');
 
+    this.element.style.display = 'none'; // Hidden until level/battleship loads
+
     this.parent.appendChild(this.element);
   }
 
@@ -37,6 +39,10 @@ export class HealthBar {
    */
   update(current, max, isDestroyed = false) {
     if (!this.textEl || !this.fillEl) return;
+
+    if (this.element.style.display === 'none') {
+      this.element.style.display = 'block';
+    }
 
     const ratio = Math.max(0, current / (max || 1));
     this.textEl.textContent = isDestroyed

@@ -15,7 +15,7 @@ export class ControlsHelper {
 
     this.element.innerHTML = `
       • <strong>Left Click:</strong> Lock Mouse<br/>
-      • <strong>Escape:</strong> Unlock Mouse<br/>
+      • <strong>[Esc] / [P]:</strong> Pause & Options Menu<br/>
       • <strong>W, A, S, D:</strong> Walk on Deck<br/>
       • <strong>Shift:</strong> Sprint &nbsp;|&nbsp; <strong>Space:</strong> Jump<br/>
       • <strong>[E]:</strong> Mount / Dismount Station (when in ring)<br/>
