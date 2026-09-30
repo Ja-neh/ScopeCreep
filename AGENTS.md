@@ -154,7 +154,7 @@ All HUD elements, floating text, prompts, health meters, and telemetry panels mu
   ```
 - **UI Architecture Structure:**
   - `src/ui/UIManager.js`: Central coordinator attached to `gameWorld.ui`.
-  - `src/ui/components/`: Modular component classes (`InteractionPrompt`, `StationHUD`, `Crosshair`, `HealthBar`, `ToastNotification`, `FPSDisplay`, `ControlsHelper`, `DevToolsWidget`).
+  - `src/ui/components/`: Modular component classes (`InteractionPrompt`, `StationHUD`, `Crosshair`, `HealthBar`, `ToastNotification`, `FPSDisplay`, `ControlsHelper`, `DevToolsWidget`, `MainMenu`, `PauseMenu`, `PauseButton`).
   - `src/ui/ui.css`: Consolidated stylesheet for all UI components.
 
 #### Concrete UI Examples from Battleship & Ship Components:
@@ -203,6 +203,31 @@ All HUD elements, floating text, prompts, health meters, and telemetry panels mu
     ready: this.isReadyToFire()
   });
   ```
+
+#### Level Registration & Menu UI (`AVAILABLE_LEVELS` in `src/main.js`):
+When creating a new level stage (subclassing `BaseLevel` in `src/levels/`), register it in `AVAILABLE_LEVELS` inside `src/main.js` so it automatically appears as a selectable mission on the Main Menu screen:
+```javascript
+// Inside src/main.js:
+const AVAILABLE_LEVELS = [
+  {
+    id: 'level01',
+    title: 'Level 1: Operation Retake',
+    create: (gw) => new Level01(gw)
+  },
+  {
+    id: 'testlevel',
+    title: 'Sandbox: Flat Ground',
+    create: (gw) => new TestLevel(gw)
+  },
+  {
+    id: 'level02',
+    title: 'Level 2: Pacific Strike',
+    create: (gw) => new Level02(gw)
+  }
+];
+```
+- **UI Lifecycle Contract:** `gameWorld.loadLevel(instance)` initializes the stage and automatically shows the in-game HUD (`[Options]` pause button, controls helper, and warship health bar).
+- **Return to Menu:** `gameWorld.returnToMainMenu()` cleanly calls `currentLevel.dispose()`, resets all in-game HUDs via `gameWorld.ui.resetLevelHUD()`, and restores the Main Menu selector.
 
 ---
 

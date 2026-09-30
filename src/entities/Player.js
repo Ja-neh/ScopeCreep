@@ -95,9 +95,9 @@ export class Player extends BaseEntity {
     // 4. Moving Platform Tracker (Contact-based)
     this.platformTracker = new PlatformTracker(this.gameWorld);
 
-    // Request pointer lock on canvas pointerdown/click (unless in dev aerial camera)
+    // Request pointer lock on canvas pointerdown/click (unless in dev aerial camera, paused, or no level)
     this._onPointerDown = () => {
-      if (this.isDevSuspended) return;
+      if (this.isDevSuspended || (this.gameWorld && (this.gameWorld.isPaused || !this.gameWorld.currentLevel))) return;
       if (!this.input.isPointerLocked) {
         this.input.requestPointerLock(this.gameWorld.canvas);
       }

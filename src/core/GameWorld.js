@@ -78,6 +78,8 @@ export class GameWorld {
     // 7. Active level lifecycle tracking
     this.currentLevel = null;
     this.isLevelLoading = false;
+    this.isPaused = false;
+    this._onMainMenuRequested = null;
 
     // 8. Event bindings
     this._onResize = this._onResize.bind(this);
@@ -102,6 +104,14 @@ export class GameWorld {
   }
 
   /**
+   * Registers a callback invoked when the user returns to the main menu.
+   * @param {Function} callback
+   */
+  setMainMenuHandler(callback) {
+    this._onMainMenuRequested = callback;
+  }
+
+  /**
    * Loads and initializes a new level stage.
    * Tears down any previously active level and frees GPU and physics resources.
    * @param {BaseLevel} newLevel - Instance of a class extending BaseLevel
@@ -122,8 +132,16 @@ export class GameWorld {
     // 2. Set and initialize new level
     this.currentLevel = newLevel;
     try {
-      await this.currentLevel.init();
-      console.log(`Successfully loaded stage: ${this.currentLevel.name}`);
+      if (this.currentLevel) {
+        await this.currentLevel.init();
+        console.log(`Successfully loaded stage: ${this.currentLevel.name}`);
+
+        this.isPaused = false;
+        if (this.ui) {
+          this.ui.showPauseButton(() => this.togglePause());
+          if (this.ui.controlsHelper) this.ui.controlsHelper.show();
+        }
+      }
     } catch (error) {
       console.error(`Failed to initialize level:`, error);
     } finally {
@@ -138,7 +156,74 @@ export class GameWorld {
     if (!this.currentLevel) return;
     const LevelConstructor = this.currentLevel.constructor;
     console.log(`Restarting stage: ${this.currentLevel.name}...`);
+    this.resume();
     await this.loadLevel(new LevelConstructor(this));
+  }
+
+  /**
+   * Pause the game simulation and display the options/pause menu.
+   */
+  pause() {
+    if (this.isPaused || !this.currentLevel || this.isLevelLoading) return;
+    this.isPaused = true;
+    this.input.exitPointerLock();
+
+    if (this.ui) {
+      this.ui.showPauseMenu({
+        onResume: () => this.resume(),
+        onRestart: () => this.restartCurrentLevel(),
+        onReturnToMenu: () => this.returnToMainMenu()
+      });
+    }
+  }
+
+  /**
+   * Resume the game simulation and dismiss the pause menu.
+   */
+  resume() {
+    if (!this.isPaused) return;
+    this.isPaused = false;
+    this.clock.getDelta(); // Clear time delta accumulation during pause
+
+    if (this.ui) {
+      this.ui.hidePauseMenu();
+    }
+  }
+
+  /**
+   * Toggles pause state if inside an active level
+   */
+  togglePause() {
+    if (!this.currentLevel) return;
+    if (this.isPaused) {
+      this.resume();
+    } else {
+      this.pause();
+    }
+  }
+
+  /**
+   * Tears down active level and navigates back to the main menu screen
+   */
+  returnToMainMenu() {
+    this.resume();
+
+    if (this.currentLevel) {
+      this.currentLevel.dispose();
+      this.clearEntities();
+      this.clearEnvironment();
+      this.currentLevel = null;
+    }
+
+    this.setActiveCamera(null);
+
+    if (this.ui) {
+      this.ui.resetLevelHUD();
+    }
+
+    if (this._onMainMenuRequested) {
+      this._onMainMenuRequested();
+    }
   }
 
   /**
@@ -269,8 +354,21 @@ export class GameWorld {
     // =========================================================================
     // PHASE 1: INPUT & GLOBAL HOTKEYS
     // =========================================================================
+    if (this.input.isActionJustPressed('pause')) {
+      this.togglePause();
+    }
     if (this.input.isActionJustPressed('toggleColliders')) {
       this.toggleColliderDebug();
+    }
+
+    // When paused, render the frozen scene and flush inputs without advancing physics or gameplay
+    if (this.isPaused) {
+      this.renderer.render(this.scene, this.getActiveCamera());
+      if (this.fpsTracker) {
+        this.fpsTracker.update(this);
+      }
+      this.input.update();
+      return;
     }
 
     // =========================================================================

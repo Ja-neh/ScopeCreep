@@ -6,6 +6,9 @@ import { ToastNotification } from './components/ToastNotification.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
+import { MainMenu } from './components/MainMenu.js';
+import { PauseMenu } from './components/PauseMenu.js';
+import { PauseButton } from './components/PauseButton.js';
 
 /**
  * UIManager.js
@@ -27,8 +30,14 @@ export class UIManager {
     this.toast = new ToastNotification(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
+    this.controlsHelper.hide(); // Hidden until level loads
     this.devTools = new DevToolsWidget(this.container);
     this.devTools.hide(); // Hidden by default until a level requests dev tools
+
+    // Menus & Pause components
+    this.mainMenu = new MainMenu(this.container);
+    this.pauseMenu = new PauseMenu(this.container);
+    this.pauseButton = new PauseButton(this.container);
   }
 
   // =========================================================================
@@ -124,6 +133,7 @@ export class UIManager {
    */
   updateHealthBar(current, max, isDestroyed = false) {
     if (this.healthBar) {
+      this.healthBar.show();
       this.healthBar.update(current, max, isDestroyed);
     }
   }
@@ -243,6 +253,84 @@ export class UIManager {
   }
 
   // =========================================================================
+  // Menus & Pause System
+  // =========================================================================
+
+  /**
+   * Show Main Menu level selector
+   * @param {Array<Object>} levels
+   * @param {Function} onSelectLevel
+   */
+  showMainMenu(levels, onSelectLevel) {
+    if (this.mainMenu) {
+      this.mainMenu.show(levels, onSelectLevel);
+    }
+  }
+
+  /**
+   * Hide Main Menu
+   */
+  hideMainMenu() {
+    if (this.mainMenu) {
+      this.mainMenu.hide();
+    }
+  }
+
+  /**
+   * Show Pause & Options Menu
+   * @param {Object} callbacks
+   */
+  showPauseMenu(callbacks) {
+    if (this.pauseMenu) {
+      this.pauseMenu.show(callbacks);
+    }
+  }
+
+  /**
+   * Hide Pause Menu
+   */
+  hidePauseMenu() {
+    if (this.pauseMenu) {
+      this.pauseMenu.hide();
+    }
+  }
+
+  /**
+   * Show in-game Pause Button
+   * @param {Function} onClick
+   */
+  showPauseButton(onClick) {
+    if (this.pauseButton) {
+      this.pauseButton.show(onClick);
+    }
+  }
+
+  /**
+   * Hide in-game Pause Button
+   */
+  hidePauseButton() {
+    if (this.pauseButton) {
+      this.pauseButton.hide();
+    }
+  }
+
+  /**
+   * Resets all in-level HUD overlays when returning to main menu or switching stages
+   */
+  resetLevelHUD() {
+    this.hidePrompt();
+    this.hideStationHUD();
+    this.hideCrosshair();
+    this.hideHealthBar();
+    this.hidePauseMenu();
+    this.hidePauseButton();
+    this.hideDevTools();
+    if (this.controlsHelper) {
+      this.controlsHelper.hide();
+    }
+  }
+
+  // =========================================================================
   // Per-Frame Update & Lifecycle
   // =========================================================================
 
@@ -292,6 +380,18 @@ export class UIManager {
     if (this.devTools && typeof this.devTools.dispose === 'function') {
       this.devTools.dispose();
       this.devTools = null;
+    }
+    if (this.mainMenu && typeof this.mainMenu.dispose === 'function') {
+      this.mainMenu.dispose();
+      this.mainMenu = null;
+    }
+    if (this.pauseMenu && typeof this.pauseMenu.dispose === 'function') {
+      this.pauseMenu.dispose();
+      this.pauseMenu = null;
+    }
+    if (this.pauseButton && typeof this.pauseButton.dispose === 'function') {
+      this.pauseButton.dispose();
+      this.pauseButton = null;
     }
   }
 }

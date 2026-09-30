@@ -103,6 +103,9 @@ export class Battleship extends BaseEntity {
 
     // Begin asynchronous model load immediately
     this.ready = this.loadModel(options.modelUrl);
+
+    // Initial health HUD display
+    this._updateHealth();
   }
 
   // Backward-compatible accessors
