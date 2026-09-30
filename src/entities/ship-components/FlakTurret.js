@@ -395,17 +395,17 @@ export class FlakTurret extends BaseStation {
         }
 
         // Mouse Aiming (Fast tracking for anti-air)
-        const isDragging = input.isMouseButtonDown('Mouse0') || input.isMouseButtonDown('Mouse2');
+        const isDragging = input.isActionDown('mouseLook');
         if (input.isPointerLocked || isDragging) {
           this.yaw -= input.mouseDelta.x * 0.0025;
           this.pitch -= input.mouseDelta.y * 0.0025;
         }
 
-        // Keyboard Aiming (Arrow keys)
-        if (input.isKeyDown('ArrowLeft')) this.yaw += 1.2 * delta;
-        if (input.isKeyDown('ArrowRight')) this.yaw -= 1.2 * delta;
-        if (input.isKeyDown('ArrowUp')) this.pitch += 0.9 * delta;
-        if (input.isKeyDown('ArrowDown')) this.pitch -= 0.9 * delta;
+        // Keyboard Aiming
+        const yawAxis = input.getAxis('aimRight', 'aimLeft');
+        const pitchAxis = input.getAxis('aimDown', 'aimUp');
+        if (yawAxis !== 0) this.yaw += yawAxis * 1.2 * delta;
+        if (pitchAxis !== 0) this.pitch += pitchAxis * 0.9 * delta;
 
         this.setAim(this.yaw, this.pitch);
 

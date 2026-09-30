@@ -307,7 +307,7 @@ export class Player extends BaseEntity {
     }
 
     // 2. Mouse Look (Pointer Lock or Mouse Drag)
-    const isDragging = this.input.isMouseButtonDown('Mouse0') || this.input.isMouseButtonDown('Mouse2');
+    const isDragging = this.input.isActionDown('mouseLook');
     if (this.input.isPointerLocked || isDragging) {
       const deltaX = this.input.mouseDelta.x;
       const deltaY = this.input.mouseDelta.y;

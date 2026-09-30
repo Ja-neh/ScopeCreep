@@ -380,17 +380,17 @@ export class ArtilleryTurret extends BaseStation {
         }
 
         // Mouse Aiming
-        const isDragging = input.isMouseButtonDown('Mouse0') || input.isMouseButtonDown('Mouse2');
+        const isDragging = input.isActionDown('mouseLook');
         if (input.isPointerLocked || isDragging) {
           this.yaw -= input.mouseDelta.x * 0.002;
           this.pitch -= input.mouseDelta.y * 0.002;
         }
 
-        // Keyboard Aiming (Arrow keys)
-        if (input.isKeyDown('ArrowLeft')) this.yaw += 0.8 * delta;
-        if (input.isKeyDown('ArrowRight')) this.yaw -= 0.8 * delta;
-        if (input.isKeyDown('ArrowUp')) this.pitch += 0.6 * delta;
-        if (input.isKeyDown('ArrowDown')) this.pitch -= 0.6 * delta;
+        // Keyboard Aiming
+        const yawAxis = input.getAxis('aimRight', 'aimLeft');
+        const pitchAxis = input.getAxis('aimDown', 'aimUp');
+        if (yawAxis !== 0) this.yaw += yawAxis * 0.8 * delta;
+        if (pitchAxis !== 0) this.pitch += pitchAxis * 0.6 * delta;
 
         this.setAim(this.yaw, this.pitch);
 

@@ -69,7 +69,7 @@ export class GameWorld {
     this.activeCamera = null; // When null, falls back to this.camera
 
     // 5. Input Subsystem
-    this.input = new InputManager(window);
+    this.input = new InputManager();
 
     // 6. Registered entities list (for per-frame updates)
     this.entities = new Set();

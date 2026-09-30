@@ -1,12 +1,9 @@
 /**
- * InputManager
  * Standalone input abstraction layer mapping raw keyboard and mouse events
  * to semantic game actions (movement, flight axes, turret aiming, firing).
  */
 export class InputManager {
-  constructor(domElement = window) {
-    this.domElement = domElement;
-
+  constructor() {
     // Raw key & mouse state tracking
     this.keysDown = new Set();
     this.keysJustPressed = new Set();
@@ -18,30 +15,31 @@ export class InputManager {
 
     // Mouse positions and deltas
     this.mousePosition = { x: 0, y: 0 };
-    this.mouseNormalized = { x: 0, y: 0 }; // [-1, 1] range
     this.mouseDelta = { x: 0, y: 0 };
     this._lastClientX = undefined;
     this._lastClientY = undefined;
 
-    // Action mappings (Action Name -> Array of Keys / Mouse Buttons)
     this.actionBindings = {
-      // Locomotion (Player & Ship)
       forward: ['KeyW', 'ArrowUp'],
       backward: ['KeyS', 'ArrowDown'],
       steerLeft: ['KeyA', 'ArrowLeft'],
       steerRight: ['KeyD', 'ArrowRight'],
 
-      // Character Locomotion
+      aimLeft: ['KeyA', 'ArrowLeft'],
+      aimRight: ['KeyD', 'ArrowRight'],
+      aimUp: ['KeyW', 'ArrowUp'],
+      aimDown: ['KeyS', 'ArrowDown'],
+
       jump: ['Space'],
       sprint: ['ShiftLeft', 'ShiftRight'],
 
-      // Weapons & Station Interaction
-      firePrimary: ['Mouse0', 'KeyF'],      // Left mouse or F
-      specialAction: ['KeyE'],               // E: Mount / Dismount station
+      firePrimary: ['Mouse0', 'KeyF'],
+      specialAction: ['KeyE'],
 
-      // Views & Dev Tools
-      toggleCamera: ['KeyV', 'KeyC', 'Tab'], // 1st / 3rd person toggle
-      toggleColliders: ['KeyB', 'F2'],       // Debug collider toggle
+      mouseLook: ['Mouse0', 'Mouse2'],
+
+      toggleCamera: ['KeyV', 'KeyC', 'Tab'],
+      toggleColliders: ['KeyB', 'F2'],
       pause: ['Escape', 'KeyP']
     };
 
@@ -178,14 +176,7 @@ export class InputManager {
   }
 
   /**
-   * Rebind or add an action mapping
-   */
-  bindAction(actionName, keys) {
-    this.actionBindings[actionName] = Array.isArray(keys) ? keys : [keys];
-  }
-
-  /**
-   * Check if a semantic action is currently held down
+   * Check semantic actions
    */
   isActionDown(actionName) {
     const keys = this.actionBindings[actionName];
@@ -193,18 +184,12 @@ export class InputManager {
     return keys.some(key => this.keysDown.has(key) || this.mouseButtonsDown.has(key));
   }
 
-  /**
-   * Check if a semantic action was pressed on this exact frame
-   */
   isActionJustPressed(actionName) {
     const keys = this.actionBindings[actionName];
     if (!keys) return false;
     return keys.some(key => this.keysJustPressed.has(key) || this.mouseButtonsJustPressed.has(key));
   }
 
-  /**
-   * Check if a semantic action was released on this frame
-   */
   isActionJustReleased(actionName) {
     const keys = this.actionBindings[actionName];
     if (!keys) return false;
@@ -230,22 +215,16 @@ export class InputManager {
   }
 
   /**
-   * Check if a mouse button is currently held down (e.g. 'Mouse0', 'Mouse1', 'Mouse2')
+   * Check mouse buttons
    */
   isMouseButtonDown(buttonId) {
     return this.mouseButtonsDown.has(buttonId);
   }
 
-  /**
-   * Check if a mouse button was just pressed on this exact frame
-   */
   isMouseButtonJustPressed(buttonId) {
     return this.mouseButtonsJustPressed.has(buttonId);
   }
 
-  /**
-   * Check if a mouse button was just released on this exact frame
-   */
   isMouseButtonJustReleased(buttonId) {
     return this.mouseButtonsJustReleased.has(buttonId);
   }
@@ -259,7 +238,6 @@ export class InputManager {
     this.mouseButtonsJustPressed.clear();
     this.mouseButtonsJustReleased.clear();
 
-    // Reset deltas
     this.mouseDelta.x = 0;
     this.mouseDelta.y = 0;
   }
