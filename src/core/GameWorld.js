@@ -81,6 +81,7 @@ export class GameWorld {
     // 8. Event bindings
     this._onResize = this._onResize.bind(this);
     this._loop = this._loop.bind(this);
+    this._toastTimeout = null;
     window.addEventListener('resize', this._onResize);
 
     // 9. On-Screen Performance & FPS Monitor (Top-Left HUD)
@@ -326,11 +327,6 @@ export class GameWorld {
       }
     }
 
-    // Custom external update hooks
-    if (this.onUpdate) {
-      this.onUpdate(delta);
-    }
-
     // =========================================================================
     // PHASE 7: WEBGL RENDER
     // =========================================================================
@@ -351,24 +347,8 @@ export class GameWorld {
    * Toggles collider debug visibility across physics engine and entities (e.g. Battleship)
    */
   toggleColliderDebug() {
-    const isNowVisible = this.physics.toggleDebug();
-
-    // Toggle collider debug on registered entities (e.g. Battleship)
-    for (const entity of this.entities) {
-      if (entity && entity.setColliderDebugVisible && typeof entity.setColliderDebugVisible === 'function') {
-        entity.setColliderDebugVisible(isNowVisible);
-      }
-    }
-
-    if (this.currentLevel) {
-      if (typeof this.currentLevel.onColliderDebugToggled === 'function') {
-        this.currentLevel.onColliderDebugToggled(isNowVisible);
-      } else if (typeof this.currentLevel._updateCollidersBtn === 'function') {
-        this.currentLevel._updateCollidersBtn(isNowVisible);
-      }
-    }
-
-    this._showColliderToast(isNowVisible);
+    const isNowVisible = !this.physics.debugMesh.visible;
+    this.setColliderDebugVisible(isNowVisible);
     return isNowVisible;
   }
 
@@ -380,12 +360,8 @@ export class GameWorld {
       }
     }
 
-    if (this.currentLevel) {
-      if (typeof this.currentLevel.onColliderDebugToggled === 'function') {
-        this.currentLevel.onColliderDebugToggled(visible);
-      } else if (typeof this.currentLevel._updateCollidersBtn === 'function') {
-        this.currentLevel._updateCollidersBtn(visible);
-      }
+    if (this.currentLevel && typeof this.currentLevel.onColliderDebugToggled === 'function') {
+      this.currentLevel.onColliderDebugToggled(visible);
     }
 
     this._showColliderToast(visible);
@@ -418,14 +394,14 @@ export class GameWorld {
       toast.style.background = 'rgba(16, 185, 129, 0.92)';
       toast.style.border = '1px solid #34d399';
       toast.style.color = '#ffffff';
-      toast.innerHTML = '🛡️ BATTLESHIP COLLIDERS: VISIBLE';
+      toast.innerHTML = '🛡️ COLLIDERS: VISIBLE';
       toast.style.opacity = '1';
       toast.style.transform = 'translateY(0)';
     } else {
       toast.style.background = 'rgba(15, 23, 42, 0.9)';
       toast.style.border = '1px solid rgba(255, 255, 255, 0.2)';
       toast.style.color = '#94a3b8';
-      toast.innerHTML = '🛡️ BATTLESHIP COLLIDERS: HIDDEN';
+      toast.innerHTML = '🛡️ COLLIDERS: HIDDEN';
       toast.style.opacity = '1';
       toast.style.transform = 'translateY(0)';
     }
@@ -460,12 +436,21 @@ export class GameWorld {
   }
 
   /**
-   * Full cleanup of geometries, materials, listeners, and physics
+   * Full cleanup of geometries, materials, listeners, physics, and DOM elements
    */
   dispose() {
     this.stop();
     window.removeEventListener('resize', this._onResize);
     this.input.dispose();
+
+    if (this._toastTimeout) {
+      clearTimeout(this._toastTimeout);
+      this._toastTimeout = null;
+    }
+    const toast = document.querySelector('#collider-debug-toast');
+    if (toast && toast.parentNode) {
+      toast.parentNode.removeChild(toast);
+    }
 
     this.clearEntities();
     this.clearEnvironment();
