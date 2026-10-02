@@ -1,5 +1,7 @@
 import { GameWorld } from './core/GameWorld.js';
 import { Level01 } from './levels/Level01.js';
+import { Level01TestLevel } from './levels/Level01ShipTestLevel.js';
+import { Level01JetTestLevel } from './levels/Level01JetTestLevel.js';
 import { TestLevel } from './levels/TestLevel.js';
 
 /**
@@ -12,8 +14,18 @@ const AVAILABLE_LEVELS = [
     create: (gw) => new Level01(gw)
   },
   {
+    id: 'level01_ship_test',
+    title: 'Level 1: AI Ship Test Level',
+    create: (gw) => new Level01TestLevel(gw)
+  },
+  {
+    id: 'level01_jet_test',
+    title: 'Level 1: Jet Test Level',
+    create: (gw) => new Level01JetTestLevel(gw)
+  },
+  {
     id: 'testlevel',
-    title: 'Sandbox: Flat Ground',
+    title: 'Sandbox: Test Level for anything',
     create: (gw) => new TestLevel(gw)
   }
 ];
