@@ -167,10 +167,17 @@ export class BeachEnvironment {
   }
 
   /**
-   * Distance from the jungle path's centreline, which winds from the beach to the village.
+   * X of the jungle path's centreline at a given z (it winds north from the beach to the village).
+   */
+  pathCentreX(z) {
+    return Math.sin(z * 0.018) * 16;
+  }
+
+  /**
+   * Distance from the jungle path's centreline.
    */
   pathDistance(x, z) {
-    return Math.abs(x - Math.sin(z * 0.018) * 16);
+    return Math.abs(x - this.pathCentreX(z));
   }
 
   _islandHeight(x, z) {
