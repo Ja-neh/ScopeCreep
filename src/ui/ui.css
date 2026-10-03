@@ -598,3 +598,40 @@
   background: rgba(255, 255, 255, 0.16);
 }
 
+
+/* =========================================================================
+   Status Indicator (Centered, above the interaction prompt)
+   ========================================================================= */
+.ui-status-indicator {
+  position: fixed;
+  bottom: 170px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 6px;
+  padding: 6px 16px;
+  color: var(--text-main);
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-status-indicator.status-success {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.ui-status-indicator.status-warning {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.ui-status-indicator.status-danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}

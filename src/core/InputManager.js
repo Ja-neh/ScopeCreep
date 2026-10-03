@@ -32,13 +32,15 @@ export class InputManager {
 
       jump: ['Space'],
       sprint: ['ShiftLeft', 'ShiftRight'],
+      // Not Ctrl: Chrome reserves Ctrl+W (close tab), which players would hit while moving
+      crouch: ['KeyC'],
 
       firePrimary: ['Mouse0', 'KeyF'],
       specialAction: ['KeyE'],
 
       mouseLook: ['Mouse0', 'Mouse2'],
 
-      toggleCamera: ['KeyV', 'KeyC', 'Tab'],
+      toggleCamera: ['KeyV', 'Tab'],
       toggleColliders: ['KeyB', 'F2'],
       devCamera: ['F1'],
       pause: ['Escape', 'KeyP']

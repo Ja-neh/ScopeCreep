@@ -24,6 +24,7 @@
     "locomotion": {
       "walkSpeed": 8.0,
       "sprintSpeed": 14.0,
+      "crouchSpeed": 3.5,
       "jumpForce": 10.0,
       "gravity": 25.0,
       "mouseSensitivity": 0.002
@@ -36,8 +37,10 @@
     },
     "camera": {
       "eyeHeight": 1.7,
+      "crouchEyeHeight": 1.05,
       "thirdPersonDistance": 4.5,
       "thirdPersonTargetHeight": 1.3,
+      "crouchTargetHeight": 0.85,
       "minCameraDistance": 0.6,
       "cameraCollisionMargin": 0.25,
       "shoulderOffset": 0.0

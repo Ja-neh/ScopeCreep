@@ -3,13 +3,20 @@ import { Ocean } from '../../rendering/Ocean.js';
 import { Terrain } from '../../rendering/Terrain.js';
 import { valueNoise2D, fbm2D, smoothstep } from '../../rendering/Noise.js';
 
-// Island layout (meters). The island centre is the world origin; the landing beach faces +Z.
-const TERRAIN_SIZE = 640;
-const TERRAIN_SEGMENTS = 160;
-const SHORE_RADIUS = 200;   // Island centre to the waterline at the landing beach
-const BEACH_WIDTH = 40;     // Sand band between the waterline and the grass
-const HILLS_RISE = 70;      // Distance over which the ground climbs from the beach into the hills
-const PLATEAU_HEIGHT = 9;   // Flat ground at the island centre, where the village stands
+// Island layout (meters). A long oval running north from the landing beach: Level 2 is fought
+// on the south beach (waterline at z = 200, where the ship anchors) and Level 3's village
+// sits on a plateau near the far northern end.
+const ISLAND_CENTRE_Z = -150;
+const ISLAND_HALF_WIDTH = 260;   // Along X
+const ISLAND_HALF_LENGTH = 350;  // Along Z: the south waterline is at ISLAND_CENTRE_Z + 350 = 200
+const TERRAIN_WIDTH = 680;       // Covers x = -340..340
+const TERRAIN_DEPTH = 920;       // Covers z = -620..300
+const TERRAIN_CENTRE_Z = -160;
+const TERRAIN_CELL = 4;
+const BEACH_WIDTH = 40;          // Sand band between the waterline and the grass
+const HILLS_RISE = 70;           // Distance over which the ground climbs from the beach into the hills
+const VILLAGE = { x: 0, z: -340, radius: 90, height: 12 }; // Flat ground for Level 3's village
+const VILLAGE_BLEND = 45;        // The hills ease down to the village flat over this width
 const SEED = 7;
 
 // Dusk look
@@ -33,8 +40,9 @@ const ROCK = new THREE.Color(0x7b7266);
 
 /**
  * BeachEnvironment
- * The island seen in Level 2: procedural terrain with a beach, hills and a jungle path
- * leading inland, a calm sea, and dusk lighting. Shared by Level02 and Level02TestLevel.
+ * The island: procedural terrain with the landing beach in the south, jungle hills, a path
+ * winding north to the village plateau at the far end, a calm sea, and dusk lighting.
+ * Shared by Level02 and Level02TestLevel; `village` tells Level 3 where its houses go.
  */
 export class BeachEnvironment {
   constructor(gameWorld) {
@@ -43,6 +51,7 @@ export class BeachEnvironment {
     this.ocean = null;
     this.lights = [];
     this.spawnPoints = {};
+    this.village = { ...VILLAGE }; // Where Level 3's houses go
 
     this._previousBackground = null;
     this._previousFog = null;
@@ -90,8 +99,10 @@ export class BeachEnvironment {
 
     // 4. Terrain mesh and its matching heightfield collider
     this.terrain = new Terrain({
-      size: TERRAIN_SIZE,
-      segments: TERRAIN_SEGMENTS,
+      width: TERRAIN_WIDTH,
+      depth: TERRAIN_DEPTH,
+      cellSize: TERRAIN_CELL,
+      center: { x: 0, z: TERRAIN_CENTRE_Z },
       heightAt: (x, z) => this._islandHeight(x, z),
       colorAt: (x, z, h, slope, out) => this._islandColor(x, z, h, slope, out)
     });
@@ -107,6 +118,22 @@ export class BeachEnvironment {
    */
   heightAt(x, z) {
     return this.terrain ? this.terrain.getHeightAt(x, z) : this._islandHeight(x, z);
+  }
+
+  /**
+   * Meters inland from the waterline at (x, z); negative out at sea.
+   */
+  inlandDistance(x, z) {
+    return this._shoreRadius(x, z) - Math.hypot(x, z - ISLAND_CENTRE_Z);
+  }
+
+  /**
+   * Ground steepness at (x, z): 0 on flat ground, 1 on a vertical face.
+   */
+  slopeAt(x, z) {
+    const dx = (this.heightAt(x + 1, z) - this.heightAt(x - 1, z)) / 2;
+    const dz = (this.heightAt(x, z + 1) - this.heightAt(x, z - 1)) / 2;
+    return 1 - 1 / Math.sqrt(1 + dx * dx + dz * dz);
   }
 
   /**
@@ -126,25 +153,28 @@ export class BeachEnvironment {
   }
 
   /**
-   * Waterline distance from the island centre for the direction of (x, z).
-   * The landing beach (towards +Z) stays a smooth arc; the rest of the coast wobbles.
+   * Distance from the island centre to the waterline in the direction of (x, z): an oval,
+   * with a wobbling coast everywhere except the landing beach (towards +Z), which stays a smooth arc.
    */
   _shoreRadius(x, z) {
-    const theta = Math.atan2(x, z);
-    const wobble = Math.sin(3 * theta + 0.7) * 10 + Math.sin(7 * theta + 2.1) * 5;
-    return SHORE_RADIUS + wobble * smoothstep(0.35, 1.0, Math.abs(theta));
+    const theta = Math.atan2(x, z - ISLAND_CENTRE_Z);
+    const sin = Math.sin(theta);
+    const cos = Math.cos(theta);
+    const oval = (ISLAND_HALF_WIDTH * ISLAND_HALF_LENGTH) /
+      Math.sqrt((ISLAND_HALF_LENGTH * sin) ** 2 + (ISLAND_HALF_WIDTH * cos) ** 2);
+    const wobble = Math.sin(3 * theta + 0.7) * 14 + Math.sin(7 * theta + 2.1) * 7 + Math.sin(11 * theta + 1.3) * 3;
+    return oval + wobble * smoothstep(0.35, 1.0, Math.abs(theta));
   }
 
   /**
    * Distance from the jungle path's centreline, which winds from the beach to the village.
    */
-  _pathDistance(x, z) {
+  pathDistance(x, z) {
     return Math.abs(x - Math.sin(z * 0.018) * 16);
   }
 
   _islandHeight(x, z) {
-    const distance = Math.hypot(x, z);
-    const inland = this._shoreRadius(x, z) - distance; // Meters inland from the waterline
+    const inland = this.inlandDistance(x, z);
 
     // Sea floor drops away quickly so the anchored ship's hull clears it
     if (inland < 0) return Math.max(-14, inland * 0.4 - 0.2);
@@ -155,13 +185,14 @@ export class BeachEnvironment {
 
     // Hills behind the beach, with a valley carved along the jungle path
     const rise = smoothstep(BEACH_WIDTH, BEACH_WIDTH + HILLS_RISE, inland);
-    const path = 1 - smoothstep(6, 20, this._pathDistance(x, z));
-    const hills = (4 + fbm2D(x * 0.009, z * 0.009, 4, SEED) * 18) * (1 - path * 0.8);
+    const path = 1 - smoothstep(6, 20, this.pathDistance(x, z));
+    const hills = (5 + fbm2D(x * 0.008, z * 0.008, 4, SEED) * 22) * (1 - path * 0.8);
     const height = beach + rise * hills;
 
-    // Village plateau at the centre (Level 3)
-    const plateau = 1 - smoothstep(60, 95, distance);
-    return height + (PLATEAU_HEIGHT - height) * plateau;
+    // Village plateau at the far end (Level 3)
+    const fromVillage = Math.hypot(x - VILLAGE.x, z - VILLAGE.z);
+    const plateau = 1 - smoothstep(VILLAGE.radius, VILLAGE.radius + VILLAGE_BLEND, fromVillage);
+    return height + (VILLAGE.height - height) * plateau;
   }
 
   _islandColor(x, z, height, slope, out) {
@@ -169,7 +200,7 @@ export class BeachEnvironment {
       return out.copy(SEABED_DEEP).lerp(SEABED, smoothstep(-8, -0.3, height));
     }
 
-    const inland = this._shoreRadius(x, z) - Math.hypot(x, z);
+    const inland = this.inlandDistance(x, z);
     const variation = valueNoise2D(x * 0.06, z * 0.06, SEED + 3);
 
     // Sand, darker where the sea wets it
@@ -178,7 +209,7 @@ export class BeachEnvironment {
 
     // Grass inland, worn to dirt along the jungle path
     this._grassColor.copy(GRASS).lerp(GRASS_DARK, variation);
-    this._grassColor.lerp(DIRT, (1 - smoothstep(4, 10, this._pathDistance(x, z))) * 0.85);
+    this._grassColor.lerp(DIRT, (1 - smoothstep(4, 10, this.pathDistance(x, z))) * 0.85);
     out.lerp(this._grassColor, smoothstep(BEACH_WIDTH - 8, BEACH_WIDTH + 6, inland));
 
     // Bare rock on steep slopes

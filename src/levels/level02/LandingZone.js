@@ -50,6 +50,7 @@ export class LandingZone {
     this.helicopters = [];
     this.colliders = [];
     this.spawnPoints = {};
+    this.clearings = []; // { x, z, radius } circles that scenery must leave open
 
     this.materials = {
       metal: new THREE.MeshStandardMaterial({ color: 0x59616a, roughness: 0.55, metalness: 0.6 }),
@@ -114,6 +115,10 @@ export class LandingZone {
     const spawnY = DECK_HEIGHT + rampT * (PLATFORM_HEIGHT - DECK_HEIGHT) + 0.15;
     this.spawnPoints.deck = this.ship.localToWorld(DECK_SPAWN_X, spawnY, BOARDING_Z);
     this.spawnPoints.gangwayFoot = this.ship.localToWorld(gangwayFoot.x + 1.5, gangwayFoot.y + 0.3, gangwayFoot.z);
+
+    // Keep the gangway's foot and the walk up the beach open
+    this.clearings.push({ x: footWorld.x, z: footWorld.z, radius: 10 });
+    this.clearings.push({ x: footWorld.x, z: footWorld.z - 14, radius: 8 });
   }
 
   /**
@@ -215,6 +220,7 @@ export class LandingZone {
     if (collider) this.colliders.push(collider);
 
     this.helicopters.push(model);
+    this.clearings.push({ x, z, radius: 9 }); // Rotor disc
   }
 
   /**
@@ -231,6 +237,7 @@ export class LandingZone {
       this.physicsWorld.removeRigidBody(collider.rigidBody);
     }
     this.colliders = [];
+    this.clearings = [];
 
     for (const helicopter of this.helicopters) {
       helicopter.dispose();

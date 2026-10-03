@@ -19,7 +19,7 @@ export class ControlsHelper {
       • <strong>W, A, S, D:</strong> Walk on Deck<br/>
       • <strong>Shift:</strong> Sprint &nbsp;|&nbsp; <strong>Space:</strong> Jump<br/>
       • <strong>[E]:</strong> Mount / Dismount Station (when in ring)<br/>
-      • <strong>[V] / [C]:</strong> Toggle 1st / 3rd Person View<br/>
+      • <strong>[V] / [Tab]:</strong> Toggle 1st / 3rd Person View<br/>
       • <strong>[B] / [F2]:</strong> Toggle Battleship Colliders<br/>
     `;
 

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BaseLevel } from './BaseLevel.js';
 import { BeachEnvironment } from './level02/BeachEnvironment.js';
 import { LandingZone } from './level02/LandingZone.js';
+import { BeachCover } from './level02/BeachCover.js';
 import { Player } from '../entities/Player.js';
 
 /**
@@ -10,8 +11,9 @@ import { Player } from '../entities/Player.js';
  * Sandbox for Level 2 (The Beach). Level 2 features are proven here before they are
  * promoted into Level02. Features:
  * - Island terrain with a matching heightfield collider, calm sea and dusk lighting
- * - Landing zone: anchored ship, boarding steps, gangway and parked helicopters
- * - Player spawned on the ship's deck at the top of the gangway
+ * - Landing zone: anchored ship, boarding ramp, gangway and parked helicopters
+ * - Cover: palms, jungle trees, rocks and bushes; crouch [C] in a bush to hide
+ * - Player spawned on the ship's deck at the foot of the boarding ramp
  * - Aerial orbit camera for inspecting the island ([F1] or the dev tools panel)
  */
 export class Level02TestLevel extends BaseLevel {
@@ -19,7 +21,9 @@ export class Level02TestLevel extends BaseLevel {
     super(gameWorld, 'Level 2: Beach Test Level');
     this.environment = null;
     this.landingZone = null;
+    this.cover = null;
     this.player = null;
+    this._wasConcealed = false;
 
     // Dev Tools Camera System
     this.cameraMode = 'PLAYER'; // 'PLAYER' | 'AERIAL'
@@ -39,15 +43,19 @@ export class Level02TestLevel extends BaseLevel {
     this.landingZone = this.trackDisposable(new LandingZone(this.gameWorld, this.environment));
     await this.landingZone.build();
 
-    // 3. Player on deck at the foot of the boarding ramp, facing the beach (-Z).
+    // 3. Trees, rocks and bushes, leaving the landing zone open
+    this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, this.landingZone.clearings));
+    this.cover.build();
+
+    // 4. Player on deck at the foot of the boarding ramp, facing the beach (-Z).
     //    Snap-to-ground keeps them on the ground walking down the gangway and the island's hills.
     const spawn = this.landingZone.spawnPoints.deck;
-    this.player = new Player(this.gameWorld, { snapToGround: true });
+    this.player = new Player(this.gameWorld, { snapToGround: true, canCrouch: true });
     this.player.setPosition(spawn.x, spawn.y, spawn.z);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
-    // 4. Dev tools: aerial camera and collider toggle
+    // 5. Dev tools: aerial camera and collider toggle
     this._initAerialCamera();
     this._initDevTools();
 
@@ -115,11 +123,13 @@ export class Level02TestLevel extends BaseLevel {
   }
 
   /**
-   * Dev check, run once after the first physics step: rays cast straight down must hit the
-   * collider at the height the mesh shows. A mismatch means the heightfield samples are misordered.
+   * Dev check, run once after the first physics step: rays cast straight down at the terrain
+   * collider alone must hit it at the height the mesh shows. A mismatch means the heightfield
+   * samples are misordered.
    */
   _verifyTerrainCollider() {
     const physics = this.gameWorld.physics;
+    const terrainCollider = this.environment.terrain.collider;
     const startY = 200;
     const ray = new physics.RAPIER.Ray({ x: 0, y: startY, z: 0 }, { x: 0, y: -1, z: 0 });
     const samples = [[0, 150], [-60, 120], [80, 100], [-120, -40], [35, 60], [150, -90]];
@@ -128,8 +138,8 @@ export class Level02TestLevel extends BaseLevel {
     for (const [x, z] of samples) {
       ray.origin.x = x;
       ray.origin.z = z;
-      const hit = physics.castRay(ray, 400, true, undefined, undefined, this.player.collider);
-      const error = hit ? Math.abs((startY - hit.timeOfImpact) - this.environment.heightAt(x, z)) : Infinity;
+      const timeOfImpact = terrainCollider.castRay(ray, 400, true);
+      const error = timeOfImpact >= 0 ? Math.abs((startY - timeOfImpact) - this.environment.heightAt(x, z)) : Infinity;
       worstError = Math.max(worstError, error);
     }
 
@@ -158,6 +168,14 @@ export class Level02TestLevel extends BaseLevel {
       this.orbitControls.update();
     }
 
+    // Hidden while crouched in a bush (AI perception reads player.isConcealed)
+    const concealed = this.cover.updateConcealment(this.player);
+    if (concealed !== this._wasConcealed && gameWorld.ui) {
+      if (concealed) gameWorld.ui.showStatusIndicator('HIDDEN', 'success');
+      else gameWorld.ui.hideStatusIndicator();
+      this._wasConcealed = concealed;
+    }
+
     // Fall recovery: back on deck if the player ever drops through the world
     if (this.player.position.y < -20) {
       const spawn = this.landingZone.spawnPoints.deck;
@@ -170,6 +188,7 @@ export class Level02TestLevel extends BaseLevel {
 
     if (this.gameWorld.ui) {
       this.gameWorld.ui.hideDevTools();
+      this.gameWorld.ui.hideStatusIndicator();
     }
     if (this.orbitControls) {
       this.orbitControls.dispose();
@@ -181,5 +200,6 @@ export class Level02TestLevel extends BaseLevel {
     super.dispose();
     this.environment = null;
     this.landingZone = null;
+    this.cover = null;
   }
 }

@@ -49,6 +49,20 @@ export function fbm2D(x, z, octaves = 4, seed = 0) {
 }
 
 /**
+ * Seeded pseudo-random generator (mulberry32). Returns a function giving floats in [0, 1).
+ */
+export function createRandom(seed = 1) {
+  let state = seed >>> 0;
+  return () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
  * Hermite smoothstep, 0 below edge0 and 1 above edge1.
  */
 export function smoothstep(edge0, edge1, x) {

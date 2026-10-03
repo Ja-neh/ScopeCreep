@@ -3,6 +3,7 @@ import { StationHUD } from './components/StationHUD.js';
 import { Crosshair } from './components/Crosshair.js';
 import { HealthBar } from './components/HealthBar.js';
 import { ToastNotification } from './components/ToastNotification.js';
+import { StatusIndicator } from './components/StatusIndicator.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
@@ -28,6 +29,7 @@ export class UIManager {
     this.crosshair = new Crosshair(this.container);
     this.healthBar = new HealthBar(this.container);
     this.toast = new ToastNotification(this.container);
+    this.statusIndicator = new StatusIndicator(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
     this.controlsHelper.hide(); // Hidden until level loads
@@ -169,6 +171,30 @@ export class UIManager {
   showToast(message, variant = 'info', durationMs = 2200) {
     if (this.toast) {
       this.toast.show(message, variant, durationMs);
+    }
+  }
+
+  // =========================================================================
+  // Status Indicator
+  // =========================================================================
+
+  /**
+   * Show a persistent status badge (e.g. "HIDDEN") until hideStatusIndicator is called
+   * @param {string} text
+   * @param {'success'|'info'|'warning'|'danger'} [variant='info']
+   */
+  showStatusIndicator(text, variant = 'info') {
+    if (this.statusIndicator) {
+      this.statusIndicator.show(text, variant);
+    }
+  }
+
+  /**
+   * Hide the status badge
+   */
+  hideStatusIndicator() {
+    if (this.statusIndicator) {
+      this.statusIndicator.hide();
     }
   }
 
@@ -322,6 +348,7 @@ export class UIManager {
     this.hideStationHUD();
     this.hideCrosshair();
     this.hideHealthBar();
+    this.hideStatusIndicator();
     this.hidePauseMenu();
     this.hidePauseButton();
     this.hideDevTools();
@@ -368,6 +395,10 @@ export class UIManager {
     if (this.toast && typeof this.toast.dispose === 'function') {
       this.toast.dispose();
       this.toast = null;
+    }
+    if (this.statusIndicator) {
+      this.statusIndicator.dispose();
+      this.statusIndicator = null;
     }
     if (this.fpsDisplay && typeof this.fpsDisplay.dispose === 'function') {
       this.fpsDisplay.dispose();
