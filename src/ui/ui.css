@@ -635,3 +635,117 @@
   border-color: var(--color-danger);
   color: var(--color-danger);
 }
+
+/* =========================================================================
+   Rifle Crosshair (ticks spread with accuracy via --spread; flashes on hits)
+   ========================================================================= */
+.ui-crosshair-rifle {
+  position: relative;
+  width: 0;
+  height: 0;
+  --tick-color: rgba(248, 250, 252, 0.9);
+}
+
+.ui-crosshair-rifle .ui-crosshair-dot {
+  background: var(--tick-color);
+  width: 3px;
+  height: 3px;
+}
+
+.ui-crosshair-tick {
+  position: absolute;
+  background: var(--tick-color);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  transition: transform 0.05s linear;
+}
+
+.ui-crosshair-tick.tick-top,
+.ui-crosshair-tick.tick-bottom {
+  width: 2px;
+  height: 9px;
+  left: -1px;
+}
+
+.ui-crosshair-tick.tick-left,
+.ui-crosshair-tick.tick-right {
+  width: 9px;
+  height: 2px;
+  top: -1px;
+}
+
+.ui-crosshair-tick.tick-top { bottom: var(--spread, 8px); }
+.ui-crosshair-tick.tick-bottom { top: var(--spread, 8px); }
+.ui-crosshair-tick.tick-left { right: var(--spread, 8px); }
+.ui-crosshair-tick.tick-right { left: var(--spread, 8px); }
+
+.ui-crosshair.hit .ui-crosshair-rifle { --tick-color: #ffffff; }
+.ui-crosshair.hit .ui-crosshair-tick { transform: scale(1.4); }
+.ui-crosshair.kill .ui-crosshair-rifle { --tick-color: var(--color-danger); }
+.ui-crosshair.kill .ui-crosshair-tick { transform: scale(1.6); }
+
+/* =========================================================================
+   Infantry Weapon HUD (Bottom Right)
+   ========================================================================= */
+.ui-weapon-hud {
+  position: fixed;
+  right: 24px;
+  bottom: 84px;
+  min-width: 220px;
+  padding: 10px 16px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  text-align: right;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-weapon-hud-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+}
+
+.ui-weapon-hud-ammo {
+  font-family: var(--font-family-mono);
+  line-height: 1.1;
+}
+
+.ui-weapon-hud-mag {
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.ui-weapon-hud-mag.empty {
+  color: var(--color-danger);
+}
+
+.ui-weapon-hud-reserve {
+  font-size: 16px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.ui-weapon-hud-reload {
+  height: 4px;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ui-weapon-hud-reload-fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-warning);
+}
+
+.ui-weapon-hud-keys {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+}

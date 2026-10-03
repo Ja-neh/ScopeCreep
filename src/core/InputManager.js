@@ -16,6 +16,7 @@ export class InputManager {
     // Mouse positions and deltas
     this.mousePosition = { x: 0, y: 0 };
     this.mouseDelta = { x: 0, y: 0 };
+    this.mouseNormalized = { x: 0, y: 0 };
     this._lastClientX = undefined;
     this._lastClientY = undefined;
 
@@ -38,6 +39,15 @@ export class InputManager {
       firePrimary: ['Mouse0', 'KeyF'],
       specialAction: ['KeyE'],
 
+      // Infantry weapons (wheel "buttons" are single-frame presses)
+      reload: ['KeyR'],
+      weaponPrimary: ['Digit1'],
+      weaponMelee: ['Digit2'],
+      weaponNext: ['WheelDown'],
+      weaponPrev: ['WheelUp'],
+      quickMelee: ['KeyQ'],
+      aimDownSights: ['Mouse2'],
+
       mouseLook: ['Mouse0', 'Mouse2'],
 
       toggleCamera: ['KeyV', 'Tab'],
@@ -52,6 +62,7 @@ export class InputManager {
     this._onMouseDown = this._onMouseDown.bind(this);
     this._onMouseUp = this._onMouseUp.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
+    this._onWheel = this._onWheel.bind(this);
     this._onPointerLockChange = this._onPointerLockChange.bind(this);
 
     this._attachListeners();
@@ -70,6 +81,7 @@ export class InputManager {
     window.addEventListener('mousedown', this._onMouseDown);
     window.addEventListener('mouseup', this._onMouseUp);
     window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('wheel', this._onWheel, { passive: true });
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
     document.addEventListener('pointerlockerror', this._onPointerLockChange);
 
@@ -135,6 +147,14 @@ export class InputManager {
     this.mousePosition.y = e.clientY;
     this.mouseNormalized.x = (e.clientX / window.innerWidth) * 2 - 1;
     this.mouseNormalized.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  }
+
+  /**
+   * Mouse wheel notches become single-frame 'WheelUp' / 'WheelDown' button presses.
+   */
+  _onWheel(e) {
+    if (e.deltaY > 0) this.mouseButtonsJustPressed.add('WheelDown');
+    else if (e.deltaY < 0) this.mouseButtonsJustPressed.add('WheelUp');
   }
 
   _onPointerLockChange() {
@@ -254,6 +274,7 @@ export class InputManager {
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
     window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('wheel', this._onWheel);
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
     window.removeEventListener('contextmenu', this._onContextMenu);
 

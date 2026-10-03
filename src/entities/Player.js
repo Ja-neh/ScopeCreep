@@ -205,6 +205,13 @@ export class Player extends BaseEntity {
     }
   }
 
+  /**
+   * 0 standing to 1 fully crouched, eased (for posing held items).
+   */
+  get crouchAmount() {
+    return this._crouchBlend;
+  }
+
   get cameraMode() {
     return this.springArm ? this.springArm.mode : CameraMode.THIRD_PERSON;
   }

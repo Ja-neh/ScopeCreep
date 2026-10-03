@@ -5,6 +5,18 @@ import { BeachEnvironment } from './level02/BeachEnvironment.js';
 import { LandingZone } from './level02/LandingZone.js';
 import { BeachCover } from './level02/BeachCover.js';
 import { Player } from '../entities/Player.js';
+import { TrainingDummy } from '../entities/TrainingDummy.js';
+import { WeaponController } from '../weapons/WeaponController.js';
+
+// Training dummies on the beach (world x, z, facing). Facing PI looks back at the ship;
+// the last one faces inland so it can be knifed from behind.
+const DUMMY_SPOTS = [
+  { x: -10, z: 175, facing: Math.PI },
+  { x: 6, z: 166, facing: Math.PI },
+  { x: -26, z: 160, facing: Math.PI },
+  { x: -8, z: 140, facing: Math.PI },
+  { x: 16, z: 181, facing: 0 }
+];
 
 /**
  * Level02TestLevel
@@ -13,6 +25,7 @@ import { Player } from '../entities/Player.js';
  * - Island terrain with a matching heightfield collider, calm sea and dusk lighting
  * - Landing zone: anchored ship, boarding ramp, gangway and parked helicopters
  * - Cover: palms, jungle trees, rocks and bushes; crouch [C] in a bush to hide
+ * - Machine gun and knife (WeaponController) with training dummies on the beach
  * - Player spawned on the ship's deck at the foot of the boarding ramp
  * - Aerial orbit camera for inspecting the island ([F1] or the dev tools panel)
  */
@@ -23,6 +36,8 @@ export class Level02TestLevel extends BaseLevel {
     this.landingZone = null;
     this.cover = null;
     this.player = null;
+    this.weapons = null;
+    this.dummies = [];
     this._wasConcealed = false;
 
     // Dev Tools Camera System
@@ -43,8 +58,12 @@ export class Level02TestLevel extends BaseLevel {
     this.landingZone = this.trackDisposable(new LandingZone(this.gameWorld, this.environment));
     await this.landingZone.build();
 
-    // 3. Trees, rocks and bushes, leaving the landing zone open
-    this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, this.landingZone.clearings));
+    // 3. Trees, rocks and bushes, leaving the landing zone and the dummies open
+    const clearings = [
+      ...this.landingZone.clearings,
+      ...DUMMY_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 3 }))
+    ];
+    this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, clearings));
     this.cover.build();
 
     // 4. Player on deck at the foot of the boarding ramp, facing the beach (-Z).
@@ -55,7 +74,19 @@ export class Level02TestLevel extends BaseLevel {
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
-    // 5. Dev tools: aerial camera and collider toggle
+    // 5. Machine gun and knife (added after the player so its camera work runs after the player's)
+    this.weapons = new WeaponController(this.gameWorld, this.player);
+    this.gameWorld.addEntity(this.weapons);
+
+    // 6. Targets
+    for (const spot of DUMMY_SPOTS) {
+      const position = new THREE.Vector3(spot.x, this.environment.heightAt(spot.x, spot.z), spot.z);
+      const dummy = new TrainingDummy(this.gameWorld, { position, facing: spot.facing });
+      this.gameWorld.addEntity(dummy);
+      this.dummies.push(dummy);
+    }
+
+    // 7. Dev tools: aerial camera and collider toggle
     this._initAerialCamera();
     this._initDevTools();
 
@@ -197,6 +228,8 @@ export class Level02TestLevel extends BaseLevel {
     this.gameWorld.setActiveCamera(null);
 
     this.player = null;
+    this.weapons = null;
+    this.dummies = [];
     super.dispose();
     this.environment = null;
     this.landingZone = null;

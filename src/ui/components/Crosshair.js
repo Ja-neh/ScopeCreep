@@ -1,6 +1,7 @@
 /**
  * Crosshair.js
- * Renders center-screen weapon aiming reticles for mounted turret stations (Artillery & Flak).
+ * Renders center-screen weapon aiming reticles: mounted turret stations (Artillery & Flak)
+ * and the infantry rifle, whose ticks spread with weapon accuracy and flash on hits.
  */
 export class Crosshair {
   /**
@@ -14,14 +15,30 @@ export class Crosshair {
     this.element.id = 'station-crosshair';
 
     this.parent.appendChild(this.element);
+
+    this.type = null;
+    this._spreadPx = -1;
+    this._hitTimeout = null;
   }
 
   /**
    * Display a specific crosshair variant.
-   * @param {'artillery'|'flak'|string} type
+   * @param {'artillery'|'flak'|'rifle'|string} type
    */
   show(type = 'artillery') {
-    if (type === 'artillery') {
+    this.type = type;
+    this._spreadPx = -1;
+    if (type === 'rifle') {
+      this.element.innerHTML = `
+        <div class="ui-crosshair-rifle">
+          <span class="ui-crosshair-tick tick-top"></span>
+          <span class="ui-crosshair-tick tick-bottom"></span>
+          <span class="ui-crosshair-tick tick-left"></span>
+          <span class="ui-crosshair-tick tick-right"></span>
+          <span class="ui-crosshair-dot"></span>
+        </div>
+      `;
+    } else if (type === 'artillery') {
       this.element.innerHTML = `
         <div style="
           position: relative;
@@ -60,6 +77,34 @@ export class Crosshair {
   }
 
   /**
+   * Rifle only: spreads the ticks to match the weapon's current cone.
+   * @param {number} spreadRadians - Cone half-angle
+   * @param {number} fovDegrees - Camera vertical field of view
+   */
+  setSpread(spreadRadians, fovDegrees) {
+    if (this.type !== 'rifle') return;
+    const halfHeight = window.innerHeight / 2;
+    const px = Math.round(Math.min(80, Math.max(4, (Math.tan(spreadRadians) / Math.tan((fovDegrees * Math.PI) / 360)) * halfHeight)));
+    if (px === this._spreadPx) return;
+    this._spreadPx = px;
+    this.element.style.setProperty('--spread', `${px}px`);
+  }
+
+  /**
+   * Briefly marks a hit (white) or a kill (red).
+   * @param {boolean} [kill=false]
+   */
+  flashHit(kill = false) {
+    if (this._hitTimeout) clearTimeout(this._hitTimeout);
+    this.element.classList.remove('hit', 'kill');
+    this.element.classList.add(kill ? 'kill' : 'hit');
+    this._hitTimeout = setTimeout(() => {
+      this.element.classList.remove('hit', 'kill');
+      this._hitTimeout = null;
+    }, kill ? 260 : 120);
+  }
+
+  /**
    * Hide the crosshair.
    */
   hide() {
@@ -70,6 +115,10 @@ export class Crosshair {
    * Cleanup DOM nodes.
    */
   dispose() {
+    if (this._hitTimeout) {
+      clearTimeout(this._hitTimeout);
+      this._hitTimeout = null;
+    }
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }

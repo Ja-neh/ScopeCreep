@@ -78,6 +78,39 @@
       "pitch": 0.20
     }
   },
+  "weapons": {
+    "switchSeconds": 0.35,
+    "machineGun": {
+      "damage": 18,
+      "roundsPerSecond": 10,
+      "magazine": 30,
+      "reserveAmmo": 180,
+      "reloadSeconds": 2.0,
+      "range": 200,
+      "spread": 0.012,
+      "spreadPerShot": 0.004,
+      "maxSpread": 0.05,
+      "spreadRecoveryPerSecond": 0.08,
+      "movingSpreadPenalty": 0.01,
+      "adsSpreadMultiplier": 0.35,
+      "crouchSpreadMultiplier": 0.7,
+      "recoilPitch": 0.012,
+      "recoilYaw": 0.004
+    },
+    "knife": {
+      "damage": 75,
+      "range": 2.2,
+      "cooldown": 0.6,
+      "windup": 0.12,
+      "backstabMultiplier": 2.0
+    }
+  },
+  "testing": {
+    "trainingDummy": {
+      "maxHealth": 100,
+      "respawnSeconds": 3.0
+    }
+  },
   "turrets": {
     "artillery": {
       "maxHealth": 900,

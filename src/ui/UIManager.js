@@ -4,6 +4,7 @@ import { Crosshair } from './components/Crosshair.js';
 import { HealthBar } from './components/HealthBar.js';
 import { ToastNotification } from './components/ToastNotification.js';
 import { StatusIndicator } from './components/StatusIndicator.js';
+import { WeaponHUD } from './components/WeaponHUD.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
@@ -30,6 +31,7 @@ export class UIManager {
     this.healthBar = new HealthBar(this.container);
     this.toast = new ToastNotification(this.container);
     this.statusIndicator = new StatusIndicator(this.container);
+    this.weaponHUD = new WeaponHUD(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
     this.controlsHelper.hide(); // Hidden until level loads
@@ -120,6 +122,58 @@ export class UIManager {
   hideCrosshair() {
     if (this.crosshair) {
       this.crosshair.hide();
+    }
+  }
+
+  /**
+   * Rifle crosshair: spread the ticks to the weapon's current accuracy cone
+   * @param {number} spreadRadians
+   * @param {number} fovDegrees
+   */
+  setCrosshairSpread(spreadRadians, fovDegrees) {
+    if (this.crosshair) {
+      this.crosshair.setSpread(spreadRadians, fovDegrees);
+    }
+  }
+
+  /**
+   * Flash the crosshair to confirm a hit (or a kill)
+   * @param {boolean} [kill=false]
+   */
+  flashCrosshairHit(kill = false) {
+    if (this.crosshair) {
+      this.crosshair.flashHit(kill);
+    }
+  }
+
+  // =========================================================================
+  // Infantry Weapon HUD
+  // =========================================================================
+
+  /**
+   * Show the weapon and ammo panel
+   */
+  showWeaponHUD() {
+    if (this.weaponHUD) {
+      this.weaponHUD.show();
+    }
+  }
+
+  /**
+   * @param {{name: string, ammo: number|null, reserve: number, reloadProgress: number|null}} state
+   */
+  updateWeaponHUD(state) {
+    if (this.weaponHUD) {
+      this.weaponHUD.update(state);
+    }
+  }
+
+  /**
+   * Hide the weapon and ammo panel
+   */
+  hideWeaponHUD() {
+    if (this.weaponHUD) {
+      this.weaponHUD.hide();
     }
   }
 
@@ -349,6 +403,7 @@ export class UIManager {
     this.hideCrosshair();
     this.hideHealthBar();
     this.hideStatusIndicator();
+    this.hideWeaponHUD();
     this.hidePauseMenu();
     this.hidePauseButton();
     this.hideDevTools();
@@ -399,6 +454,10 @@ export class UIManager {
     if (this.statusIndicator) {
       this.statusIndicator.dispose();
       this.statusIndicator = null;
+    }
+    if (this.weaponHUD) {
+      this.weaponHUD.dispose();
+      this.weaponHUD = null;
     }
     if (this.fpsDisplay && typeof this.fpsDisplay.dispose === 'function') {
       this.fpsDisplay.dispose();
