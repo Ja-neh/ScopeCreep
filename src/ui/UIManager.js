@@ -5,6 +5,8 @@ import { HealthBar } from './components/HealthBar.js';
 import { ToastNotification } from './components/ToastNotification.js';
 import { StatusIndicator } from './components/StatusIndicator.js';
 import { WeaponHUD } from './components/WeaponHUD.js';
+import { PlayerHealthBar } from './components/PlayerHealthBar.js';
+import { DamageFlash } from './components/DamageFlash.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
@@ -32,6 +34,8 @@ export class UIManager {
     this.toast = new ToastNotification(this.container);
     this.statusIndicator = new StatusIndicator(this.container);
     this.weaponHUD = new WeaponHUD(this.container);
+    this.playerHealth = new PlayerHealthBar(this.container);
+    this.damageFlash = new DamageFlash(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
     this.controlsHelper.hide(); // Hidden until level loads
@@ -143,6 +147,47 @@ export class UIManager {
   flashCrosshairHit(kill = false) {
     if (this.crosshair) {
       this.crosshair.flashHit(kill);
+    }
+  }
+
+  // =========================================================================
+  // Player Health & Damage Feedback
+  // =========================================================================
+
+  /**
+   * Show the player's health bar
+   */
+  showPlayerHealth() {
+    if (this.playerHealth) {
+      this.playerHealth.show();
+    }
+  }
+
+  /**
+   * @param {number} current
+   * @param {number} max
+   */
+  updatePlayerHealth(current, max) {
+    if (this.playerHealth) {
+      this.playerHealth.update(current, max);
+    }
+  }
+
+  /**
+   * Hide the player's health bar
+   */
+  hidePlayerHealth() {
+    if (this.playerHealth) {
+      this.playerHealth.hide();
+    }
+  }
+
+  /**
+   * Red flash around the screen edges (the player was hurt)
+   */
+  flashDamage() {
+    if (this.damageFlash) {
+      this.damageFlash.flash();
     }
   }
 
@@ -404,6 +449,8 @@ export class UIManager {
     this.hideHealthBar();
     this.hideStatusIndicator();
     this.hideWeaponHUD();
+    this.hidePlayerHealth();
+    if (this.damageFlash) this.damageFlash.clear();
     this.hidePauseMenu();
     this.hidePauseButton();
     this.hideDevTools();
@@ -458,6 +505,14 @@ export class UIManager {
     if (this.weaponHUD) {
       this.weaponHUD.dispose();
       this.weaponHUD = null;
+    }
+    if (this.playerHealth) {
+      this.playerHealth.dispose();
+      this.playerHealth = null;
+    }
+    if (this.damageFlash) {
+      this.damageFlash.dispose();
+      this.damageFlash = null;
     }
     if (this.fpsDisplay && typeof this.fpsDisplay.dispose === 'function') {
       this.fpsDisplay.dispose();

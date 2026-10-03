@@ -4,6 +4,7 @@ import { SpringArmCamera, CameraMode } from './components/SpringArmCamera.js';
 import { PlayerModel } from './models/PlayerModel.js';
 import { GroundProbe } from './player-components/GroundProbe.js';
 import { PlatformTracker } from './player-components/PlatformTracker.js';
+import { HealthComponent } from './components/HealthComponent.js';
 import config from '../config.json';
 
 export { CameraMode };
@@ -45,6 +46,11 @@ export class Player extends BaseEntity {
     this.isCrouching = false;
     this.isConcealed = false;
     this._crouchBlend = 0;
+
+    // Side and health. Health is opt-in (levels with enemies pass maxHealth); weapons and
+    // projectiles find the player through its collider's userData.
+    this.faction = options.faction || 'humans';
+    this.health = options.maxHealth ? new HealthComponent(options.maxHealth) : null;
 
     // Capsule dimensions from config or options
     this.capsuleRadius = options.capsuleRadius !== undefined ? options.capsuleRadius : capCfg.radius;
@@ -138,6 +144,7 @@ export class Player extends BaseEntity {
     // 1 Capsule Collider (halfHeight = 0.55, radius = 0.45 => Total Height = 2.0m)
     const colliderDesc = RAPIER.ColliderDesc.capsule(this.capsuleHalfHeight, this.capsuleRadius);
     this.collider = this.physicsWorld.createCollider(colliderDesc, this.rigidBody);
+    this.collider.userData = { entity: this };
 
     // Rapier Kinematic Character Controller (auto-step, slope slide, snap-to-ground)
     // offset: distance that keeps collider floating cleanly above deck loop cuts

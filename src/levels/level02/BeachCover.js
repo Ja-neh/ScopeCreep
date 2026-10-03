@@ -13,6 +13,11 @@ const BUSH_RADIUS = 1.5;      // Hiding radius of a bush at scale 1 (meters)
 const BUSH_HEIGHT = 1.6;
 const BUSH_CELL = 8;          // Lookup grid cell size
 
+// Cover queries (for AI)
+const COVER_MIN_HEIGHT = 1.5;    // Rock must stand this tall above the ground to hide someone standing
+const COVER_STANDOFF = 1.0;      // How far behind the rock's edge to stand
+const COVER_SEARCH_RADIUS = 30;  // Only rocks this close to the searcher are considered
+
 // Numeric grid key (no string building in per-frame lookups)
 const cellKey = (cx, cz) => (cx + 512) * 1024 + (cz + 512);
 
@@ -21,7 +26,8 @@ const cellKey = (cx, cz) => (cx + 512) * 1024 + (cz + 512);
  * Level 2's scenery and cover: palms along the sand, a jungle tree line behind it, boulders
  * on the beach and hills, and bushes to hide in. Placement is seeded, so every player gets the
  * same island; the jungle path and the landing zone stay open.
- * Answers "is this actor hidden?": crouched inside a bush.
+ * Answers "is this actor hidden?" (crouched inside a bush) and "where can I take cover?"
+ * (behind a tall rock, away from a threat) for the AI.
  */
 export class BeachCover {
   /**
@@ -36,6 +42,7 @@ export class BeachCover {
 
     this.vegetation = [];
     this.bushes = [];
+    this.rocks = []; // { x, z, radius, height } for cover queries
     this._bushGrid = new Map();
     this._solids = []; // { x, z, radius } of rocks and trunks already placed, to avoid overlaps
   }
@@ -137,6 +144,45 @@ export class BeachCover {
   }
 
   /**
+   * Finds a spot behind a tall rock, on the side away from `threat`, at a distance from the
+   * threat between minRange and maxRange, preferring spots close to `from`.
+   * @returns {boolean} Whether a spot was found (written to `out`)
+   */
+  findCover(from, threat, out, minRange, maxRange) {
+    const idealRange = (minRange + maxRange) / 2;
+    let bestScore = Infinity;
+    for (const rock of this.rocks) {
+      if (rock.height < COVER_MIN_HEIGHT) continue;
+      if (Math.hypot(rock.x - from.x, rock.z - from.z) > COVER_SEARCH_RADIUS) continue;
+
+      // Stand at the rock's left or right edge, a little behind it: mostly covered, but with
+      // a line of fire past the edge (straight behind the rock, the rock blocks your own shots)
+      const awayLength = Math.hypot(rock.x - threat.x, rock.z - threat.z) || 1;
+      const awayX = (rock.x - threat.x) / awayLength;
+      const awayZ = (rock.z - threat.z) / awayLength;
+      const back = rock.radius * 0.5;
+      const side = rock.radius + COVER_STANDOFF * 0.6;
+
+      for (const sign of [1, -1]) {
+        const x = rock.x + awayX * back - awayZ * side * sign;
+        const z = rock.z + awayZ * back + awayX * side * sign;
+
+        const range = Math.hypot(x - threat.x, z - threat.z);
+        if (range < minRange || range > maxRange) continue;
+        const ground = this.environment.heightAt(x, z);
+        if (ground < 0.6) continue;
+
+        const score = Math.hypot(x - from.x, z - from.z) + Math.abs(range - idealRange) * 0.5;
+        if (score < bestScore) {
+          bestScore = score;
+          out.set(x, ground, z);
+        }
+      }
+    }
+    return bestScore < Infinity;
+  }
+
+  /**
    * Walks a jittered grid over the island; at each candidate, `chance` gives an acceptance
    * probability from the ground there, and `place` adds the prop (returning false to skip).
    */
@@ -207,6 +253,7 @@ export class BeachCover {
     if (this._overlapsSolid(c.x, c.z, radius)) return false;
     list.push({ x: c.x, y: c.height - 0.35 * scale.y, z: c.z, rotation: random() * Math.PI * 2, scale });
     this._solids.push({ x: c.x, z: c.z, radius });
+    this.rocks.push({ x: c.x, z: c.z, radius, height: 0.65 * scale.y });
     return true;
   }
 
@@ -240,6 +287,7 @@ export class BeachCover {
     }
     this.vegetation = [];
     this.bushes = [];
+    this.rocks = [];
     this._bushGrid.clear();
     this._solids = [];
   }

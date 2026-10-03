@@ -18,9 +18,22 @@
       "maxLifeTime": 6.5,
       "damage": 350,
       "damageType": "EXPLOSIVE"
+    },
+    "plasma": {
+      "capacity": 60,
+      "speed": 70.0,
+      "gravity": 0.0,
+      "drag": 0.0,
+      "maxLifeTime": 3.0,
+      "damage": 8,
+      "damageType": "KINETIC"
     }
   },
   "player": {
+    "vitals": {
+      "maxHealth": 100,
+      "respawnSeconds": 3.0
+    },
     "locomotion": {
       "walkSpeed": 8.0,
       "sprintSpeed": 14.0,
@@ -103,6 +116,28 @@
       "cooldown": 0.6,
       "windup": 0.12,
       "backstabMultiplier": 2.0
+    }
+  },
+  "enemies": {
+    "trooper": {
+      "maxHealth": 90,
+      "walkSpeed": 2.5,
+      "runSpeed": 5.5,
+      "sightRange": 60,
+      "concealedSightRange": 8,
+      "awarenessRadius": 6,
+      "fieldOfViewDegrees": 120,
+      "hearingRange": 40,
+      "alertRadius": 25,
+      "burstShots": 3,
+      "burstInterval": 0.18,
+      "burstPause": 1.2,
+      "aimError": 0.035,
+      "minRange": 12,
+      "maxRange": 30,
+      "flankAfterSeconds": 6,
+      "searchSeconds": 6,
+      "corpseSeconds": 4
     }
   },
   "testing": {

@@ -749,3 +749,64 @@
   font-size: 10px;
   color: var(--text-muted);
 }
+
+/* =========================================================================
+   Player Health (Bottom Centre) & Damage Flash
+   ========================================================================= */
+.ui-player-health {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+  padding: 8px 12px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-player-health-track {
+  height: 8px;
+  margin-top: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ui-player-health-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--color-success);
+  transition: width 0.15s ease-out;
+}
+
+.ui-player-health.low .ui-player-health-fill {
+  background: var(--color-danger);
+}
+
+.ui-player-health.low {
+  color: var(--color-danger);
+}
+
+.ui-damage-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 900;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(230, 57, 70, 0) 55%, rgba(230, 57, 70, 0.55) 100%);
+  transition: opacity 0.45s ease-out;
+}
+
+.ui-damage-flash.active {
+  opacity: 1;
+  transition: opacity 0.04s ease-in;
+}

@@ -7,6 +7,10 @@ import { BeachCover } from './level02/BeachCover.js';
 import { Player } from '../entities/Player.js';
 import { TrainingDummy } from '../entities/TrainingDummy.js';
 import { WeaponController } from '../weapons/WeaponController.js';
+import { ProjectilePool } from '../entities/ProjectilePool.js';
+import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
+import { AlienSquad } from '../ai/AlienSquad.js';
+import config from '../config.json';
 
 // Training dummies on the beach (world x, z, facing). Facing PI looks back at the ship;
 // the last one faces inland so it can be knifed from behind.
@@ -18,6 +22,14 @@ const DUMMY_SPOTS = [
   { x: 16, z: 181, facing: 0 }
 ];
 
+// Alien troopers patrolling the jungle edge (world x, z)
+const TROOPER_SPOTS = [
+  { x: -30, z: 105 },
+  { x: 5, z: 95 },
+  { x: 35, z: 110 }
+];
+const TROOPER_RESPAWN_SECONDS = 5; // After the last one dies, a fresh trio arrives
+
 /**
  * Level02TestLevel
  * Sandbox for Level 2 (The Beach). Level 2 features are proven here before they are
@@ -26,6 +38,8 @@ const DUMMY_SPOTS = [
  * - Landing zone: anchored ship, boarding ramp, gangway and parked helicopters
  * - Cover: palms, jungle trees, rocks and bushes; crouch [C] in a bush to hide
  * - Machine gun and knife (WeaponController) with training dummies on the beach
+ * - Three alien troopers at the jungle edge that see, hear, take cover and shoot plasma;
+ *   the player has health and respawns on the beach
  * - Player spawned on the ship's deck at the foot of the boarding ramp
  * - Aerial orbit camera for inspecting the island ([F1] or the dev tools panel)
  */
@@ -38,7 +52,11 @@ export class Level02TestLevel extends BaseLevel {
     this.player = null;
     this.weapons = null;
     this.dummies = [];
+    this.projectilePool = null;
+    this.squad = null;
     this._wasConcealed = false;
+    this._respawnTimer = -1;
+    this._troopRespawnTimer = -1;
 
     // Dev Tools Camera System
     this.cameraMode = 'PLAYER'; // 'PLAYER' | 'AERIAL'
@@ -61,7 +79,8 @@ export class Level02TestLevel extends BaseLevel {
     // 3. Trees, rocks and bushes, leaving the landing zone and the dummies open
     const clearings = [
       ...this.landingZone.clearings,
-      ...DUMMY_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 3 }))
+      ...DUMMY_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 3 })),
+      ...TROOPER_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 2 }))
     ];
     this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, clearings));
     this.cover.build();
@@ -69,14 +88,42 @@ export class Level02TestLevel extends BaseLevel {
     // 4. Player on deck at the foot of the boarding ramp, facing the beach (-Z).
     //    Snap-to-ground keeps them on the ground walking down the gangway and the island's hills.
     const spawn = this.landingZone.spawnPoints.deck;
-    this.player = new Player(this.gameWorld, { snapToGround: true, canCrouch: true });
+    this.player = new Player(this.gameWorld, {
+      snapToGround: true,
+      canCrouch: true,
+      maxHealth: config.player.vitals.maxHealth
+    });
     this.player.setPosition(spawn.x, spawn.y, spawn.z);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
-    // 5. Machine gun and knife (added after the player so its camera work runs after the player's)
-    this.weapons = new WeaponController(this.gameWorld, this.player);
+    this.player.health.onDamage = () => this._onPlayerHurt();
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showPlayerHealth();
+      this.gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
+    }
+
+    // 5. Machine gun and knife (added after the player so its camera work runs after the player's).
+    //    Every shot is a noise the aliens can hear.
+    this.weapons = new WeaponController(this.gameWorld, this.player, {
+      onGunshot: (position) => this.squad.reportNoise(position)
+    });
     this.gameWorld.addEntity(this.weapons);
+
+    // 5b. Projectiles for the aliens' plasma rifles
+    this.projectilePool = new ProjectilePool(this.gameWorld);
+    this.gameWorld.addEntity(this.projectilePool);
+    this.gameWorld.projectilePool = this.projectilePool;
+
+    // 5c. Alien squad at the jungle edge
+    const trooperCfg = config.enemies.trooper;
+    this.squad = this.trackDisposable(new AlienSquad(this.gameWorld, {
+      targets: [this.player],
+      cover: this.cover,
+      alertRadius: trooperCfg.alertRadius,
+      corpseSeconds: trooperCfg.corpseSeconds
+    }));
+    this._spawnTroopers();
 
     // 6. Targets
     for (const spot of DUMMY_SPOTS) {
@@ -91,6 +138,51 @@ export class Level02TestLevel extends BaseLevel {
     this._initDevTools();
 
     console.log(`${this.name} initialized.`);
+  }
+
+  _spawnTroopers() {
+    for (const spot of TROOPER_SPOTS) {
+      const position = new THREE.Vector3(spot.x, this.environment.heightAt(spot.x, spot.z) + 0.1, spot.z);
+      this.squad.add(new AlienTrooper(this.gameWorld, { position, squad: this.squad }));
+    }
+  }
+
+  _onPlayerHurt() {
+    const ui = this.gameWorld.ui;
+    if (!ui) return;
+    ui.flashDamage();
+    ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
+  }
+
+  /**
+   * Stand-in for downed and revive (coming with the squad systems): a few seconds down,
+   * then back on the beach at full health.
+   */
+  _updatePlayerDeath(delta) {
+    const player = this.player;
+    const ui = this.gameWorld.ui;
+    if (!player.health.isDead) return;
+
+    if (this._respawnTimer < 0) {
+      this._respawnTimer = config.player.vitals.respawnSeconds;
+      player.isDevSuspended = true; // Freezes movement, camera and weapons while down
+      if (ui) ui.showStatusIndicator('YOU WERE KILLED', 'danger');
+      return;
+    }
+
+    this._respawnTimer -= delta;
+    if (this._respawnTimer > 0) return;
+
+    this._respawnTimer = -1;
+    const spawn = this.landingZone.spawnPoints.gangwayFoot;
+    player.teleport(spawn.x, spawn.y, spawn.z);
+    player.health.reset();
+    player.isDevSuspended = this.cameraMode === 'AERIAL';
+    this._wasConcealed = false;
+    if (ui) {
+      ui.hideStatusIndicator();
+      ui.updatePlayerHealth(player.health.currentHealth, player.health.maxHealth);
+    }
   }
 
   _initAerialCamera() {
@@ -199,8 +291,21 @@ export class Level02TestLevel extends BaseLevel {
       this.orbitControls.update();
     }
 
+    // Aliens: clear the dead, and send a fresh trio once all are down
+    this.squad.update();
+    if (this.squad.aliveCount === 0) {
+      if (this._troopRespawnTimer < 0) this._troopRespawnTimer = TROOPER_RESPAWN_SECONDS;
+      this._troopRespawnTimer -= delta;
+      if (this._troopRespawnTimer <= 0) {
+        this._troopRespawnTimer = -1;
+        this._spawnTroopers();
+      }
+    }
+
+    this._updatePlayerDeath(delta);
+
     // Hidden while crouched in a bush (AI perception reads player.isConcealed)
-    const concealed = this.cover.updateConcealment(this.player);
+    const concealed = !this.player.health.isDead && this.cover.updateConcealment(this.player);
     if (concealed !== this._wasConcealed && gameWorld.ui) {
       if (concealed) gameWorld.ui.showStatusIndicator('HIDDEN', 'success');
       else gameWorld.ui.hideStatusIndicator();
@@ -220,6 +325,7 @@ export class Level02TestLevel extends BaseLevel {
     if (this.gameWorld.ui) {
       this.gameWorld.ui.hideDevTools();
       this.gameWorld.ui.hideStatusIndicator();
+      this.gameWorld.ui.hidePlayerHealth();
     }
     if (this.orbitControls) {
       this.orbitControls.dispose();
@@ -230,7 +336,12 @@ export class Level02TestLevel extends BaseLevel {
     this.player = null;
     this.weapons = null;
     this.dummies = [];
-    super.dispose();
+    super.dispose(); // Disposes the squad, which removes the aliens
+    this.squad = null;
+    if (this.gameWorld.projectilePool === this.projectilePool) {
+      this.gameWorld.projectilePool = null;
+    }
+    this.projectilePool = null;
     this.environment = null;
     this.landingZone = null;
     this.cover = null;
