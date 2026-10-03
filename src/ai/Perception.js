@@ -70,7 +70,7 @@ export class Perception {
    */
   canSee(candidate, physicsWorld) {
     const owner = this.owner;
-    this._eye.set(owner.position.x, owner.position.y + EYE_HEIGHT, owner.position.z);
+    this._eye.set(owner.position.x, owner.position.y + (owner.eyeHeight || EYE_HEIGHT), owner.position.z);
     this._toTarget.set(candidate.position.x, candidate.position.y + TARGET_CHEST_HEIGHT, candidate.position.z).sub(this._eye);
     const distance = this._toTarget.length();
 

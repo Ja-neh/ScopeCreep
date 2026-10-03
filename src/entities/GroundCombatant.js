@@ -3,9 +3,7 @@ import { BaseEntity } from './BaseEntity.js';
 import { HealthComponent } from './components/HealthComponent.js';
 import config from '../config.json';
 
-const CAPSULE_RADIUS = 0.45;
-const CAPSULE_HALF_HEIGHT = 0.55;
-const CAPSULE_CENTER = CAPSULE_RADIUS + CAPSULE_HALF_HEIGHT;
+const DEFAULT_CAPSULE = { radius: 0.45, halfHeight: 0.55 }; // Human-sized: 2 m tall
 const ARRIVE_RADIUS = 0.8;
 const ACCELERATION = 10;          // How fast velocity reaches the desired speed (1/s)
 const TURN_RATE = 6;              // Radians per second
@@ -35,9 +33,10 @@ export class GroundCombatant extends BaseEntity {
    * @param {THREE.Vector3} options.position - Feet position
    * @param {string} options.faction - 'humans' or 'aliens'
    * @param {number} options.maxHealth
-   * @param {Object} options.model - Has `mesh`, animate(delta, speed, aiming), setFallen(t), setHitFlash(t), dispose()
+   * @param {Object} options.model - Has `mesh`, animate(delta, speed, aiming, raise), setFallen(t), setHitFlash(t), dispose()
+   * @param {{radius: number, halfHeight: number}} [options.capsule] - Collider size (default human-sized)
    */
-  constructor(gameWorld, { name, position, faction, maxHealth, model }) {
+  constructor(gameWorld, { name, position, faction, maxHealth, model, capsule = DEFAULT_CAPSULE }) {
     super(name);
     this.gameWorld = gameWorld;
     this.physicsWorld = gameWorld.physics;
@@ -52,6 +51,9 @@ export class GroundCombatant extends BaseEntity {
     this.yaw = 0;
     this.isGrounded = false;
     this.isAiming = false;
+    this.attackPose = 0; // 0..1: arms raised for a melee strike
+    this.capsuleCenter = capsule.radius + capsule.halfHeight;
+    this.eyeHeight = this.capsuleCenter * 1.6; // Used by Perception
 
     // Movement orders
     this.moveTarget = new THREE.Vector3();
@@ -72,9 +74,9 @@ export class GroundCombatant extends BaseEntity {
     // Physics
     const RAPIER = this.physicsWorld.RAPIER;
     this.rigidBody = this.physicsWorld.createRigidBody(
-      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(position.x, position.y + CAPSULE_CENTER, position.z)
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(position.x, position.y + this.capsuleCenter, position.z)
     );
-    this.collider = this.physicsWorld.createCollider(RAPIER.ColliderDesc.capsule(CAPSULE_HALF_HEIGHT, CAPSULE_RADIUS), this.rigidBody);
+    this.collider = this.physicsWorld.createCollider(RAPIER.ColliderDesc.capsule(capsule.halfHeight, capsule.radius), this.rigidBody);
     this.collider.userData = { entity: this };
     this.characterController = this.physicsWorld.createCharacterController({
       offset: 0.01,
@@ -182,7 +184,7 @@ export class GroundCombatant extends BaseEntity {
 
     const next = { x: current.x + moved.x, y: current.y + moved.y, z: current.z + moved.z };
     this.rigidBody.setNextKinematicTranslation(next);
-    this.position.set(next.x, next.y - CAPSULE_CENTER, next.z);
+    this.position.set(next.x, next.y - this.capsuleCenter, next.z);
 
     this._turn(delta);
     this._checkStuck(delta);
@@ -282,7 +284,7 @@ export class GroundCombatant extends BaseEntity {
     if (this.isDead) {
       this.model.setFallen(Math.min(1, this.deathTime / 0.5));
     } else {
-      this.model.animate(delta, Math.hypot(this.velocity.x, this.velocity.z), this.isAiming);
+      this.model.animate(delta, Math.hypot(this.velocity.x, this.velocity.z), this.isAiming, this.attackPose);
     }
   }
 

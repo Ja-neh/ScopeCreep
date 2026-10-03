@@ -135,6 +135,13 @@ export class BeachCover {
   }
 
   /**
+   * True when a circle of `radius` at (x, z) touches no rock or trunk (e.g. to spawn someone).
+   */
+  isClearOfSolids(x, z, radius) {
+    return !this._overlapsSolid(x, z, radius);
+  }
+
+  /**
    * Hidden = crouched inside a bush. Sets `actor.isConcealed` and returns it.
    * @param {{position: THREE.Vector3, isCrouching: boolean}} actor
    */

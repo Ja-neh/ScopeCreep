@@ -1,15 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { BaseLevel } from './BaseLevel.js';
-import { BeachEnvironment } from './level02/BeachEnvironment.js';
-import { LandingZone } from './level02/LandingZone.js';
-import { BeachCover } from './level02/BeachCover.js';
-import { Player } from '../entities/Player.js';
+import { Level02 } from './Level02.js';
 import { TrainingDummy } from '../entities/TrainingDummy.js';
-import { WeaponController } from '../weapons/WeaponController.js';
-import { ProjectilePool } from '../entities/ProjectilePool.js';
-import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
-import { AlienSquad } from '../ai/AlienSquad.js';
 import config from '../config.json';
 
 // Training dummies on the beach (world x, z, facing). Facing PI looks back at the ship;
@@ -22,146 +14,127 @@ const DUMMY_SPOTS = [
   { x: 16, z: 181, facing: 0 }
 ];
 
-// Alien troopers patrolling the jungle edge (world x, z)
-const TROOPER_SPOTS = [
-  { x: -30, z: 105 },
-  { x: 5, z: 95 },
-  { x: 35, z: 110 }
+// Aliens patrolling behind the dummies, 60-80 m from the gangway (world x, z, type)
+const ALIEN_SPOTS = [
+  { x: -30, z: 130, type: 'trooper' },
+  { x: 5, z: 122, type: 'trooper' },
+  { x: 35, z: 135, type: 'trooper' },
+  { x: 60, z: 128, type: 'brute' }
 ];
-const TROOPER_RESPAWN_SECONDS = 5; // After the last one dies, a fresh trio arrives
+const ALIEN_RESPAWN_SECONDS = 5; // After the last one dies, a fresh group arrives
+const DEV_SPAWN_DISTANCE = 30;   // F3 drops an alien this far ahead of the player
 
 /**
  * Level02TestLevel
- * Sandbox for Level 2 (The Beach). Level 2 features are proven here before they are
- * promoted into Level02. Features:
- * - Island terrain with a matching heightfield collider, calm sea and dusk lighting
- * - Landing zone: anchored ship, boarding ramp, gangway and parked helicopters
- * - Cover: palms, jungle trees, rocks and bushes; crouch [C] in a bush to hide
- * - Machine gun and knife (WeaponController) with training dummies on the beach
- * - Three alien troopers at the jungle edge that see, hear, take cover and shoot plasma;
- *   the player has health and respawns on the beach
- * - Player spawned on the ship's deck at the foot of the boarding ramp
- * - Aerial orbit camera for inspecting the island ([F1] or the dev tools panel)
+ * Sandbox for Level 2 (The Beach): the real Level02 world (island, landing, cover, weapons,
+ * aliens) without the waves, plus things for trying features out:
+ * - Training dummies on the beach (one faces away for backstabs)
+ * - Three troopers and a brute behind the dummies that come back after they all die
+ * - [F3] spawns a trooper 30 m ahead of the player, [Shift]+[F3] a brute
+ * - The player respawns on the beach instead of failing the mission
+ * - Aerial orbit camera ([F1] or the dev tools panel) and a terrain/collider self-check
  */
-export class Level02TestLevel extends BaseLevel {
+export class Level02TestLevel extends Level02 {
   constructor(gameWorld) {
     super(gameWorld, 'Level 2: Beach Test Level');
-    this.environment = null;
-    this.landingZone = null;
-    this.cover = null;
-    this.player = null;
-    this.weapons = null;
+    this.state = 'sandbox';
     this.dummies = [];
-    this.projectilePool = null;
-    this.squad = null;
-    this._wasConcealed = false;
+
     this._respawnTimer = -1;
-    this._troopRespawnTimer = -1;
+    this._alienRespawnTimer = -1;
+    this._terrainChecked = false;
 
     // Dev Tools Camera System
     this.cameraMode = 'PLAYER'; // 'PLAYER' | 'AERIAL'
     this.aerialCamera = null;
     this.orbitControls = null;
-    this._terrainChecked = false;
   }
 
-  async init() {
-    await super.init();
-
-    // 1. Island, sea, sky and lighting
-    this.environment = this.trackDisposable(new BeachEnvironment(this.gameWorld));
-    this.environment.build();
-
-    // 2. Ship, gangway and parked helicopters
-    this.landingZone = this.trackDisposable(new LandingZone(this.gameWorld, this.environment));
-    await this.landingZone.build();
-
-    // 3. Trees, rocks and bushes, leaving the landing zone and the dummies open
-    const clearings = [
-      ...this.landingZone.clearings,
+  _extraClearings() {
+    return [
       ...DUMMY_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 3 })),
-      ...TROOPER_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 2 }))
+      ...ALIEN_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 2 }))
     ];
-    this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, clearings));
-    this.cover.build();
+  }
 
-    // 4. Player on deck at the foot of the boarding ramp, facing the beach (-Z).
-    //    Snap-to-ground keeps them on the ground walking down the gangway and the island's hills.
-    const spawn = this.landingZone.spawnPoints.deck;
-    this.player = new Player(this.gameWorld, {
-      snapToGround: true,
-      canCrouch: true,
-      maxHealth: config.player.vitals.maxHealth
-    });
-    this.player.setPosition(spawn.x, spawn.y, spawn.z);
-    this.player.yaw = 0;
-    this.gameWorld.addEntity(this.player);
-
-    this.player.health.onDamage = () => this._onPlayerHurt();
-    if (this.gameWorld.ui) {
-      this.gameWorld.ui.showPlayerHealth();
-      this.gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
-    }
-
-    // 5. Machine gun and knife (added after the player so its camera work runs after the player's).
-    //    Every shot is a noise the aliens can hear.
-    this.weapons = new WeaponController(this.gameWorld, this.player, {
-      onGunshot: (position) => this.squad.reportNoise(position)
-    });
-    this.gameWorld.addEntity(this.weapons);
-
-    // 5b. Projectiles for the aliens' plasma rifles
-    this.projectilePool = new ProjectilePool(this.gameWorld);
-    this.gameWorld.addEntity(this.projectilePool);
-    this.gameWorld.projectilePool = this.projectilePool;
-
-    // 5c. Alien squad at the jungle edge
-    const trooperCfg = config.enemies.trooper;
-    this.squad = this.trackDisposable(new AlienSquad(this.gameWorld, {
-      targets: [this.player],
-      cover: this.cover,
-      alertRadius: trooperCfg.alertRadius,
-      corpseSeconds: trooperCfg.corpseSeconds
-    }));
-    this._spawnTroopers();
-
-    // 6. Targets
+  async _startScenario() {
     for (const spot of DUMMY_SPOTS) {
       const position = new THREE.Vector3(spot.x, this.environment.heightAt(spot.x, spot.z), spot.z);
       const dummy = new TrainingDummy(this.gameWorld, { position, facing: spot.facing });
       this.gameWorld.addEntity(dummy);
       this.dummies.push(dummy);
     }
+    this._spawnAliens();
 
-    // 7. Dev tools: aerial camera and collider toggle
-    this._initAerialCamera();
-    this._initDevTools();
-
-    console.log(`${this.name} initialized.`);
-  }
-
-  _spawnTroopers() {
-    for (const spot of TROOPER_SPOTS) {
-      const position = new THREE.Vector3(spot.x, this.environment.heightAt(spot.x, spot.z) + 0.1, spot.z);
-      this.squad.add(new AlienTrooper(this.gameWorld, { position, squad: this.squad }));
+    if (this.gameWorld.renderer) {
+      this._initAerialCamera();
+      this._initDevTools();
+    }
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showToast('Sandbox: [F1] aerial camera · [F3] spawn trooper · [Shift]+[F3] spawn brute', 'info', 6000);
     }
   }
 
-  _onPlayerHurt() {
-    const ui = this.gameWorld.ui;
-    if (!ui) return;
-    ui.flashDamage();
-    ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
+  /**
+   * Dev: drops an alien on clear ground ahead of the player.
+   * @returns {AlienCombatant|null}
+   */
+  spawnAlienAhead(type) {
+    const p = this.player.position;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const angle = this.player.yaw + (Math.random() - 0.5) * 0.8;
+      const distance = DEV_SPAWN_DISTANCE + (Math.random() - 0.5) * 10;
+      const x = p.x - Math.sin(angle) * distance;
+      const z = p.z - Math.cos(angle) * distance;
+      if (this.environment.heightAt(x, z) > 0.6 && this.cover.isClearOfSolids(x, z, 1.2)) {
+        return this.createAlien(type, x, z);
+      }
+    }
+    return null;
+  }
+
+  _spawnAliens() {
+    for (const spot of ALIEN_SPOTS) {
+      this.createAlien(spot.type, spot.x, spot.z);
+    }
+  }
+
+  _updateScenario(delta) {
+    if (!this._terrainChecked) {
+      this._terrainChecked = true;
+      this._verifyTerrainCollider();
+    }
+
+    const input = this.gameWorld.input;
+    if (input.isActionJustPressed('devSpawn')) {
+      this.spawnAlienAhead(input.isActionDown('sprint') ? 'brute' : 'trooper');
+    }
+
+    if (this.orbitControls) {
+      if (input.isActionJustPressed('devCamera')) {
+        this.setCameraMode(this.cameraMode === 'PLAYER' ? 'AERIAL' : 'PLAYER');
+      }
+      if (this.cameraMode === 'AERIAL') this.orbitControls.update();
+    }
+
+    // A fresh group once all aliens are down
+    if (this.squad.aliveCount === 0) {
+      if (this._alienRespawnTimer < 0) this._alienRespawnTimer = ALIEN_RESPAWN_SECONDS;
+      this._alienRespawnTimer -= delta;
+      if (this._alienRespawnTimer <= 0) {
+        this._alienRespawnTimer = -1;
+        this._spawnAliens();
+      }
+    }
   }
 
   /**
    * Stand-in for downed and revive (coming with the squad systems): a few seconds down,
    * then back on the beach at full health.
    */
-  _updatePlayerDeath(delta) {
+  _onPlayerKilled(delta) {
     const player = this.player;
     const ui = this.gameWorld.ui;
-    if (!player.health.isDead) return;
 
     if (this._respawnTimer < 0) {
       this._respawnTimer = config.player.vitals.respawnSeconds;
@@ -182,6 +155,34 @@ export class Level02TestLevel extends BaseLevel {
     if (ui) {
       ui.hideStatusIndicator();
       ui.updatePlayerHealth(player.health.currentHealth, player.health.maxHealth);
+    }
+  }
+
+  /**
+   * Dev check, run once after the first physics step: rays cast straight down at the terrain
+   * collider alone must hit it at the height the mesh shows. A mismatch means the heightfield
+   * samples are misordered.
+   */
+  _verifyTerrainCollider() {
+    const physics = this.gameWorld.physics;
+    const terrainCollider = this.environment.terrain.collider;
+    const startY = 200;
+    const ray = new physics.RAPIER.Ray({ x: 0, y: startY, z: 0 }, { x: 0, y: -1, z: 0 });
+    const samples = [[0, 150], [-60, 120], [80, 100], [-120, -40], [35, 60], [150, -90]];
+
+    let worstError = 0;
+    for (const [x, z] of samples) {
+      ray.origin.x = x;
+      ray.origin.z = z;
+      const timeOfImpact = terrainCollider.castRay(ray, 400, true);
+      const error = timeOfImpact >= 0 ? Math.abs((startY - timeOfImpact) - this.environment.heightAt(x, z)) : Infinity;
+      worstError = Math.max(worstError, error);
+    }
+
+    if (worstError < 0.05) {
+      console.log(`[Level02TestLevel] Terrain collider matches the mesh (worst error ${worstError.toFixed(3)} m).`);
+    } else {
+      console.warn(`[Level02TestLevel] Terrain collider does NOT match the mesh (worst error ${worstError.toFixed(2)} m).`);
     }
   }
 
@@ -220,7 +221,7 @@ export class Level02TestLevel extends BaseLevel {
    * Sets the active camera mode ('PLAYER' or 'AERIAL')
    */
   setCameraMode(mode) {
-    if (mode === this.cameraMode) return;
+    if (mode === this.cameraMode || !this.orbitControls) return;
     this.cameraMode = mode;
 
     if (mode === 'AERIAL') {
@@ -230,7 +231,7 @@ export class Level02TestLevel extends BaseLevel {
       this.gameWorld.setActiveCamera(this.aerialCamera);
     } else {
       this.orbitControls.enabled = false;
-      this.player.isDevSuspended = false;
+      this.player.isDevSuspended = this.player.health.isDead;
       this.gameWorld.setActiveCamera(null);
     }
 
@@ -245,105 +246,16 @@ export class Level02TestLevel extends BaseLevel {
     }
   }
 
-  /**
-   * Dev check, run once after the first physics step: rays cast straight down at the terrain
-   * collider alone must hit it at the height the mesh shows. A mismatch means the heightfield
-   * samples are misordered.
-   */
-  _verifyTerrainCollider() {
-    const physics = this.gameWorld.physics;
-    const terrainCollider = this.environment.terrain.collider;
-    const startY = 200;
-    const ray = new physics.RAPIER.Ray({ x: 0, y: startY, z: 0 }, { x: 0, y: -1, z: 0 });
-    const samples = [[0, 150], [-60, 120], [80, 100], [-120, -40], [35, 60], [150, -90]];
-
-    let worstError = 0;
-    for (const [x, z] of samples) {
-      ray.origin.x = x;
-      ray.origin.z = z;
-      const timeOfImpact = terrainCollider.castRay(ray, 400, true);
-      const error = timeOfImpact >= 0 ? Math.abs((startY - timeOfImpact) - this.environment.heightAt(x, z)) : Infinity;
-      worstError = Math.max(worstError, error);
-    }
-
-    if (worstError < 0.05) {
-      console.log(`[Level02TestLevel] Terrain collider matches the mesh (worst error ${worstError.toFixed(3)} m).`);
-    } else {
-      console.warn(`[Level02TestLevel] Terrain collider does NOT match the mesh (worst error ${worstError.toFixed(2)} m).`);
-    }
-  }
-
-  gameplayUpdate(delta, gameWorld = this.gameWorld) {
-    super.gameplayUpdate(delta, gameWorld);
-
-    this.environment.update(delta);
-    this.landingZone.update(delta);
-
-    if (!this._terrainChecked) {
-      this._terrainChecked = true;
-      this._verifyTerrainCollider();
-    }
-
-    if (gameWorld.input.isActionJustPressed('devCamera')) {
-      this.setCameraMode(this.cameraMode === 'PLAYER' ? 'AERIAL' : 'PLAYER');
-    }
-    if (this.cameraMode === 'AERIAL') {
-      this.orbitControls.update();
-    }
-
-    // Aliens: clear the dead, and send a fresh trio once all are down
-    this.squad.update();
-    if (this.squad.aliveCount === 0) {
-      if (this._troopRespawnTimer < 0) this._troopRespawnTimer = TROOPER_RESPAWN_SECONDS;
-      this._troopRespawnTimer -= delta;
-      if (this._troopRespawnTimer <= 0) {
-        this._troopRespawnTimer = -1;
-        this._spawnTroopers();
-      }
-    }
-
-    this._updatePlayerDeath(delta);
-
-    // Hidden while crouched in a bush (AI perception reads player.isConcealed)
-    const concealed = !this.player.health.isDead && this.cover.updateConcealment(this.player);
-    if (concealed !== this._wasConcealed && gameWorld.ui) {
-      if (concealed) gameWorld.ui.showStatusIndicator('HIDDEN', 'success');
-      else gameWorld.ui.hideStatusIndicator();
-      this._wasConcealed = concealed;
-    }
-
-    // Fall recovery: back on deck if the player ever drops through the world
-    if (this.player.position.y < -20) {
-      const spawn = this.landingZone.spawnPoints.deck;
-      this.player.teleport(spawn.x, spawn.y, spawn.z);
-    }
-  }
-
   dispose() {
-    console.log(`Disposing ${this.name}...`);
-
     if (this.gameWorld.ui) {
       this.gameWorld.ui.hideDevTools();
-      this.gameWorld.ui.hideStatusIndicator();
-      this.gameWorld.ui.hidePlayerHealth();
     }
     if (this.orbitControls) {
       this.orbitControls.dispose();
       this.orbitControls = null;
     }
     this.gameWorld.setActiveCamera(null);
-
-    this.player = null;
-    this.weapons = null;
     this.dummies = [];
-    super.dispose(); // Disposes the squad, which removes the aliens
-    this.squad = null;
-    if (this.gameWorld.projectilePool === this.projectilePool) {
-      this.gameWorld.projectilePool = null;
-    }
-    this.projectilePool = null;
-    this.environment = null;
-    this.landingZone = null;
-    this.cover = null;
+    super.dispose();
   }
 }

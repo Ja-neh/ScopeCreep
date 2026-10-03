@@ -11,8 +11,9 @@ export class AlienModel {
    * @param {Object} [options]
    * @param {number} [options.armorColor]
    * @param {number} [options.scale] - Overall size (troopers 1, brutes larger)
+   * @param {boolean} [options.backpack] - Glowing power pack on the back (the brute's weak spot)
    */
-  constructor({ armorColor = 0x3a3550, scale = 1 } = {}) {
+  constructor({ armorColor = 0x5d5480, scale = 1, backpack = false } = {}) {
     this.mesh = new THREE.Group();
     this.mesh.name = 'Alien';
     this.body = new THREE.Group(); // Leans and falls as one piece
@@ -21,9 +22,10 @@ export class AlienModel {
 
     this.materials = {
       armor: new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.55, metalness: 0.4, flatShading: true }),
-      plate: new THREE.MeshStandardMaterial({ color: 0x4b4466, roughness: 0.5, metalness: 0.5, flatShading: true }),
+      plate: new THREE.MeshStandardMaterial({ color: 0x7c72a6, roughness: 0.5, metalness: 0.4, flatShading: true }),
       skin: new THREE.MeshStandardMaterial({ color: 0x7d8b6a, roughness: 0.8, flatShading: true }),
       glow: new THREE.MeshStandardMaterial({ color: 0x6dff8f, emissive: 0x6dff8f, emissiveIntensity: 1.6, toneMapped: false }),
+      core: new THREE.MeshStandardMaterial({ color: 0xff8a3d, emissive: 0xff8a3d, emissiveIntensity: 1.8, toneMapped: false }),
       gun: new THREE.MeshStandardMaterial({ color: 0x24232b, roughness: 0.4, metalness: 0.7 })
     };
     const { armor, plate, skin, glow, gun } = this.materials;
@@ -31,6 +33,8 @@ export class AlienModel {
     // Torso, chest plate, shoulders
     this._add(this.body, new THREE.CapsuleGeometry(0.32, 0.5, 3, 8), armor, 0, 1.25, 0);
     this._add(this.body, new THREE.BoxGeometry(0.55, 0.4, 0.2), plate, 0, 1.38, -0.17);
+    // Glowing chest light: makes aliens easy to pick out against the dusk jungle
+    this._add(this.body, new THREE.BoxGeometry(0.3, 0.06, 0.04), glow, 0, 1.42, -0.28);
     this._add(this.body, new THREE.SphereGeometry(0.13, 8, 6), plate, 0.34, 1.56, 0);
     this._add(this.body, new THREE.SphereGeometry(0.13, 8, 6), plate, -0.34, 1.56, 0);
 
@@ -69,6 +73,13 @@ export class AlienModel {
     this.muzzle.position.set(0, 0, -0.48);
     this.gun.add(this.muzzle);
 
+    // Power pack on the back, with glowing cells: shots there do extra damage
+    if (backpack) {
+      this._add(this.body, new THREE.BoxGeometry(0.46, 0.5, 0.26), gun, 0, 1.42, 0.3);
+      this._add(this.body, new THREE.CylinderGeometry(0.06, 0.06, 0.38, 8), this.materials.core, 0.12, 1.42, 0.45);
+      this._add(this.body, new THREE.CylinderGeometry(0.06, 0.06, 0.38, 8), this.materials.core, -0.12, 1.42, 0.45);
+    }
+
     this._walkPhase = 0;
 
     this.mesh.traverse((child) => {
@@ -91,8 +102,9 @@ export class AlienModel {
    * @param {number} delta
    * @param {number} speed - Horizontal speed in m/s
    * @param {boolean} aiming - Raise the rifle
+   * @param {number} [raise=0] - 0..1 both arms raised overhead (melee wind-up)
    */
-  animate(delta, speed, aiming) {
+  animate(delta, speed, aiming, raise = 0) {
     this._walkPhase += delta * speed * 2.2;
     const swing = Math.min(1, speed / 4) * 0.6;
     const s = Math.sin(this._walkPhase) * swing;
@@ -100,6 +112,10 @@ export class AlienModel {
     this.legs[1].rotation.x = -s;
     this.arms[0].rotation.x = -s * 0.7;
     this.arms[1].rotation.x = aiming ? -1.2 : s * 0.7;
+    if (raise > 0) {
+      this.arms[0].rotation.x = -2.6 * raise;
+      this.arms[1].rotation.x = -2.6 * raise;
+    }
     this.gun.rotation.x = aiming ? 0 : 0.35;
   }
 

@@ -18,6 +18,8 @@ const RAMP_START_X = 6.2;        // Foot of the ramp on deck (the raised gun pla
 const PLATFORM_INNER_X = 9.2;
 const PLATFORM_OUTER_X = 11.0;   // Just outboard of the railing
 const SLAB_DEPTH = 0.6;          // Collider thickness under walking surfaces
+const RAIL_HEIGHT = 1.05;        // Gangway handrails (visual rail sits at 1.0)
+const RAIL_THICKNESS = 0.1;
 const GANGWAY_FOOT_X = 29;       // Lands on dry sand at world z = 196
 const DECK_SPAWN_X = 6.9;        // On the foot of the ramp, facing the beach
 
@@ -170,6 +172,19 @@ export class LandingZone {
     const size = new THREE.Vector3(high.distanceTo(slabLow), SLAB_DEPTH, BOARDING_WIDTH);
     const localRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), angle);
     this._addBoardingCollider(centre, size, localRotation);
+
+    // Handrails are solid: thin walls from the walking surface up to rail height
+    if (rails) {
+      const railSize = new THREE.Vector3(length, RAIL_HEIGHT, RAIL_THICKNESS);
+      for (const side of [-1, 1]) {
+        const railCentre = new THREE.Vector3()
+          .addVectors(start, end)
+          .multiplyScalar(0.5)
+          .addScaledVector(up, RAIL_HEIGHT / 2);
+        railCentre.z += side * (BOARDING_WIDTH / 2);
+        this._addBoardingCollider(railCentre, railSize, localRotation);
+      }
+    }
   }
 
   _addPart(parent, geometry, material, x, y, z) {

@@ -53,6 +53,7 @@ export class InputManager {
       toggleCamera: ['KeyV', 'Tab'],
       toggleColliders: ['KeyB', 'F2'],
       devCamera: ['F1'],
+      devSpawn: ['F3'],
       pause: ['Escape', 'KeyP']
     };
 
@@ -94,7 +95,7 @@ export class InputManager {
   }
 
   _onKeyDown(e) {
-    if (e.code === 'Tab' || e.code === 'F2' || e.code === 'F1') {
+    if (e.code === 'Tab' || e.code === 'F1' || e.code === 'F2' || e.code === 'F3') {
       e.preventDefault(); // Prevent browser from triggering default hotkeys/search
     }
     if (!this.keysDown.has(e.code)) {

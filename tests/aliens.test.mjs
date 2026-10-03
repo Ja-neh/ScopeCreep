@@ -82,25 +82,35 @@ test('crouched in a bush the player stays hidden; standing up gives them away', 
   const trooper = spawn(bush.x, bush.z - 20, player.position);
   run(3);
   assert.equal(player.isConcealed, true);
-  assert.equal(trooper.perception.target, null, 'hidden player not seen');
+  assert.ok(trooper.perception.target === null, 'hidden player not seen');
   assert.equal(player.health.currentHealth, 100);
 
+  // Stand up fully, then have the trooper (wherever its patrol took it) turn to face the bush
   world.input.release('crouch');
+  run(0.2);
+  assert.equal(player.isConcealed, false);
   trooper.stop();
   trooper.yaw = Math.atan2(-(player.position.x - trooper.position.x), -(player.position.z - trooper.position.z));
+  assert.ok(trooper.perception.canSee(player, world.physics) > 0, 'standing player in plain sight');
   run(1);
-  assert.equal(trooper.perception.target, player, 'standing player seen');
+  assert.ok(trooper.perception.target === player, 'standing player seen');
 });
 
-test('a gunshot behind a patrolling trooper brings it to investigate and engage', () => {
-  placePlayer(60, 150);
-  const trooper = spawn(60, 120); // Faces -Z, away from the player
-  run(0.5);
-  assert.equal(trooper.brain.current, 'patrol');
+test('a gunshot from a hidden player brings a patrolling trooper to investigate, then engage', () => {
+  // Hidden in a bush 30 m away: too far to be seen while concealed, close enough to be heard
+  const bush = cover.bushes.find((b) => b.z > 90 && b.z < 170 && env.slopeAt(b.x, b.z) < 0.15 &&
+    cover.isClearOfSolids(b.x, b.z - 30, 1.5) && env.heightAt(b.x, b.z - 30) > 0.6);
+  placePlayer(bush.x, bush.z);
+  world.input.hold('crouch');
+  run(0.2);
+  const trooper = spawn(bush.x, bush.z - 30);
+  run(2);
+  assert.equal(trooper.brain.current, 'patrol', 'has not seen the hidden player');
+
   squad.reportNoise(player.position.clone());
   assert.equal(trooper.brain.current, 'investigate');
-  run(5, () => trooper.brain.is('engage'));
-  assert.equal(trooper.brain.current, 'engage');
+  run(10, () => trooper.brain.is('engage'));
+  assert.equal(trooper.brain.current, 'engage', 'found the player at the gunshot');
 });
 
 test('call-out: a trooper that spots the player alerts squadmates nearby', () => {

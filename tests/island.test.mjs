@@ -24,6 +24,19 @@ test('landing beach: dry sand at the gangway foot, deep water under the anchored
   assert.ok(env.heightAt(0, 225) < -8, 'ship keel clears the sea floor');
 });
 
+test('vertical rays at round coordinates always hit the ground (no grid-corner gaps)', () => {
+  const ray = new world.physics.RAPIER.Ray({ x: 0, y: 200, z: 0 }, { x: 0, y: -1, z: 0 });
+  let misses = 0;
+  for (let x = -200; x <= 200; x += 4) {
+    for (let z = -400; z <= 196; z += 4) {
+      ray.origin.x = x;
+      ray.origin.z = z;
+      if (env.terrain.collider.castRay(ray, 400, true) < 0) misses++;
+    }
+  }
+  assert.equal(misses, 0);
+});
+
 test('beach spawn point is on dry ground', () => {
   const spawn = env.spawnPoints.beach;
   assert.ok(env.heightAt(spawn.x, spawn.z) > 0.6);

@@ -13,6 +13,10 @@ const TERRAIN_WIDTH = 680;       // Covers x = -340..340
 const TERRAIN_DEPTH = 920;       // Covers z = -620..300
 const TERRAIN_CENTRE_Z = -160;
 const TERRAIN_CELL = 4;
+// The grid is shifted off round numbers: a perfectly vertical ray through an exact grid corner can
+// slip between Rapier's heightfield triangles, and the round coordinates we use for spawns and
+// checks would otherwise land exactly on corners (every 4 m).
+const TERRAIN_GRID_SHIFT = 0.173;
 const BEACH_WIDTH = 40;          // Sand band between the waterline and the grass
 const HILLS_RISE = 70;           // Distance over which the ground climbs from the beach into the hills
 const VILLAGE = { x: 0, z: -340, radius: 90, height: 12 }; // Flat ground for Level 3's village
@@ -102,7 +106,7 @@ export class BeachEnvironment {
       width: TERRAIN_WIDTH,
       depth: TERRAIN_DEPTH,
       cellSize: TERRAIN_CELL,
-      center: { x: 0, z: TERRAIN_CENTRE_Z },
+      center: { x: TERRAIN_GRID_SHIFT, z: TERRAIN_CENTRE_Z + TERRAIN_GRID_SHIFT },
       heightAt: (x, z) => this._islandHeight(x, z),
       colorAt: (x, z, h, slope, out) => this._islandColor(x, z, h, slope, out)
     });

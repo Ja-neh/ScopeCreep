@@ -63,6 +63,36 @@ test('player walks from the deck, over the railing platform and down the gangway
   world.removeEntity(player);
 });
 
+test('the gangway handrails stop the player walking off the side', () => {
+  // Halfway down the gangway (it runs along world Z at x = -10)
+  const gangwayX = -10;
+  const ray = new world.physics.RAPIER.Ray({ x: gangwayX, y: 20, z: 205 }, { x: 0, y: -1, z: 0 });
+  const surfaceY = 20 - world.physics.castRay(ray, 40, true).timeOfImpact;
+  assert.ok(surfaceY > 1.5, `gangway surface at ${surfaceY.toFixed(2)} m`);
+
+  const player = new Player(world, { snapToGround: true });
+  player.setPosition(gangwayX, surfaceY + 0.05, 205);
+  player.yaw = 0;
+  world.addEntity(player);
+
+  let widest = 0;
+  let lowest = Infinity;
+  const track = () => {
+    widest = Math.max(widest, Math.abs(player.position.x - gangwayX));
+    lowest = Math.min(lowest, player.position.y);
+  };
+  for (const side of ['steerRight', 'steerLeft']) {
+    world.input.hold(side);
+    world.input.hold('sprint');
+    stepWorld(world, 1.5, { onFrame: track });
+    world.input.release(side);
+    world.input.release('sprint');
+  }
+  assert.ok(widest < 1.2, `strayed ${widest.toFixed(2)} m from the centreline (rails at 1.2 m)`);
+  assert.ok(lowest > surfaceY - 3, 'never fell off');
+  world.removeEntity(player);
+});
+
 test('player stays on the ground walking down a hill (no hopping)', () => {
   const player = new Player(world, { snapToGround: true });
   player.setPosition(40, env.heightAt(40, 115) + 0.1, 115);

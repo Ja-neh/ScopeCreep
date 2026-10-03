@@ -810,3 +810,91 @@
   opacity: 1;
   transition: opacity 0.04s ease-in;
 }
+
+/* =========================================================================
+   Mission Objective (Top Centre)
+   ========================================================================= */
+.ui-objective {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 300px;
+  padding: 8px 18px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-left: 3px solid var(--color-success);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-objective-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--color-success);
+}
+
+.ui-objective-detail {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+/* =========================================================================
+   Mission Result (Full Screen)
+   ========================================================================= */
+.ui-mission-result {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 20, 0.6);
+  pointer-events: auto;
+  z-index: 9000;
+}
+
+.ui-mission-result-panel {
+  min-width: 360px;
+  max-width: 480px;
+  padding: 28px 32px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 10px;
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  text-align: center;
+}
+
+.ui-mission-result-title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  letter-spacing: 3px;
+}
+
+.ui-mission-result.victory .ui-mission-result-title { color: var(--color-success); }
+.ui-mission-result.defeat .ui-mission-result-title { color: var(--color-danger); }
+
+.ui-mission-result-message {
+  margin: 0 0 18px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.ui-mission-result-stats {
+  margin-bottom: 20px;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+}
+
+.ui-mission-result-stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-panel);
+}

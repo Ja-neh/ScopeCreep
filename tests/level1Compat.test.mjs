@@ -18,11 +18,11 @@ test('Player defaults: no health, no crouch, no snapping, humans side, findable 
   world.physics.createGround(200, -0.5);
   const player = new Player(world);
   world.addEntity(player);
-  assert.equal(player.health, null);
+  assert.ok(player.health === null, 'no health component unless asked for');
   assert.equal(player.canCrouch, false);
   assert.equal(player.snapToGround, false);
   assert.equal(player.faction, 'humans');
-  assert.equal(player.collider.userData.entity, player);
+  assert.ok(player.collider.userData.entity === player, 'collider knows its entity');
 
   world.input.hold('crouch');
   stepWorld(world, 0.2);

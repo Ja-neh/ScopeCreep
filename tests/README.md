@@ -1,6 +1,6 @@
 # Tests
 
-`npm test` runs every `tests/**/*.test.mjs` file with Node's built-in test runner (`node:test`, no extra packages). The tests use the real game code, real Three.js objects and real Rapier physics, without a browser or WebGL. The full suite takes about 10 seconds.
+`npm test` runs every `tests/**/*.test.mjs` file with Node's built-in test runner (`node:test`, no extra packages). The tests use the real game code, real Three.js objects and real Rapier physics, without a browser or WebGL. The full suite takes about 15 seconds.
 
 Run it before every commit. If a test fails, either your change broke something that used to work, or you changed behaviour on purpose and must update that test in the same commit.
 
@@ -14,6 +14,10 @@ Run it before every commit. If a test fails, either your change broke something 
 | `cover.test.mjs` | Tree, rock and bush placement rules, rock cover, triangle budget, hiding in bushes, AI cover spots |
 | `weapons.test.mjs` | Machine gun, reload, knife and backstab, quick knife, aim zoom, cleanup |
 | `aliens.test.mjs` | Trooper sight, damage, concealment, hearing, call-outs, no friendly fire, death |
+| `brute.test.mjs` | Brute charge and slam, outrunning it, double damage to its back |
+| `waveDirector.test.mjs` | Wave order, lanes, spawn pacing, pauses between waves, completion |
+| `level02.test.mjs` | Level 2 end to end: landing, three waves, objective and victory, defeat and retry, the sandbox level, clean teardown |
+| `uiOverlay.test.mjs` | HUD layers never swallow the clicks the game needs to lock the mouse |
 | `level1Compat.test.mjs` | Shared code still behaves as Level 1 expects (player, camera, ocean, input, projectiles, deck walking) |
 
 ## How it runs outside the browser
@@ -39,3 +43,7 @@ test('what must stay true, in plain words', async () => {
 ```
 
 Test outcomes a player would notice, such as "the dummy dies" or "the player reaches the beach". Avoid internal details that will change. Aim tests at real positions on the island, not at spots that only work by luck.
+
+Tests in one file share the seeded `Math.random`, so a test sees different random numbers depending on which tests ran before it. Don't let a result depend on where an AI happens to wander. Check it from both a solo run (`--test-name-pattern`) and a full-file run.
+
+Compare entities by identity, as in `assert.ok(alien.perception.target === player, 'player seen')`. Don't write `assert.equal(target, player)`. When that fails, the runner tries to print the whole entity, including the physics world and scene it references, and it can hang instead of reporting the failure.

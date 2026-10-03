@@ -138,6 +138,39 @@
       "flankAfterSeconds": 6,
       "searchSeconds": 6,
       "corpseSeconds": 4
+    },
+    "brute": {
+      "maxHealth": 400,
+      "walkSpeed": 2.8,
+      "runSpeed": 4.0,
+      "chargeSpeed": 7.5,
+      "sightRange": 50,
+      "concealedSightRange": 6,
+      "awarenessRadius": 8,
+      "fieldOfViewDegrees": 140,
+      "hearingRange": 45,
+      "chargeRange": 25,
+      "chargeSeconds": 3.0,
+      "slamRange": 2.8,
+      "slamDamage": 35,
+      "slamWindup": 0.5,
+      "slamRecovery": 1.2,
+      "weakSpotMultiplier": 2.0,
+      "searchSeconds": 6,
+      "corpseSeconds": 5
+    }
+  },
+  "levels": {
+    "level02": {
+      "firstWaveTriggerSeconds": 30,
+      "betweenWavesSeconds": 8,
+      "spawnIntervalSeconds": 0.8,
+      "objectiveRadius": 10,
+      "waves": [
+        { "trooper": 6, "brute": 0, "lanes": ["centre"] },
+        { "trooper": 8, "brute": 1, "lanes": ["centre", "west"] },
+        { "trooper": 10, "brute": 2, "lanes": ["centre", "west", "east"] }
+      ]
     }
   },
   "testing": {

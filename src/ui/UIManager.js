@@ -7,6 +7,8 @@ import { StatusIndicator } from './components/StatusIndicator.js';
 import { WeaponHUD } from './components/WeaponHUD.js';
 import { PlayerHealthBar } from './components/PlayerHealthBar.js';
 import { DamageFlash } from './components/DamageFlash.js';
+import { ObjectivePanel } from './components/ObjectivePanel.js';
+import { MissionResult } from './components/MissionResult.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
@@ -36,6 +38,8 @@ export class UIManager {
     this.weaponHUD = new WeaponHUD(this.container);
     this.playerHealth = new PlayerHealthBar(this.container);
     this.damageFlash = new DamageFlash(this.container);
+    this.objectivePanel = new ObjectivePanel(this.container);
+    this.missionResult = new MissionResult(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
     this.controlsHelper.hide(); // Hidden until level loads
@@ -188,6 +192,50 @@ export class UIManager {
   flashDamage() {
     if (this.damageFlash) {
       this.damageFlash.flash();
+    }
+  }
+
+  // =========================================================================
+  // Mission Objective & Result
+  // =========================================================================
+
+  /**
+   * Show or update the current objective (top centre)
+   * @param {string} title
+   * @param {string} [detail]
+   */
+  showObjective(title, detail = '') {
+    if (this.objectivePanel) {
+      this.objectivePanel.show(title, detail);
+    }
+  }
+
+  /**
+   * Hide the objective panel
+   */
+  hideObjective() {
+    if (this.objectivePanel) {
+      this.objectivePanel.hide();
+    }
+  }
+
+  /**
+   * Show the end-of-mission screen
+   * @param {{outcome: 'victory'|'defeat', title: string, message?: string,
+   *          stats?: Array<{label: string, value: string}>, actions?: Array<{label: string, onClick: Function}>}} result
+   */
+  showMissionResult(result) {
+    if (this.missionResult) {
+      this.missionResult.show(result);
+    }
+  }
+
+  /**
+   * Hide the end-of-mission screen
+   */
+  hideMissionResult() {
+    if (this.missionResult) {
+      this.missionResult.hide();
     }
   }
 
@@ -450,6 +498,8 @@ export class UIManager {
     this.hideStatusIndicator();
     this.hideWeaponHUD();
     this.hidePlayerHealth();
+    this.hideObjective();
+    this.hideMissionResult();
     if (this.damageFlash) this.damageFlash.clear();
     this.hidePauseMenu();
     this.hidePauseButton();
@@ -513,6 +563,14 @@ export class UIManager {
     if (this.damageFlash) {
       this.damageFlash.dispose();
       this.damageFlash = null;
+    }
+    if (this.objectivePanel) {
+      this.objectivePanel.dispose();
+      this.objectivePanel = null;
+    }
+    if (this.missionResult) {
+      this.missionResult.dispose();
+      this.missionResult = null;
     }
     if (this.fpsDisplay && typeof this.fpsDisplay.dispose === 'function') {
       this.fpsDisplay.dispose();
