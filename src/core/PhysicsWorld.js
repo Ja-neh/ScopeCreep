@@ -51,6 +51,31 @@ export class PhysicsWorld {
   }
 
   /**
+   * Creates a static heightfield collider (terrain) centred on `position`.
+   * @param {number} subdivisions - Cells per side; `heights` holds (subdivisions + 1)^2 samples
+   * @param {Float32Array} heights - Column-major samples: index = iz + ix * (subdivisions + 1)
+   * @param {number} size - World width and depth covered by the heightfield, in meters
+   * @param {{x: number, y: number, z: number}} [position] - World position of the heightfield centre
+   * @returns {RAPIER.Collider|null} Collider with `rigidBody` set; remove it with removeRigidBody(collider.rigidBody)
+   */
+  createHeightfield(subdivisions, heights, size, position = { x: 0, y: 0, z: 0 }) {
+    if (!this.world) return null;
+    const body = this.world.createRigidBody(
+      this.RAPIER.RigidBodyDesc.fixed().setTranslation(position.x, position.y, position.z)
+    );
+    const colliderDesc = this.RAPIER.ColliderDesc.heightfield(
+      subdivisions,
+      subdivisions,
+      heights,
+      { x: size, y: 1.0, z: size },
+      this.RAPIER.HeightFieldFlags.FIX_INTERNAL_EDGES
+    );
+    const collider = this.world.createCollider(colliderDesc, body);
+    collider.rigidBody = body;
+    return collider;
+  }
+
+  /**
    * Creates a Kinematic Character Controller
    * Handles auto-stepping over ledges/curbs, loop cut seams, slope sliding, and collision movement.
    */

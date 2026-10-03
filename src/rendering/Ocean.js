@@ -13,13 +13,16 @@ export class Ocean {
     this.size = options.size || 2400;
     this.segments = options.segments || 200;
 
+    // Scales every wave's steepness (and so its height); below 1 gives a calmer sea, e.g. near a beach
+    const waveScale = options.waveScale ?? 1.0;
+
     // Gerstner wave parameters: [dirX, dirZ, steepness, wavelength]
     // Smoother rolling ocean swells without sharp chaotic fractal facets
     this.waveParams = {
-      waveA: new THREE.Vector4(1.0, 0.3, 0.14, 85.0),
-      waveB: new THREE.Vector4(0.6, 0.8, 0.10, 52.0),
-      waveC: new THREE.Vector4(-0.4, 0.7, 0.06, 32.0),
-      waveD: new THREE.Vector4(0.2, -0.5, 0.03, 18.0)
+      waveA: new THREE.Vector4(1.0, 0.3, 0.14 * waveScale, 85.0),
+      waveB: new THREE.Vector4(0.6, 0.8, 0.10 * waveScale, 52.0),
+      waveC: new THREE.Vector4(-0.4, 0.7, 0.06 * waveScale, 32.0),
+      waveD: new THREE.Vector4(0.2, -0.5, 0.03 * waveScale, 18.0)
     };
 
     this.sunDirection = options.sunDirection || new THREE.Vector3(150, 250, 100).normalize();

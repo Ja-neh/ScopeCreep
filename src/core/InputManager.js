@@ -40,6 +40,7 @@ export class InputManager {
 
       toggleCamera: ['KeyV', 'KeyC', 'Tab'],
       toggleColliders: ['KeyB', 'F2'],
+      devCamera: ['F1'],
       pause: ['Escape', 'KeyP']
     };
 
