@@ -168,6 +168,33 @@ export class PhysicsWorld {
   }
 
   /**
+   * Creates a fixed (immovable) rigid body.
+   */
+  createFixedRigidBody({ position = { x: 0, y: 0, z: 0 }, rotation = { x: 0, y: 0, z: 0, w: 1 } } = {}) {
+    if (!this.world) return null;
+    const bodyDesc = this.RAPIER.RigidBodyDesc.fixed()
+      .setTranslation(position.x, position.y, position.z)
+      .setRotation(rotation);
+    return this.world.createRigidBody(bodyDesc);
+  }
+
+  /**
+   * Creates a static box collider on its own fixed body (steps, ramps, walls, cover props).
+   * @param {{x: number, y: number, z: number}} halfExtents - Half size along the box's local axes
+   * @param {{x: number, y: number, z: number}} position - World centre
+   * @param {{x: number, y: number, z: number, w: number}} [rotation] - World rotation quaternion
+   * @returns {RAPIER.Collider|null} Collider with `rigidBody` set; remove it with removeRigidBody(collider.rigidBody)
+   */
+  createStaticBox(halfExtents, position, rotation = { x: 0, y: 0, z: 0, w: 1 }) {
+    const body = this.createFixedRigidBody({ position, rotation });
+    if (!body) return null;
+    const colliderDesc = this.RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z);
+    const collider = this.world.createCollider(colliderDesc, body);
+    collider.rigidBody = body;
+    return collider;
+  }
+
+  /**
    * Creates a TriMesh collider from raw vertex and index arrays and attaches it to a rigid body.
    * @param {Float32Array|number[]} vertices
    * @param {Uint32Array|number[]} indices

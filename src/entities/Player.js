@@ -40,6 +40,8 @@ export class Player extends BaseEntity {
     this.maxStepHeight = options.maxStepHeight !== undefined ? options.maxStepHeight : capCfg.maxStepHeight;
     // Controller offset: clearance margin (in meters) between collider and ground/obstacles
     this.controllerOffset = options.controllerOffset !== undefined ? options.controllerOffset : capCfg.controllerOffset;
+    // Keeps the character on the ground when walking down slopes and ramps (opt-in: off on the ship's trimesh decks)
+    this.snapToGround = options.snapToGround === true;
 
     // Position & Kinematics
     this.position = options.position ? options.position.clone() : new THREE.Vector3(0, 0, 0);
@@ -128,7 +130,8 @@ export class Player extends BaseEntity {
       offset: this.controllerOffset,
       maxStepHeight: this.maxStepHeight,
       minStepWidth: 0.0,
-      maxSlope: (60 * Math.PI) / 180
+      maxSlope: (60 * Math.PI) / 180,
+      snapToGround: this.snapToGround
     });
 
     if (this.groundProbe) {

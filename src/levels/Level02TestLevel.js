@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BaseLevel } from './BaseLevel.js';
 import { BeachEnvironment } from './level02/BeachEnvironment.js';
+import { LandingZone } from './level02/LandingZone.js';
 import { Player } from '../entities/Player.js';
 
 /**
@@ -9,13 +10,15 @@ import { Player } from '../entities/Player.js';
  * Sandbox for Level 2 (The Beach). Level 2 features are proven here before they are
  * promoted into Level02. Features:
  * - Island terrain with a matching heightfield collider, calm sea and dusk lighting
- * - Player spawned on the landing beach
+ * - Landing zone: anchored ship, boarding steps, gangway and parked helicopters
+ * - Player spawned on the ship's deck at the top of the gangway
  * - Aerial orbit camera for inspecting the island ([F1] or the dev tools panel)
  */
 export class Level02TestLevel extends BaseLevel {
   constructor(gameWorld) {
     super(gameWorld, 'Level 2: Beach Test Level');
     this.environment = null;
+    this.landingZone = null;
     this.player = null;
 
     // Dev Tools Camera System
@@ -32,14 +35,19 @@ export class Level02TestLevel extends BaseLevel {
     this.environment = this.trackDisposable(new BeachEnvironment(this.gameWorld));
     this.environment.build();
 
-    // 2. Player on the landing beach, facing inland (-Z)
-    const spawn = this.environment.spawnPoints.beach;
-    this.player = new Player(this.gameWorld);
+    // 2. Ship, gangway and parked helicopters
+    this.landingZone = this.trackDisposable(new LandingZone(this.gameWorld, this.environment));
+    await this.landingZone.build();
+
+    // 3. Player on deck at the foot of the boarding ramp, facing the beach (-Z).
+    //    Snap-to-ground keeps them on the ground walking down the gangway and the island's hills.
+    const spawn = this.landingZone.spawnPoints.deck;
+    this.player = new Player(this.gameWorld, { snapToGround: true });
     this.player.setPosition(spawn.x, spawn.y, spawn.z);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
-    // 3. Dev tools: aerial camera and collider toggle
+    // 4. Dev tools: aerial camera and collider toggle
     this._initAerialCamera();
     this._initDevTools();
 
@@ -61,7 +69,7 @@ export class Level02TestLevel extends BaseLevel {
     this.orbitControls.maxPolarAngle = Math.PI / 2 - 0.02;
     this.orbitControls.minDistance = 5;
     this.orbitControls.maxDistance = 1500;
-    this.orbitControls.target.set(0, 5, 120);
+    this.orbitControls.target.set(0, 5, 190);
     this.orbitControls.enabled = false;
   }
 
@@ -136,6 +144,7 @@ export class Level02TestLevel extends BaseLevel {
     super.gameplayUpdate(delta, gameWorld);
 
     this.environment.update(delta);
+    this.landingZone.update(delta);
 
     if (!this._terrainChecked) {
       this._terrainChecked = true;
@@ -149,9 +158,9 @@ export class Level02TestLevel extends BaseLevel {
       this.orbitControls.update();
     }
 
-    // Fall recovery: back to the beach if the player ever drops through the world
+    // Fall recovery: back on deck if the player ever drops through the world
     if (this.player.position.y < -20) {
-      const spawn = this.environment.spawnPoints.beach;
+      const spawn = this.landingZone.spawnPoints.deck;
       this.player.teleport(spawn.x, spawn.y, spawn.z);
     }
   }
@@ -171,5 +180,6 @@ export class Level02TestLevel extends BaseLevel {
     this.player = null;
     super.dispose();
     this.environment = null;
+    this.landingZone = null;
   }
 }
