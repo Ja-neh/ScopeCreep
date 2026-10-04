@@ -92,8 +92,11 @@ test('crouched in a bush the player stays hidden; standing up gives them away', 
   trooper.stop();
   trooper.yaw = Math.atan2(-(player.position.x - trooper.position.x), -(player.position.z - trooper.position.z));
   assert.ok(trooper.perception.canSee(player, world.physics) > 0, 'standing player in plain sight');
-  run(1);
+  // Its next sight check (rather than waiting for one, while its patrol may turn it away again)
+  trooper.perception.update(trooper.perception.checkInterval, squad.targets, world.physics);
   assert.ok(trooper.perception.target === player, 'standing player seen');
+  run(0.5);
+  assert.equal(trooper.brain.current, 'engage', 'and engaged');
 });
 
 test('a gunshot from a hidden player brings a patrolling trooper to investigate, then engage', () => {

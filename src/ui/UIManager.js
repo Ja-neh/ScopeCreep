@@ -396,8 +396,9 @@ export class UIManager {
   /**
    * Show controls helper card
    */
-  showControlsHelper() {
+  showControlsHelper(lines = null) {
     if (this.controlsHelper) {
+      this.controlsHelper.setLines(lines);
       this.controlsHelper.show();
     }
   }

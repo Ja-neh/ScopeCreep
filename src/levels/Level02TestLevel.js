@@ -52,6 +52,15 @@ export class Level02TestLevel extends Level02 {
     this.orbitControls = null;
   }
 
+  get controls() {
+    return [
+      ...super.controls,
+      { actions: ['devCamera'], label: 'Aerial camera' },
+      { actions: ['devSpawn'], label: 'Spawn trooper (+Shift: brute)' },
+      { actions: ['devSquad'], label: 'Squad on / off' }
+    ];
+  }
+
   _extraClearings() {
     return [
       ...DUMMY_SPOTS.map((spot) => ({ x: spot.x, z: spot.z, radius: 3 })),

@@ -155,7 +155,8 @@ All HUD elements, floating text, prompts, health meters, and telemetry panels mu
   ```
 - **UI Architecture Structure:**
   - `src/ui/UIManager.js`: Central coordinator attached to `gameWorld.ui`.
-  - `src/ui/components/`: Modular component classes (`InteractionPrompt`, `StationHUD`, `Crosshair`, `HealthBar`, `ToastNotification`, `FPSDisplay`, `ControlsHelper`, `DevToolsWidget`, `MainMenu`, `PauseMenu`, `PauseButton`).
+  - `src/ui/components/`: Modular component classes (`InteractionPrompt`, `StationHUD`, `Crosshair`, `HealthBar`, `ToastNotification`, `FPSDisplay`, `ControlsHelper`, `DevToolsWidget`, `MainMenu`, `PauseMenu`, `PauseButton`, plus Level 2's `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay`).
+  - A level lists the controls its controls card shows by overriding `get controls()` on `BaseLevel` (action names, not key strings: keys come from `InputManager` bindings).
   - `src/ui/ui.css`: Consolidated stylesheet for all UI components.
 
 #### Concrete UI Examples from Battleship & Ship Components:

@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createTestWorld, stepWorld, bodyCount } from './support/testWorld.mjs';
 import { Level02 } from '../src/levels/Level02.js';
 import { Level02TestLevel } from '../src/levels/Level02TestLevel.js';
+import { InputManager } from '../src/core/InputManager.js';
 import config from '../src/config.json';
 
 const cfg = config.levels.level02;
@@ -163,4 +164,21 @@ test('Level 2 test level: dummies, a respawning alien group including a brute, a
   assert.equal(level.allies.mates.length, squadSize);
   assert.ok(level.allies.mates.filter((mate) => mate.inFormation).every((mate) => mate.order === 'follow'), 'player is ashore: the new crew follow at once');
   assert.equal(teardown(world, level), 0);
+});
+
+test('Level 2 controls card: only real actions, with keys read from the bindings', async () => {
+  const world = await createTestWorld();
+  const input = new InputManager();
+  for (const LevelClass of [Level02, Level02TestLevel]) {
+    for (const { actions, label } of new LevelClass(world).controls) {
+      for (const action of actions) assert.ok(input.actionBindings[action], `${label}: no action '${action}'`);
+      assert.ok(input.describeActions(actions).length > 0, label);
+    }
+  }
+  assert.equal(input.describeActions(['forward', 'steerLeft', 'backward', 'steerRight']), 'W A S D');
+  assert.equal(input.describeActions(['crouch']), 'C');
+  assert.equal(input.describeActions(['firePrimary']), 'Left click / F');
+  assert.equal(input.describeActions(['sprint']), 'Shift');
+  assert.equal(input.describeActions(['weaponPrimary', 'weaponMelee', 'quickMelee']), '1 2 Q');
+  input.dispose();
 });

@@ -1,3 +1,21 @@
+// How key codes read on the controls card
+const KEY_NAMES = {
+  Mouse0: 'Left click',
+  Mouse1: 'Middle click',
+  Mouse2: 'Right click',
+  WheelUp: 'Wheel',
+  WheelDown: 'Wheel',
+  ShiftLeft: 'Shift',
+  ShiftRight: 'Shift',
+  ControlLeft: 'Ctrl',
+  ControlRight: 'Ctrl',
+  Escape: 'Esc',
+  ArrowUp: '\u2191',
+  ArrowDown: '\u2193',
+  ArrowLeft: '\u2190',
+  ArrowRight: '\u2192'
+};
+
 /**
  * Standalone input abstraction layer mapping raw keyboard and mouse events
  * to semantic game actions (movement, flight axes, turret aiming, firing).
@@ -204,6 +222,21 @@ export class InputManager {
   /**
    * Check semantic actions
    */
+  /**
+   * The keys for `actions` as players read them, e.g. 'C', 'V / Tab', or for several actions the
+   * first key of each, e.g. 'W A S D'. Lets a controls card follow the real bindings.
+   * @param {string[]} actions
+   * @returns {string}
+   */
+  describeActions(actions) {
+    const name = (code) => KEY_NAMES[code] || code.replace(/^Key/, '').replace(/^Digit/, '');
+    const unique = (names) => [...new Set(names)];
+    if (actions.length === 1) {
+      return unique((this.actionBindings[actions[0]] || []).map(name)).join(' / ');
+    }
+    return unique(actions.map((action) => (this.actionBindings[action] || [])[0]).filter(Boolean).map(name)).join(' ');
+  }
+
   isActionDown(actionName) {
     const keys = this.actionBindings[actionName];
     if (!keys) return false;

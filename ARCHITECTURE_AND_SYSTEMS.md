@@ -16,6 +16,7 @@
    - [2.5 Rendering Architecture](#25-rendering-architecture)
    - [2.6 Physics Architecture](#26-physics-architecture)
    - [2.7 Networking Architecture](#27-networking-architecture)
+   - [2.8 Level 2: The Beach](#28-level-2-the-beach)
 3. [Execution Flow](#3-execution-flow)
    - [3.1 Startup & Bootstrapping](#31-startup--bootstrapping)
    - [3.2 Level Loading & Teardown](#32-level-loading--teardown)
@@ -140,6 +141,8 @@ Levels represent isolated game stages that extend the abstract `BaseLevel` class
 - **`BaseLevel` Contract:** Provides resource tracking (`trackDisposable`) and lifecycle hooks (`init`, `update`, `dispose`). When a level is torn down, all tracked meshes, geometries, materials, lights, and colliders are released from GPU memory.
 - **`Level1` (Operational Mission Stage):** Dynamic Gerstner wave ocean surface, atmospheric lighting, battleship combat, ocean safety plane ($Y = -1.0$), void fall recovery ($Y < -15\text{m}$), and developer inspection cameras.
 - **`TestLevel` (Ground Sandbox Stage):** Flat static ground plane with coordinate grid, battleship, and standalone artillery stations at $Y = 0$. Designed for fast calibration of weapon traverse and locomotion without wave motion.
+- **`Level02` and `Level02TestLevel` (The Beach):** On-foot island combat and its sandbox. See [2.8 Level 2: The Beach](#28-level-2-the-beach).
+- **Controls card:** A level may override `get controls()` to list the actions its controls card should show; `null` (the default) keeps Level 1's card.
 
 ---
 
@@ -202,6 +205,44 @@ The edge server runs headless without DOM, WebGL, GPU, or Three.js. If and when 
 1. **Clock Drift on Waves:** Relying on shared `uTime` to recompute wave height locally only holds if clients stay in lockstep. In reality, background browser tabs throttle animation frames, compounding clock drift. Over time, clients will disagree on wave height at the same coordinate. A periodic server time-sync handshake will be needed before this can be trusted.
 2. **Turret World-Space Aiming:** If a client's sampled wave pitch/roll drifts even slightly, the physical muzzle position in world space will diverge, complicating hit detection.
 3. **Verdict:** We do not have multiplayer replication fully solved. We will prototype it incrementally as we go.
+
+---
+
+### 2.8 Level 2: The Beach
+
+Level 2 is fought on foot. The squad lands from the anchored warship onto the south beach of the island and holds it against three waves of aliens coming down from the village, then pushes inland to the jungle path. All of its code is new and lives in its own files; shared engine files only gained small, opt-in additions.
+
+**Flow (`Level02`):** opening (10 s camera sweep) -> `landing` (until the player is ashore, or `firstWaveTriggerSeconds`) -> `waves` -> `objective` (reach the beacon) -> `won`. Being killed -> `lost` (downed and revive are not built yet). The result screen offers Retry or Play again, and Main menu. `Level02TestLevel` extends it as the sandbox: training dummies, a respawning alien group, player respawn instead of failure, and dev keys.
+
+**World (`src/levels/level02/`)**
+- `BeachEnvironment`: the island. Procedural terrain mesh plus a matching Rapier heightfield (the grid is shifted 0.173 m off round coordinates, because a vertical ray through an exact grid corner can slip between heightfield triangles), a calm sea, a sunset sky and clouds, and fog. Public helpers: `heightAt`, `slopeAt`, `pathCentreX`, `pathDistance`, `sunDirection`, and `village` (where Level 3's houses go).
+- `LandingZone`: the battleship anchored offshore (`AnchoredShip`, a static copy of Level 1's ship), the boarding ramp and gangway (ramps, not steps; solid handrails), the two helicopter bays, and spawn points (`gangwayTop`, `gangwayFoot`, `supplyCrate`). `flyInHelicopters()` sends the helicopters back out to sea and lands them (`HelicopterArrival` flight path plus `RotorWash` sand and spray); their cover colliders only switch on at touchdown.
+- `BeachCover`: instanced trees, rocks and bushes with convex-hull rock colliders and trunk cylinders. AI helpers: `findCover(from, threat, ...)` (the edge of a tall rock, so a shooter in cover still has a line of fire), `isInBush`, `updateConcealment(actor)`, `isClearOfSolids`.
+- `ObjectiveBeacon`, `SupplyCrate` (press [E] to refill machine-gun reserve ammo), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
+
+**Combatants (`src/entities/`)**
+- `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model.
+- `enemies/AlienCombatant` (shared patrol, investigate and search states, hearing, squad call-outs, `assault(point)`), `AlienTrooper` (fights from the edges of cover, flanks a target that stays dug in, plasma bursts), `AlienBrute` (charge and overhead slam; its back pack takes double damage through `damageMultiplierAt`).
+- `allies/SquadMate`: our AI soldier. Orders are `walkRoute(points)`, `follow()` (a place in formation) and `hold(point, facing)`. It fights from cover near its post without straying beyond `leashRadius`, and turns on whoever shoots it.
+- Models: `AlienModel`, `SoldierModel`, `HelicopterModel`. Character models merge each rigid piece into one solid and one glow mesh (`rendering/MeshMerge.js`), about 6 to 8 draw calls per character.
+
+**AI coordination (`src/ai/`)**
+- `StateMachine` (states are `{ enter, update, exit }`; `update` returns the next state's name) and `Perception` (sight range and field of view with a line-of-sight ray, a shorter range against concealed targets, hearing, last known position).
+- `AlienSquad`: registers aliens, gives them targets and cover, passes call-outs and gunshot noise, counts kills and clears corpses.
+- `HumanSquad`: the leader (the player) plus `SquadMate`s. It provides formation places that turn with the leader's travel direction, the enemy list, shared tracers, and gunshot reporting. Its `members` array is passed as `AlienSquad.targets`, so the aliens hunt the whole squad.
+- `WaveDirector`: spawns each wave's units round-robin across its lanes, at most `maxAlive` at a time, waits for the wave to be cleared, then pauses before the next.
+
+**Weapons (`src/weapons/`):** `WeaponController` (the player's machine gun and knife, switching, aiming down sights, recoil and HUD), `HitscanWeapon` (no friendly fire: a shot stops on a teammate but does not hurt them), `MeleeWeapon` (backstab bonus), `WeaponEffects` (pooled tracers, impacts, muzzle flash) and `WeaponModels`.
+
+**Rendering additions (`src/rendering/`):** `Terrain`, `Vegetation` (instanced scatter), `Noise`, `SkyDome` (sunset gradient and sun disc, drawn at infinity around the camera; its horizon colour is the fog colour), `Clouds` (one instanced mesh following the camera) and `MeshMerge`.
+
+**UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult` and `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
+
+**Balance (`config.json`):** `player.vitals`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, `maxAliveAliens`, timings, radii).
+
+**Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad.
+
+**Tests:** `npm test` covers all of the above (see `tests/README.md`).
 
 ---
 
@@ -293,21 +334,31 @@ ScopeCreep/
 │   │       ├── HelmStation.js     # Maritime physics, bridge helm, chase camera
 │   │       ├── ArtilleryTurret.js # Forward heavy twin naval artillery turret
 │   │       └── FlakTurret.js      # Aft anti-air quad rapid-fire flak turret
+│   ├── ai/                 # Level 2 AI: StateMachine, Perception, AlienSquad, HumanSquad, WaveDirector
+│   ├── weapons/            # Infantry weapons: WeaponController, HitscanWeapon, MeleeWeapon, effects, models
 │   ├── levels/             # Playable environments and stage logic
 │   │   ├── BaseLevel.js    # Abstract base class with automated resource disposal
 │   │   ├── Level01.js      # Operation Retake: Open ocean combat mission stage
+│   │   ├── Level02.js      # The Beach: landing, three alien waves, objective
+│   │   ├── Level02TestLevel.js # Level 2 sandbox: dummies, respawning aliens, dev keys
+│   │   ├── level02/        # Island, landing zone, cover, opening sweep, helicopters, crate, beacon
 │   │   └── TestLevel.js    # Ground testing sandbox: Flat terrain, isolated weapon testing
 │   ├── rendering/          # Visual WebGL components
 │   │   ├── Ocean.js        # Subdivided ocean plane driving custom GPU shaders
+│   │   ├── Terrain.js, Vegetation.js, Noise.js # Island terrain, instanced scatter, noise
+│   │   ├── SkyDome.js, Clouds.js # Sunset sky and clouds
+│   │   ├── MeshMerge.js    # Merges a model's rigid parts into a few vertex-coloured meshes
 │   │   └── shaders/        # GPU shader programs (GLSL)
 │   │       ├── ocean.vert.glsl # Vertex displacement shader (Gerstner wave math)
-│   │       └── ocean.frag.glsl # Fragment shader (Fresnel reflections, foam, depth colors)
+│   │       ├── ocean.frag.glsl # Fragment shader (Fresnel reflections, foam, depth colors)
+│   │       └── sky.vert.glsl, sky.frag.glsl # Sky dome at infinity, sunset gradient and sun
 │   ├── ui/                 # Centralized HTML/DOM HUD overlay subsystem
 │   │   ├── UIManager.js    # Central UI orchestrator attached to GameWorld.ui
 │   │   ├── ui.css          # Unified stylesheet for all HUD and overlay elements
 │   │   └── components/     # Modular UI widgets (InteractionPrompt, StationHUD, HealthBar, etc.)
 │   ├── main.css            # Base stylesheet, reset, HUD typography
 │   └── main.js             # Client application bootstrap
+├── tests/                  # npm test: Node test runner, real game code and physics (see tests/README.md)
 ├── index.html              # Single-page HTML container with WebGL canvas & UI overlays
 ├── package.json            # Node.js dependencies, scripts, and build configuration
 └── vite.config.js          # Vite plugins (WASM, GLSL) and LAMP server relative base path
@@ -518,7 +569,7 @@ Rather than declaring rigid, grand specifications upfront, the remaining systems
 ### Damage State Placement
 - **Current State:** A lightweight, standalone foundation exists in `HealthComponent.js` (`src/entities/components/HealthComponent.js`), supporting basic health tracking and damage calculation.
 - **Strict Damage Types:** Constrained strictly to two types: `DamageType.KINETIC` and `DamageType.EXPLOSIVE`, passed via a minimal `DamageInfo` payload.
-- **Integration Reserved for Gameplay Phase:** Health tracking is kept isolated in its own module for now and is not yet wired into `Battleship` or `Player`. When combat mechanics, projectile impacts, and multiplayer damage synchronization are implemented, health components will be attached to target entities with appropriate event listeners.
+- **Wiring so far:** `Player` takes a `HealthComponent` when a level passes `maxHealth` (Level 2 does; Level 1 does not yet). Every `GroundCombatant` has one. Hits find their target through `collider.userData.entity`, and both plasma and hitscan shots skip targets of the shooter's own `faction`.
 
 ### Enemy AI
-- **Status:** Exploratory. When hostile aircraft or torpedo boats are needed, we will evaluate whether a lightweight 50-line custom State Machine is enough or if Yuka’s full steering and FSM library is warranted. We'll decide when we get there.
+- **Status:** Level 2 uses a small custom `StateMachine` with `Perception` and simple feeler-ray steering (`src/ai/`, `GroundCombatant`). Yuka was not needed. Aircraft and boats for Level 1 can reuse `StateMachine` and `Perception`.

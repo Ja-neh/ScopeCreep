@@ -16,9 +16,10 @@ Run it before every commit. If a test fails, either your change broke something 
 | `aliens.test.mjs` | Trooper sight, damage, concealment, hearing, call-outs, no friendly fire, death |
 | `brute.test.mjs` | Brute charge and slam, outrunning it, double damage to its back |
 | `waveDirector.test.mjs` | Wave order, lanes, spawn pacing, pauses between waves, completion |
+| `models.test.mjs` | Character models stay cheap to draw (merged parts), keep their colours and glow, and free everything on dispose |
 | `squad.test.mjs` | AI squadmates: formation around the player, shooting aliens, no friendly fire, being hunted and fighting back, falling |
 | `landing.test.mjs` | Level 2 opening: camera sweep and skip, crew walking off, helicopters clearing the ship and landing, pilots, starting view, ammo crate |
-| `level02.test.mjs` | Level 2 end to end: landing, three waves, objective and victory, defeat and retry, the sandbox level (including the F4 squad toggle), clean teardown |
+| `level02.test.mjs` | Level 2 end to end: landing, three waves, objective and victory, defeat and retry, the sandbox level (including the F4 squad toggle), wave size and spread, the alive cap, the controls card, clean teardown |
 | `uiOverlay.test.mjs` | HUD layers never swallow the clicks the game needs to lock the mouse |
 | `level1Compat.test.mjs` | Shared code still behaves as Level 1 expects (player, camera, ocean, input, projectiles, deck walking) |
 

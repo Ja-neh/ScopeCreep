@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createWeaponMaterials, createRifleModel, disposeModelGeometry } from '../../weapons/WeaponModels.js';
+import { consolidateMeshes } from '../../rendering/MeshMerge.js';
 
 /**
  * SoldierModel
@@ -7,6 +8,7 @@ import { createWeaponMaterials, createRifleModel, disposeModelGeometry } from '.
  * suit, helmet with a coloured visor, backpack, jointed legs and arms, and the same machine gun
  * the player carries. Visual only. Origin at the feet, facing -Z.
  * Has the interface GroundCombatant expects: animate(), setFallen(), setHitFlash(), muzzle, dispose().
+ * Each rigid piece (body, each limb, the gun) is merged into one mesh: about 6 draw calls.
  */
 export class SoldierModel {
   /**
@@ -68,6 +70,7 @@ export class SoldierModel {
     this.muzzle = rifle.muzzle;
 
     this._walkPhase = 0;
+    this._mergeParts();
 
     this.mesh.traverse((child) => {
       if (child.isMesh) {
@@ -82,6 +85,22 @@ export class SoldierModel {
     mesh.position.set(x, y, z);
     parent.add(mesh);
     return mesh;
+  }
+
+  /**
+   * Merges the parts of each rigid piece, keeping their colours as vertex colours.
+   */
+  _mergeParts() {
+    const partMaterials = [...Object.values(this.materials), ...Object.values(this.weaponMaterials)];
+    this.materials = {
+      solid: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.15, flatShading: true }),
+      light: new THREE.MeshBasicMaterial({ vertexColors: true })
+    };
+    this.weaponMaterials = {};
+    for (const group of [this.body, ...this.legs, ...this.arms, this.gun]) {
+      consolidateMeshes(group, this.materials.solid, this.materials.light);
+    }
+    for (const material of partMaterials) material.dispose();
   }
 
   /**
@@ -117,7 +136,7 @@ export class SoldierModel {
    * Brief red flash when hit (0..1).
    */
   setHitFlash(amount) {
-    this.materials.suit.emissive.setRGB(amount * 0.6, 0, 0);
+    this.materials.solid.emissive.setRGB(amount * 0.6, 0, 0);
   }
 
   dispose() {

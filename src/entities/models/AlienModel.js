@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { consolidateMeshes } from '../../rendering/MeshMerge.js';
 
 /**
  * AlienModel
  * Procedural low-poly alien trooper: armoured torso, long head with glowing green eyes,
  * jointed legs and arms, and a plasma rifle held at the right side. Visual only.
  * Origin at the feet, facing -Z. Legs and arms swing with walking speed (see animate()).
+ * Each rigid piece (body, each limb, the rifle) is merged into one solid and one glowing mesh,
+ * so an alien costs about 8 draw calls rather than one per part.
  */
 export class AlienModel {
   /**
@@ -81,6 +84,7 @@ export class AlienModel {
     }
 
     this._walkPhase = 0;
+    this._mergeParts();
 
     this.mesh.traverse((child) => {
       if (child.isMesh) {
@@ -95,6 +99,21 @@ export class AlienModel {
     mesh.position.set(x, y, z);
     parent.add(mesh);
     return mesh;
+  }
+
+  /**
+   * Merges the parts of each rigid piece, keeping their colours as vertex colours.
+   */
+  _mergeParts() {
+    const partMaterials = this.materials;
+    this.materials = {
+      solid: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.4, flatShading: true }),
+      light: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })
+    };
+    for (const group of [this.body, ...this.legs, ...this.arms, this.gun]) {
+      consolidateMeshes(group, this.materials.solid, this.materials.light);
+    }
+    for (const material of Object.values(partMaterials)) material.dispose();
   }
 
   /**
@@ -131,7 +150,7 @@ export class AlienModel {
    * Brief red flash when hit (0..1).
    */
   setHitFlash(amount) {
-    this.materials.armor.emissive.setRGB(amount * 0.7, 0, 0);
+    this.materials.solid.emissive.setRGB(amount * 0.7, 0, 0);
   }
 
   dispose() {

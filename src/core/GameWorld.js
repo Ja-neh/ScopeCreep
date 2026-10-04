@@ -139,7 +139,8 @@ export class GameWorld {
         this.isPaused = false;
         if (this.ui) {
           this.ui.showPauseButton(() => this.togglePause());
-          if (this.ui.controlsHelper) this.ui.controlsHelper.show();
+          const controls = this.currentLevel.controls;
+          this.ui.showControlsHelper(controls ? controls.map(({ actions, label }) => ({ keys: this.input.describeActions(actions), label })) : null);
         }
       }
     } catch (error) {

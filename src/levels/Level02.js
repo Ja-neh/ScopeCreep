@@ -176,6 +176,22 @@ export class Level02 extends BaseLevel {
     }
   }
 
+  /** What the controls card shows (keys come from the InputManager bindings). */
+  get controls() {
+    return [
+      { actions: ['forward', 'steerLeft', 'backward', 'steerRight'], label: 'Move' },
+      { actions: ['sprint', 'jump'], label: 'Sprint, jump' },
+      { actions: ['crouch'], label: 'Crouch (hide in bushes)' },
+      { actions: ['firePrimary'], label: 'Fire (click to lock the mouse)' },
+      { actions: ['aimDownSights'], label: 'Aim' },
+      { actions: ['reload'], label: 'Reload' },
+      { actions: ['weaponPrimary', 'weaponMelee', 'quickMelee'], label: 'Gun, knife, quick knife' },
+      { actions: ['specialAction'], label: 'Use (ammo crate)' },
+      { actions: ['toggleCamera'], label: '1st / 3rd person' },
+      { actions: ['pause'], label: 'Pause and options' }
+    ];
+  }
+
   // ---------------------------------------------------------------------------
   // Scenario hooks (Level02TestLevel overrides these)
   // ---------------------------------------------------------------------------
