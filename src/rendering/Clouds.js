@@ -19,8 +19,10 @@ export class Clouds {
    * @param {[number, number]} [options.distance=[450, 1400]] - Horizontal distance from the camera
    * @param {[number, number]} [options.altitude=[140, 320]]
    * @param {number} [options.seed=19]
+   * @param {number} [options.color=0xf6dccf] - Lit colour
+   * @param {number} [options.glow=0x6e4f63] - Self-lit tint, so the shaded side is not black
    */
-  constructor({ count = 28, distance = [450, 1400], altitude = [140, 320], seed = 19 } = {}) {
+  constructor({ count = 28, distance = [450, 1400], altitude = [140, 320], seed = 19, color = 0xf6dccf, glow = 0x6e4f63 } = {}) {
     const random = createRandom(seed);
     const pick = ([min, max]) => min + (max - min) * random();
 
@@ -47,8 +49,8 @@ export class Clouds {
 
     this.geometry = new THREE.IcosahedronGeometry(1, 1);
     this.material = new THREE.MeshLambertMaterial({
-      color: 0xf6dccf,
-      emissive: 0x6e4f63,
+      color,
+      emissive: glow,
       flatShading: true,
       fog: false
     });

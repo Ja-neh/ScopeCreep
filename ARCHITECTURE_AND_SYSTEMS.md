@@ -17,6 +17,7 @@
    - [2.6 Physics Architecture](#26-physics-architecture)
    - [2.7 Networking Architecture](#27-networking-architecture)
    - [2.8 Level 2: The Beach](#28-level-2-the-beach)
+   - [2.9 Level 3: The Village (in progress)](#29-level-3-the-village-in-progress)
 3. [Execution Flow](#3-execution-flow)
    - [3.1 Startup & Bootstrapping](#31-startup--bootstrapping)
    - [3.2 Level Loading & Teardown](#32-level-loading--teardown)
@@ -147,7 +148,9 @@ Levels represent isolated game stages that extend the abstract `BaseLevel` class
 - **`BaseLevel` Contract:** Provides resource tracking (`trackDisposable`) and lifecycle hooks (`init`, `update`, `dispose`). When a level is torn down, all tracked meshes, geometries, materials, lights, and colliders are released from GPU memory.
 - **`Level1` (Operational Mission Stage):** Dynamic Gerstner wave ocean surface, atmospheric lighting, battleship combat, ocean safety plane ($Y = -1.0$), void fall recovery ($Y < -15\text{m}$), and developer inspection cameras.
 - **`TestLevel` (Ground Sandbox Stage):** Flat static ground plane with coordinate grid, battleship, and standalone artillery stations at $Y = 0$. Designed for fast calibration of weapon traverse and locomotion without wave motion.
+- **`IslandLevel`:** The base class for the on-foot levels on the island. It holds the island, cover, player and weapons, both squads, alien spawning, downed and revive, concealment, low health, the controls card and the mission result. Each level fills in hooks: `_environmentOptions`, `_coverOptions`, `_buildWorld`, `_clearings`, `_playerSpawn`, `_createProps`, `_startScenario`, `_updateScenario`, `_updateWorld`, `_onPlayerKilled`, `_resultText`, `_lowHealthHint`. `SandboxTools` gives the island test levels the aerial camera (F1), alien spawning (F3), the squad toggle (F4) and respawning.
 - **`Level02` and `Level02TestLevel` (The Beach):** On-foot island combat and its sandbox. See [2.8 Level 2: The Beach](#28-level-2-the-beach).
+- **`Level03` and `Level03TestLevel` (The Village):** The night finale and its sandbox. See [2.9 Level 3: The Village](#29-level-3-the-village-in-progress).
 - **Controls card:** A level may override `get controls()` to list the actions its controls card should show; `null` (the default) keeps Level 1's card.
 
 ---
@@ -229,7 +232,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 - Shared hooks: `HealthComponent.revive(amount)` and `GroundCombatant.revive(health)` / `onRevived()`.
 
 **World (`src/levels/level02/`)**
-- `BeachEnvironment`: the island. Procedural terrain mesh plus a matching Rapier heightfield (the grid is shifted 0.173 m off round coordinates, because a vertical ray through an exact grid corner can slip between heightfield triangles), a calm sea, a sunset sky and clouds, and fog. Public helpers: `heightAt`, `slopeAt`, `pathCentreX`, `pathDistance`, `sunDirection`, and `village` (where Level 3's houses go).
+- `BeachEnvironment`: the island. Procedural terrain mesh plus a matching Rapier heightfield (the grid is shifted 0.173 m off round coordinates, because a vertical ray through an exact grid corner can slip between heightfield triangles), a calm sea, a sunset or night sky and clouds, and fog. It has two layouts: `'beach'` for Level 2 and `'village'` for Level 3, which has a bigger north end. Public helpers: `heightAt`, `slopeAt`, `pathCentreX`, `pathDistance`, `sunDirection`, `village`, `isInVillage` (where Level 3's houses go) and `scatterBounds`.
 - `LandingZone`: the battleship anchored offshore (`AnchoredShip`, a static copy of Level 1's ship), the boarding ramp and gangway (ramps, not steps; solid handrails), the two helicopter bays, and spawn points (`gangwayTop`, `gangwayFoot`, `supplyCrate`). `flyInHelicopters()` sends the helicopters back out to sea and lands them (`HelicopterArrival` flight path plus `RotorWash` sand and spray); their cover colliders only switch on at touchdown.
 - `BeachCover`: instanced trees, rocks and bushes with convex-hull rock colliders and trunk cylinders. The scenery is split into 120 m map tiles (`THREE.LOD` each). Tiles off screen are culled, tiles beyond 170 m use low-detail models, and tiles beyond 720 m (lost in the fog) are not drawn. AI helpers: `findCover(from, threat, ...)` (the edge of a tall rock, so a shooter in cover still has a line of fire), `isInBush`, `updateConcealment(actor)`, `isClearOfSolids`.
 - `ObjectiveBeacon`, `SupplyCrate` (press [E] to refill machine-gun reserve ammo and health), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
@@ -237,7 +240,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 **Combatants (`src/entities/`)**
 - `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model.
 - `enemies/AlienCombatant` (shared patrol, investigate and search states, hearing, squad call-outs, `assault(point)`), `AlienTrooper` (fights from the edges of cover, flanks a target that stays dug in, plasma bursts), `AlienBrute` (charge and overhead slam; its back pack takes double damage through `damageMultiplierAt`).
-- `allies/SquadMate`: our AI soldier. Orders are `walkRoute(points)`, `follow()` (a place in formation) and `hold(point, facing)`. It fights from cover near its post without straying beyond `leashRadius`, and turns on whoever shoots it.
+- `allies/SquadMate`: our AI soldier. Orders are `walkRoute(points)`, `follow()` (a place in formation) and `hold(point, facing)`. A follower with a wall in the way follows the leader's trail around it, and runs to catch up when far behind. It fights from cover near its post without straying beyond `leashRadius`, and turns on whoever shoots it.
 - Models: `AlienModel`, `SoldierModel`, `HelicopterModel`. Character models merge each rigid piece into one solid and one glow mesh (`rendering/MeshMerge.js`), about 6 to 8 draw calls per character.
 
 **AI coordination (`src/ai/`)**
@@ -257,6 +260,32 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 **Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad.
 
 **Tests:** `npm test` covers all of the above (see `tests/README.md`).
+
+---
+
+### 2.9 Level 3: The Village (in progress)
+
+Level 3 is the finale, at night: the squad comes up the jungle path to the village on the plateau at the island's far end, fights through its streets to the square, brings down the force field over the hall, defeats the Warden inside and frees the hostages. It is being built in phases: night village (done), the Warden, generators and dome, the street fight, cages and the dawn ending, then polish.
+
+**Done so far:**
+- `Level03` (`IslandLevel`): night look (`BeachEnvironment` with `look: 'night'`: moon, stars, cool moonlight, dark haze) on the `'village'` island layout, the village, the player and crew arriving on the jungle path below the gate, a supply crate inside the gate, and the objective to go up the avenue to the square (about 400 m). The moon's shadow area (240 m across) follows the camera (`shadowFollowsCamera`). `Level03TestLevel` adds a respawning alien group in the first streets and the shared `SandboxTools`.
+- `BeachEnvironment` layouts: `'beach'` (Level 2, unchanged) and `'village'` (Level 3), where the island's northern half grows wider and longer to carry an oval village plateau 400 m across and 490 m long, about 6 times the old one. The south (beach, hills, jungle path) is identical. Helpers: `village` (`x`, `z`, `halfWidth`, `halfLength`, `height`), `isInVillage(x, z, margin)`, `distanceOutsideVillage`, `scatterBounds` (used by `BeachCover`).
+- `level03/Village`: a big old village laid out from a fixed seed:
+  - Streets: an avenue from the gate to the square, 5 cross streets and 4 side streets.
+  - About 260 houses facing the streets and the square, of three kinds:
+    - closed: some two storeys, with doors shut, hanging open, boarded or gone, and sagging porches;
+    - walk-in: walls, a doorway, a crate for cover, and a ceiling collider so the camera stays inside;
+    - ruins.
+  - Creepy details on the houses: crooked roofs (some caved in to bare rafters), chimneys, boarded, broken and shuttered windows (a candle or something green behind a few), broken fences, and glowing alien vines and pods.
+  - Around them: empty lots with dead trees and old wells, more dead trees, crates and barrels at the street sides, and a graveyard by the hall (crooked headstones and crosses, open graves, a crypt).
+  - 5 landed alien saucers up on legs (you can walk and hide under them), with glowing undersides, rim lights, ramps and crystals growing around them.
+  - Lamp posts: most are dead or only glow; 3 have real lights.
+  - All static parts are merged by `BuildingKit` into two meshes per 100 m tile, so tiles out of view are skipped and near ones draw first. It exposes `houses`, `lots`, `ships`, `streets`, `square`, `gate`, `graveyard`, `spawnPoints` and `isOpenGround(x, z, margin)`.
+- Squadmates in streets: `HumanSquad` records the leader's path (the trail). A follower with a wall between it and its post (`PhysicsWorld.isLineClear`, which ignores characters) walks the trail around it (`routeTowards`), and runs at `catchUpSpeed` when more than `catchUpDistance` behind. Level 3 also keeps formation places out of the houses (`_isWalkable`).
+- `level03/VillageHall`: the hall on the north side of the square, with an entrance facing the square, glowing windows, 2 rows of pillars with alien conduits, a dais at the back for the Warden and a green interior light. It exposes `entrance`, `doorway`, `pillars`, `dais`, `bounds` and `contains()` for the later phases.
+- `level03/BuildingKit`: boxes (with yaw, pitch and roll), gable roofs (tilted for sagging), pillars, lathe shapes (saucer hulls, domes) and crystals, with matching static colliders. Everything is merged at the end (`finish(name, { tileSize })`).
+
+**Budgets:** at most 8 point lights in Level 3: 3 lanterns, 1 under the ship by the square, 1 in the hall, and 3 kept for the generators. The village is about 100k triangles in about 40 merged meshes.
 
 ---
 
@@ -356,6 +385,11 @@ ScopeCreep/
 │   │   ├── Level02.js      # The Beach: landing, three alien waves, objective
 │   │   ├── Level02TestLevel.js # Level 2 sandbox: dummies, respawning aliens, dev keys
 │   │   ├── level02/        # Island, landing zone, cover, opening sweep, helicopters, crate, beacon
+│   │   ├── IslandLevel.js  # Base class for the on-foot island levels (Level 2 and 3)
+│   │   ├── SandboxTools.js # Dev tools shared by the island test levels (F1/F3/F4, respawn)
+│   │   ├── Level03.js      # The Village: the night finale (in progress)
+│   │   ├── Level03TestLevel.js # Level 3 sandbox
+│   │   ├── level03/        # Village, VillageHall, BuildingKit
 │   │   └── TestLevel.js    # Ground testing sandbox: Flat terrain, isolated weapon testing
 │   ├── rendering/          # Visual WebGL components
 │   │   ├── Ocean.js        # Subdivided ocean plane driving custom GPU shaders

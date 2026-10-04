@@ -9,6 +9,7 @@ import config from '../../config.json';
 const SLOT_TOLERANCE = 2.5;         // Close enough to its post to stand still
 const RETARGET_DISTANCE = 1.5;      // Re-issue a move when the post has drifted this far
 const RUN_DISTANCE = 10;            // Run, not walk, to a post further than this
+const ROUTE_RECHECK_SECONDS = 0.3;  // How often a follower checks whether its way is blocked
 const REPOSITION_SECONDS = [4, 7];  // Look for a better firing spot this often
 const CHEST_HEIGHT = 1.2;
 const ALERT_SECONDS = 2;            // After being shot, look towards the shooter this long
@@ -18,7 +19,9 @@ const REVIVE_REACH_SLACK = 0.5;     // Extra reach once a revive has started
  * SquadMate
  * An AI soldier on the player's side (ship crew, or a pilot who has landed). Takes orders from
  * its HumanSquad: walk a route (down the gangway), then follow the leader in formation or hold a
- * point. When it sees an alien it fights from the edge of cover near its post, firing machine-gun
+ * point. A follower with a wall between it and its post follows the leader's trail around it,
+ * and runs faster to catch up when far behind. When it sees an alien it fights from the edge of
+ * cover near its post, firing machine-gun
  * bursts, and goes back to its post once the area is clear. It never strays further than
  * `leashRadius` from its post, so the squad stays together. Sent to a downed teammate, it runs
  * over and revives them (not shooting meanwhile); downed itself, it waits for someone to do the same.
@@ -60,6 +63,9 @@ export class SquadMate extends GroundCombatant {
     this._alertTimer = 0;
     this._alertPoint = new THREE.Vector3();
     this._post = new THREE.Vector3();
+    this._waypoint = new THREE.Vector3(); // On the leader's trail, when the way to the post is blocked
+    this._onTrail = false;
+    this._routeTimer = 0;
     this._point = new THREE.Vector3();
     this._muzzle = new THREE.Vector3();
     this._aimPoint = new THREE.Vector3();
@@ -203,7 +209,7 @@ export class SquadMate extends GroundCombatant {
    * Moves to `post` unless already there; walks short distances and runs long ones.
    * @returns {boolean} True when standing at the post
    */
-  _goTo(post) {
+  _goTo(post, catchUp = false) {
     const distance = Math.hypot(post.x - this.position.x, post.z - this.position.z);
     if (distance <= SLOT_TOLERANCE && !this.hasMoveTarget) return true;
     if (distance <= SLOT_TOLERANCE * 0.5) {
@@ -212,8 +218,36 @@ export class SquadMate extends GroundCombatant {
     }
     const drift = Math.hypot(post.x - this.moveTarget.x, post.z - this.moveTarget.z);
     if (!this.hasMoveTarget || drift > RETARGET_DISTANCE) {
-      this.moveTo(post, distance > RUN_DISTANCE ? this.cfg.runSpeed : this.cfg.walkSpeed);
+      this.moveTo(post, this._speedFor(distance, catchUp));
     }
+    return false;
+  }
+
+  /** Walk when close, run when further, and run flat out to catch up when far behind. */
+  _speedFor(distance, catchUp) {
+    if (catchUp && distance > this.cfg.catchUpDistance) return this.cfg.catchUpSpeed;
+    return distance > RUN_DISTANCE ? this.cfg.runSpeed : this.cfg.walkSpeed;
+  }
+
+  /**
+   * Heads for its formation post: straight there when nothing solid is in the way, otherwise
+   * along the leader's trail (around houses and walls), running to catch up when far behind.
+   * @returns {boolean} True once standing at the post
+   */
+  _followTo(post, delta) {
+    this._routeTimer -= delta;
+    if (this._routeTimer <= 0) {
+      this._routeTimer = ROUTE_RECHECK_SECONDS;
+      this._onTrail = !!this.squad && this.squad.routeTowards(this, post, this._waypoint);
+    }
+    if (!this._onTrail) return this._goTo(post, true);
+
+    const distance = Math.hypot(post.x - this.position.x, post.z - this.position.z);
+    const drift = Math.hypot(this._waypoint.x - this.moveTarget.x, this._waypoint.z - this.moveTarget.z);
+    if (!this.hasMoveTarget || drift > 0.5) {
+      this.moveTo(this._waypoint, this._speedFor(Math.max(distance, RUN_DISTANCE + 1), true));
+    }
+    if (this.hasArrived()) this._routeTimer = 0; // On to the next trail point
     return false;
   }
 
@@ -241,9 +275,9 @@ function watchDirection(mate, out) {
   return out.set(mate.position.x - Math.sin(yaw) * 10, mate.position.y, mate.position.z - Math.cos(yaw) * 10);
 }
 
-function standAtPost(mate) {
+function standAtPost(mate, delta) {
   mate.getPost(mate._post);
-  const atPost = mate._goTo(mate._post);
+  const atPost = mate.order === 'follow' ? mate._followTo(mate._post, delta) : mate._goTo(mate._post);
   if (mate._alertTimer > 0) {
     mate.lookAt(mate._alertPoint); // Under fire: look for the shooter
   } else if (atPost) {
@@ -274,17 +308,17 @@ const SQUADMATE_STATES = {
   },
 
   follow: {
-    update(m) {
+    update(m, delta) {
       if (m.perception.target) return 'engage';
-      standAtPost(m);
+      standAtPost(m, delta);
       return null;
     }
   },
 
   hold: {
-    update(m) {
+    update(m, delta) {
       if (m.perception.target) return 'engage';
-      standAtPost(m);
+      standAtPost(m, delta);
       return null;
     }
   },
