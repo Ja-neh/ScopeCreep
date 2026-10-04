@@ -2,8 +2,13 @@ import * as THREE from 'three';
 import { IslandLevel, CREW_NAMES } from './IslandLevel.js';
 import { Village } from './level03/Village.js';
 import { BossArena } from './level03/BossArena.js';
+import { ForceFieldDome } from './level03/ForceFieldDome.js';
+import { ShieldGenerator } from './level03/ShieldGenerator.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
 import config from '../config.json';
+
+const DOME_RADIUS = 22;  // The force field covers the hall and a little of the ground round it
+const GUARD_DISTANCE = 6; // Generator guards start this far from their generator
 
 /**
  * Level03
@@ -13,9 +18,10 @@ import config from '../config.json';
  *
  * Built in phases. So far: the night village (a big old village of streets, creepy houses and
  * landed alien ships, the square, the hall) with the player and squad arriving at the gate and
- * making for the square, then into the hall, where the Warden wakes (BossArena). Bringing it down
- * wins, for now (the hostages come in a later phase). On-foot combat, downed and revive come
- * from IslandLevel.
+ * shutting down the three generators (ShieldGenerator, by three of the landed ships, each with
+ * two guards) that feed the force field over the hall (ForceFieldDome). When the dome falls, into
+ * the hall, where the Warden wakes (BossArena). Bringing it down wins, for now (the hostages
+ * come in a later phase). On-foot combat, downed and revive come from IslandLevel.
  *
  * Level03TestLevel extends this with a respawning alien group and the sandbox dev tools.
  */
@@ -26,8 +32,10 @@ export class Level03 extends IslandLevel {
     this.village = null;
     this.supplyCrate = null;
     this.hallCrate = null;
+    this.dome = null;
+    this.generators = [];
     this.arena = null;
-    this.state = 'approach'; // approach -> square -> boss -> victory (-> won)
+    this.state = 'generators'; // generators -> hall -> boss -> victory (-> won)
     this._victoryTimer = 0;
   }
 
@@ -48,6 +56,8 @@ export class Level03 extends IslandLevel {
   async _buildWorld() {
     this.village = this.trackDisposable(new Village(this.gameWorld, this.environment));
     this.village.build();
+    this.dome = this.trackDisposable(new ForceFieldDome(this.gameWorld, { centre: this.village.hall.centre, radius: DOME_RADIUS }));
+    this.dome.build();
   }
 
   _clearings() {
@@ -73,6 +83,31 @@ export class Level03 extends IslandLevel {
       weapons: this.weapons
     });
     this.gameWorld.addEntity(this.hallCrate);
+
+    // The generators that feed the force field, their beams running up to the top of the dome
+    this.generators = this.village.generatorSpots.map(({ name, position }) => {
+      const generator = new ShieldGenerator(this.gameWorld, {
+        name,
+        position,
+        player: this.player,
+        beamTarget: this.dome.top,
+        onShutDown: (g) => this._onGeneratorShutDown(g)
+      });
+      this.gameWorld.addEntity(generator);
+      return generator;
+    });
+  }
+
+  /** Two troopers guard each generator, patrolling round it. */
+  spawnGuards() {
+    for (const generator of this.generators) {
+      for (let i = 0; i < this.cfg.generatorGuards; i++) {
+        const angle = (i / this.cfg.generatorGuards) * Math.PI * 2 + 0.6;
+        const x = generator.position.x + Math.cos(angle) * GUARD_DISTANCE;
+        const z = generator.position.z + Math.sin(angle) * GUARD_DISTANCE;
+        this.createAlien('trooper', x, z);
+      }
+    }
   }
 
   _resultText(victory) {
@@ -91,9 +126,15 @@ export class Level03 extends IslandLevel {
     return 'Low health! Patch up at a supply crate [E]: by the village gate, or just inside the hall door.';
   }
 
-  /** Not inside a house, a wall or under a ship's leg either. */
+  /** Not inside a house, a wall, under a ship's leg or in the force field either. */
   _isWalkable(x, z) {
+    if (this.dome && this.dome.blocks(x, z, 1)) return false;
     return super._isWalkable(x, z) && (!this.village || this.village.isOpenGround(x, z, 0.8));
+  }
+
+  /** The force field shimmers (and collapses) every frame. */
+  _updateWorld(delta) {
+    if (this.dome) this.dome.update(delta);
   }
 
   // ---------------------------------------------------------------------------
@@ -102,7 +143,8 @@ export class Level03 extends IslandLevel {
 
   async _startScenario() {
     this.spawnCrew();
-    this._showObjective('OBJECTIVE', 'Get into the village and reach the square');
+    this.spawnGuards();
+    this._showGeneratorObjective();
   }
 
   /** The crew, just behind the player on the path, following at once. */
@@ -119,20 +161,15 @@ export class Level03 extends IslandLevel {
     const hall = this.village.hall;
     const p = this.player.position;
     switch (this.state) {
-      case 'approach': {
-        const square = this.village.square;
-        const distance = Math.hypot(p.x - square.x, p.z - square.z);
-        this._showObjective('OBJECTIVE', `Get into the village and reach the square — ${Math.round(distance)} m`);
-        if (distance <= this.cfg.squareReachRadius) {
-          this.state = 'square';
-          this._showObjective('THE SQUARE', 'The hall is ahead. Get inside.');
-          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The square is quiet. Too quiet.', 'info', 3000);
-        }
+      case 'generators':
+        this._showGeneratorObjective();
         break;
-      }
-      case 'square':
+      case 'hall': {
+        const distance = Math.hypot(p.x - hall.doorway.x, p.z - hall.doorway.z);
+        this._showObjective('THE HALL', `The force field is down. Get inside the hall — ${Math.round(distance)} m`);
         if (hall.contains(p.x, p.z)) this.startBossFight();
         break;
+      }
       case 'boss':
         this.arena.update(delta);
         if (this.state === 'boss') this._showBossObjective();
@@ -142,6 +179,35 @@ export class Level03 extends IslandLevel {
         if (this._victoryTimer <= 0) this._finish(true);
         break;
     }
+  }
+
+  /** How many generators are down, and how far the nearest one still running is. */
+  _showGeneratorObjective() {
+    const running = this.generators.filter((g) => !g.isShutDown);
+    const down = this.generators.length - running.length;
+    const p = this.player.position;
+    let nearest = Infinity;
+    for (const g of running) nearest = Math.min(nearest, Math.hypot(p.x - g.position.x, p.z - g.position.z));
+    this._showObjective('OBJECTIVE',
+      `A force field covers the hall. Shut down its generators (follow the beams) — ${down}/${this.generators.length}, nearest ${Math.round(nearest)} m`);
+  }
+
+  _onGeneratorShutDown(generator) {
+    const left = this.generators.filter((g) => !g.isShutDown).length;
+    const ui = this.gameWorld.ui;
+    if (left > 0) {
+      if (ui) ui.showToast(`${generator.name} is down. ${left} to go.`, 'success', 3000);
+      return;
+    }
+    this.dome.collapse();
+    if (this.state === 'generators') this.state = 'hall';
+    if (ui) ui.showToast('The force field is collapsing! Get into the hall!', 'success', 4000);
+  }
+
+  /** Shuts every generator down at once; `instant` also drops the dome without its collapse (dev tools, tests). */
+  shutDownGenerators({ instant = false } = {}) {
+    for (const generator of this.generators) generator.shutDown();
+    if (instant) this.dome.collapse({ instant: true });
   }
 
   /** The Warden wakes: the fight in the hall begins. */
@@ -172,8 +238,10 @@ export class Level03 extends IslandLevel {
   dispose() {
     this.supplyCrate = null; // Entities: the GameWorld disposes them
     this.hallCrate = null;
-    super.dispose();         // Also the village and the arena (tracked)
+    this.generators = [];
+    super.dispose();         // Also the village, the dome and the arena (tracked)
     this.village = null;
+    this.dome = null;
     this.arena = null;
   }
 }

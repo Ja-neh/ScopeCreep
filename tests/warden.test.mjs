@@ -27,13 +27,16 @@ function teardown(world, level) {
   return bodyCount(world);
 }
 
-/** Puts the player just inside the hall door and lets the Level 3 mission wake the Warden. */
+/**
+ * Drops the force field (the generator guards go too, so only the fight in the hall counts), puts
+ * the player just inside the hall door and lets the Level 3 mission wake the Warden.
+ */
 function enterHall(world, level) {
   const hall = level.village.hall;
-  const square = level.village.square;
-  level.player.teleport(square.x + 6, hall.doorway.y + 0.4, square.z);
+  for (const alien of [...level.squad.members]) level.squad.remove(alien);
+  level.shutDownGenerators({ instant: true });
   stepWorld(world, 0.2, { level });
-  assert.equal(level.state, 'square');
+  assert.equal(level.state, 'hall');
   const inside = hall.doorway.clone().addScaledVector(hall.forward, -3);
   level.player.teleport(inside.x, inside.y + 0.4, inside.z);
   stepWorld(world, 0.2, { level });
@@ -244,6 +247,7 @@ test('bringing the Warden down wins the mission after a moment; teardown leaves 
 
 test('in the hall the squad can stand anywhere on the floor except the pillars and the dais', async () => {
   const { world, level } = await loadLevel();
+  level.shutDownGenerators({ instant: true }); // No force field in the way
   const village = level.village;
   const hall = village.hall;
   const middle = hall.centre;

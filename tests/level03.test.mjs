@@ -1,5 +1,6 @@
-// Level 3 so far: the big night village with the squad arriving at the gate and heading up the
-// avenue to the square; the sandbox level; clean teardown.
+// Level 3 so far: the big night village with the squad arriving at the gate, the force field
+// barring the way into the hall, the crew keeping up in the streets; the sandbox level; clean
+// teardown. (The generators: generators.test.mjs. The Warden: warden.test.mjs.)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestWorld, stepWorld, bodyCount } from './support/testWorld.mjs';
@@ -22,12 +23,17 @@ function teardown(world, level) {
 
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
+/** Takes the generator guards away, so the crew only follow. */
+function clearAliens(level) {
+  for (const alien of [...level.squad.members]) level.squad.remove(alien);
+}
+
 test('Level 3 starts at night below the village gate, with the crew right behind the player', async () => {
   const { world, level } = await loadLevel(Level03);
   stepWorld(world, 0.5, { level });
   assert.equal(level.environment.lookName, 'night');
   assert.equal(level.environment.layoutName, 'village');
-  assert.equal(level.state, 'approach');
+  assert.equal(level.state, 'generators');
   assert.ok(flat(level.player.position, level.village.spawnPoints.start) < 1, 'on the path below the gate');
   assert.equal(level.allies.mates.length, config.allies.crewSize - 1);
   for (const mate of level.allies.mates) {
@@ -35,7 +41,7 @@ test('Level 3 starts at night below the village gate, with the crew right behind
     assert.equal(mate.order, 'follow');
   }
   assert.ok(level.supplyCrate && level.supplyCrate.collider, 'a supply crate by the gate');
-  assert.ok(world.ui.callsTo('showObjective').at(-1).args[1].startsWith('Get into the village'));
+  assert.match(world.ui.callsTo('showObjective').at(-1).args[1], /Shut down its generators .* 0\/3/);
   // The jungle grows right up to the village, but not into it
   let inVillage = 0;
   for (const set of level.cover.vegetation) {
@@ -48,25 +54,29 @@ test('Level 3 starts at night below the village gate, with the crew right behind
   assert.equal(world.environmentGroup.children.length, 0, 'nothing left in the scene');
 });
 
-test('Level 3: up the avenue to the square moves the objective on to the hall; the crew keep up', async () => {
+test('Level 3: up the avenue to the square, where the force field bars the way into the hall; the crew keep up', async () => {
   const { world, level } = await loadLevel(Level03);
+  clearAliens(level);
   const square = level.village.square;
-  const waypoints = [level.village.gate, square];
+  const hall = level.village.hall;
+  const waypoints = [level.village.gate, { x: square.x, z: square.z + 8 }, { x: square.x + 6, z: square.z }, hall.doorway];
   let index = 0;
   world.input.hold('forward');
-  stepWorld(world, 75, {
+  stepWorld(world, 85, {
     level,
     onFrame: () => {
       const target = waypoints[Math.min(index, waypoints.length - 1)];
-      if (flat(level.player.position, target) < 1.5 && index < waypoints.length) index++;
+      if (flat(level.player.position, target) < 1.5 && index < waypoints.length - 1) index++;
       const next = waypoints[Math.min(index, waypoints.length - 1)];
       level.player.yaw = Math.atan2(-(next.x - level.player.position.x), -(next.z - level.player.position.z));
-      return level.state === 'square';
+      return false;
     }
   });
   world.input.release('forward');
-  assert.equal(level.state, 'square');
-  assert.equal(world.ui.callsTo('showObjective').at(-1).args[0], 'THE SQUARE');
+  assert.equal(index, waypoints.length - 1, 'made it up the avenue and across the square');
+  const fromDome = flat(level.player.position, level.dome.centre);
+  assert.ok(fromDome > level.dome.radius - 0.5 && fromDome < level.dome.radius + 2, `stopped at the force field (${fromDome.toFixed(1)} m from its middle)`);
+  assert.equal(level.state, 'generators', 'no way into the hall yet');
 
   stepWorld(world, 6, { level });
   const near = level.allies.mates.filter((mate) => flat(mate.position, level.player.position) < 14).length;
@@ -76,6 +86,7 @@ test('Level 3: up the avenue to the square moves the objective on to the hall; t
 
 test('Level 3: the crew follow the player round a street corner, past the houses', async () => {
   const { world, level } = await loadLevel(Level03);
+  clearAliens(level);
   const cross = { x: 0, z: -290 };
   const end = { x: -60, z: -290 };
   const waypoints = [level.village.gate, cross, end];

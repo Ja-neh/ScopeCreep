@@ -239,7 +239,12 @@
       ]
     },
     "level03": {
-      "squareReachRadius": 20,
+      "generator": {
+        "holdSeconds": 5,
+        "radius": 3,
+        "drainPerSecond": 1
+      },
+      "generatorGuards": 2,
       "victoryDelaySeconds": 3
     }
   },

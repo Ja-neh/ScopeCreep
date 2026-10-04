@@ -33,6 +33,10 @@ const SHIPS = [
 ];
 const SHIP_BELLY = 3.4;     // Clearance under the hull: you can walk (and hide) under a ship
 const SHIP_CLEARING = 6;    // No houses this close to a ship's rim
+// The ships whose crews set up the force field's generators (index into SHIPS), and what the
+// generators are called; each stands a few meters beyond the foot of its ship's ramp
+const GENERATOR_SHIPS = [{ ship: 2, name: 'West generator' }, { ship: 3, name: 'East generator' }, { ship: 4, name: 'Square generator' }];
+const GENERATOR_PAST_RAMP = 3;
 // Lanterns with a real light (each is a point light: keep the total small). The other lamp
 // posts only glow, or are dead.
 const LIT_LANTERNS = [{ x: 6.4, z: -168 }, { x: -5.4, z: -352 }, { x: 7.2, z: -538 }];
@@ -111,6 +115,7 @@ export class Village {
     this.houses = [];      // Buildings: { x, z, w, d, yaw, type: closed | open | ruin, front, bounds, ... }
     this.lots = [];        // Empty lots (a dead tree, a well, a broken fence)
     this.ships = [];       // { x, z, radius, yaw, belly, ramp }
+    this.generatorSpots = []; // { name, position }: where the force field's generators stand
     this.streets = [];     // { from, to, width, name }
     this.square = { ...SQUARE };
     this.gate = { ...GATE };
@@ -137,6 +142,12 @@ export class Village {
     this._buildGraveyard();
     this._buildGate();
     for (const ship of SHIPS) this._buildShip(ship);
+    for (const { ship: index, name } of GENERATOR_SHIPS) {
+      const ship = this.ships[index];
+      const x = ship.ramp.x + Math.sin(ship.yaw) * GENERATOR_PAST_RAMP;
+      const z = ship.ramp.z + Math.cos(ship.yaw) * GENERATOR_PAST_RAMP;
+      this.generatorSpots.push({ name, position: new THREE.Vector3(x, this._ground(x, z), z) });
+    }
 
     // The supply crate the helicopters dropped just inside the gate
     const crate = { x: GATE.x + 9, z: GATE.z - 10 };

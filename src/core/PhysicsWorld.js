@@ -233,6 +233,18 @@ export class PhysicsWorld {
   }
 
   /**
+   * Creates a static ball collider on its own fixed body (domes, force fields).
+   * @param {number} radius
+   * @param {{x: number, y: number, z: number}} position - World centre
+   * @returns {RAPIER.Collider|null} Collider with `rigidBody` set; remove it with removeRigidBody(collider.rigidBody)
+   */
+  createStaticBall(radius, position) {
+    if (!this.world) return null;
+    const colliderDesc = this.RAPIER.ColliderDesc.ball(radius);
+    return this._createStaticCollider(colliderDesc, position, { x: 0, y: 0, z: 0, w: 1 });
+  }
+
+  /**
    * Creates a static convex-hull collider on its own fixed body (rocks, boulders, debris).
    * @param {Float32Array} points - Hull points in the body's local frame, as x, y, z triples
    * @param {{x: number, y: number, z: number}} position - World position of the local origin

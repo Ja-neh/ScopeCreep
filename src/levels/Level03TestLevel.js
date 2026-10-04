@@ -79,6 +79,7 @@ export class Level03TestLevel extends Level03 {
    */
   fightWarden() {
     if (this.arena) this.arena.dispose();
+    if (this.dome.isUp) this.shutDownGenerators({ instant: true });
     const hall = this.village.hall;
     const inside = hall.doorway.clone().addScaledVector(hall.forward, -3);
     this.player.teleport(inside.x, inside.y + 0.4, inside.z);

@@ -265,10 +265,10 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 ### 2.9 Level 3: The Village (in progress)
 
-Level 3 is the finale, at night: the squad comes up the jungle path to the village on the plateau at the island's far end, fights through its streets to the square, brings down the force field over the hall, defeats the Warden inside and frees the hostages. It is being built in phases: night village (done), the Warden (done), generators and dome, the street fight, cages and the dawn ending, then polish.
+Level 3 is the finale, at night: the squad comes up the jungle path to the village on the plateau at the island's far end, fights through its streets to the square, brings down the force field over the hall, defeats the Warden inside and frees the hostages. It is being built in phases: night village (done), the Warden (done), generators and dome (done), the street fight, cages and the dawn ending, then polish.
 
 **Done so far:**
-- `Level03` (`IslandLevel`): night look (`BeachEnvironment` with `look: 'night'`: moon, stars, cool moonlight, dark haze) on the `'village'` island layout, the village, the player and crew arriving on the jungle path below the gate, a supply crate inside the gate, and the objective to go up the avenue to the square (about 400 m). The moon's shadow area (240 m across) follows the camera (`shadowFollowsCamera`). `Level03TestLevel` adds a respawning alien group in the first streets and the shared `SandboxTools`.
+- `Level03` (`IslandLevel`): night look (`BeachEnvironment` with `look: 'night'`: moon, stars, cool moonlight, dark haze) on the `'village'` island layout, the village, the player and crew arriving on the jungle path below the gate, and a supply crate inside the gate. States: `'generators'` (shut down the three generators) -> `'hall'` (the force field is down: get inside) -> `'boss'` -> `'victory'` -> won. The moon's shadow area (240 m across) follows the camera (`shadowFollowsCamera`). `Level03TestLevel` adds a respawning alien group in the first streets and the shared `SandboxTools`.
 - `BeachEnvironment` layouts: `'beach'` (Level 2, unchanged) and `'village'` (Level 3), where the island's northern half grows wider and longer to carry an oval village plateau 400 m across and 490 m long, about 6 times the old one. The south (beach, hills, jungle path) is identical. Helpers: `village` (`x`, `z`, `halfWidth`, `halfLength`, `height`), `isInVillage(x, z, margin)`, `distanceOutsideVillage`, `scatterBounds` (used by `BeachCover`).
 - `level03/Village`: a big old village laid out from a fixed seed:
   - Streets: an avenue from the gate to the square, 5 cross streets and 4 side streets.
@@ -284,8 +284,13 @@ Level 3 is the finale, at night: the squad comes up the jungle path to the villa
 - Squadmates in streets: `HumanSquad` records the leader's path (the trail). A follower with a wall between it and its post (`PhysicsWorld.isLineClear`, which ignores characters) walks the trail around it (`routeTowards`), and runs at `catchUpSpeed` when more than `catchUpDistance` behind. Level 3 also keeps formation places out of the houses (`_isWalkable`).
 - `level03/VillageHall`: the hall on the north side of the square, with an entrance facing the square, glowing windows, 2 rows of pillars with alien conduits, a dais at the back for the Warden and a green interior light. It exposes `entrance`, `doorway`, `pillars`, `dais`, `bounds` and `contains()` for the later phases.
 - `level03/BuildingKit`: boxes (with yaw, pitch and roll), gable roofs (tilted for sagging), pillars, lathe shapes (saucer hulls, domes) and crystals, with matching static colliders. Everything is merged at the end (`finish(name, { tileSize })`).
+- The force field and its generators:
+  - **`level03/ForceFieldDome`:** a glowing hemisphere of hexagons over the hall (a `ShaderMaterial` with `forcefield.vert.glsl` / `forcefield.frag.glsl`: fresnel rim, hexagon lattice, rolling energy bands, drawn additively, no fog so it shows from the far end of the village). A static ball collider (`PhysicsWorld.createStaticBall`) keeps people and bullets out. `collapse()` removes the collider at once and flickers the dome out (`'up'` -> `'collapsing'` -> `'down'`); `blocks(x, z)` keeps formation places out from under it.
+  - **`level03/ShieldGenerator`:** an entity standing a few meters past the ramp of three of the landed ships (`Village.generatorSpots`). It has a lit spinning core and a beam to the top of the dome, and is guarded by `generatorGuards` troopers. Hold [E] (`specialAction`) within `radius` for `holdSeconds` to shut it down; the progress drains at `drainPerSecond` when you let go. Shut down, its light (intensity 0, so the light count and shaders stay the same), glow and beam go out.
+  - **Flow:** the objective counts the generators that are down and gives the distance to the nearest one still running. When the last one goes down the dome collapses and the state moves to `'hall'`. `shutDownGenerators({ instant })` is used by the sandbox and the tests.
+  - **Balance:** in `config.levels.level03.generator`.
 - The Warden (boss fight in the hall):
-  - **Flow (`Level03`):** after the square, walking into the hall wakes the Warden (`startBossFight()`, state `'boss'`). Bringing it down wins after `victoryDelaySeconds` (state `'victory'`), for now; the hostages come in a later phase. A second supply crate stands just inside the hall door (`VillageHall.supplyPoint`).
+  - **Flow (`Level03`):** once the force field is down, walking into the hall wakes the Warden (`startBossFight()`, state `'boss'`). Bringing it down wins after `victoryDelaySeconds` (state `'victory'`), for now; the hostages come in a later phase. A second supply crate stands just inside the hall door (`VillageHall.supplyPoint`).
   - **`level03/BossArena`:** runs the fight:
     - It places the Warden in front of its dais, shielded, fed by two `ShieldCrystal`s on the back pillars.
     - Once both crystals are destroyed, the shield drops.
@@ -300,10 +305,10 @@ Level 3 is the finale, at night: the squad comes up the jungle path to the villa
   - **`enemies/Shockwave`:** a ring that rolls out across the floor and hurts each grounded target once as it passes; feet higher than `shockwaveClearHeight` (a jump) clear it.
   - **`level03/ShieldCrystal`:** an alien-side entity with health and a static collider (so hitscan shots find it through `collider.userData.entity`), and a beam to the Warden. When shot it shatters and its collider goes.
   - **Hall floor:** `VillageHall.isOpenFloor()` lets squadmates take formation places anywhere in the hall except the pillars and the dais.
-  - **Sandbox:** [F6] (`devBoss`) in `Level03TestLevel` takes the player and the squad to the hall door and starts a fresh fight; there is no mission result there. `GroundCombatant.teleport()` and `AlienSquad.remove()` support this.
+  - **Sandbox:** [F6] (`devBoss`) in `Level03TestLevel` drops the force field, takes the player and the squad to the hall door and starts a fresh fight; there is no mission result there. `GroundCombatant.teleport()` and `AlienSquad.remove()` support this.
   - **Balance:** all fight values live in `config.enemies.warden`.
 
-**Budgets:** at most 8 point lights in Level 3: 3 lanterns, 1 under the ship by the square, 1 in the hall, and 3 kept for the generators. The village is about 100k triangles in about 40 merged meshes.
+**Budgets:** 8 point lights in Level 3: 3 lanterns, 1 under the ship by the square, 1 in the hall, and 1 on each of the 3 generators. The village is about 100k triangles in about 40 merged meshes.
 
 ---
 
@@ -407,7 +412,7 @@ ScopeCreep/
 │   │   ├── SandboxTools.js # Dev tools shared by the island test levels (F1/F3/F4, respawn)
 │   │   ├── Level03.js      # The Village: the night finale (in progress)
 │   │   ├── Level03TestLevel.js # Level 3 sandbox
-│   │   ├── level03/        # Village, VillageHall, BuildingKit, BossArena, ShieldCrystal
+│   │   ├── level03/        # Village, VillageHall, BuildingKit, ForceFieldDome, ShieldGenerator, BossArena, ShieldCrystal
 │   │   └── TestLevel.js    # Ground testing sandbox: Flat terrain, isolated weapon testing
 │   ├── rendering/          # Visual WebGL components
 │   │   ├── Ocean.js        # Subdivided ocean plane driving custom GPU shaders
