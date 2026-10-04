@@ -58,6 +58,7 @@ export class IslandLevel extends BaseLevel {
     this._revivePromptLabel = null;
     this._lowHealthWarned = false;
     this._squadmatesLost = 0;
+    this._respawnTimer = -1;   // Counting down to a respawn (see _respawnPlayer)
   }
 
   async init() {
@@ -323,6 +324,39 @@ export class IslandLevel extends BaseLevel {
       this._downedShown = left;
       this.gameWorld.ui.showStatusIndicator(`DOWNED: a squadmate is coming to revive you (${left}s)`, 'danger');
     }
+  }
+
+  /**
+   * The player is lost: `config.player.vitals.respawnSeconds` later they are back on their feet
+   * at `point()` with full health. Call every frame while they are lost (from _onPlayerKilled).
+   * @param {number} delta
+   * @param {() => THREE.Vector3} point - Where they come back (feet)
+   * @param {string} [message] - Shown while they wait
+   * @returns {boolean} True on the frame they come back
+   */
+  _respawnPlayer(delta, point, message = 'YOU WERE KILLED') {
+    const player = this.player;
+    const ui = this.gameWorld.ui;
+    if (this._respawnTimer < 0) {
+      this._respawnTimer = config.player.vitals.respawnSeconds;
+      player.isDevSuspended = true; // Freezes movement, camera and weapons while down
+      if (ui) ui.showStatusIndicator(message, 'danger');
+      return false;
+    }
+    this._respawnTimer -= delta;
+    if (this._respawnTimer > 0) return false;
+
+    this._respawnTimer = -1;
+    const spawn = point();
+    player.teleport(spawn.x, spawn.y, spawn.z);
+    player.health.reset();
+    player.isDevSuspended = this._shouldStaySuspended();
+    this._wasConcealed = false;
+    if (ui) {
+      ui.hideStatusIndicator();
+      ui.updatePlayerHealth(player.health.currentHealth, player.health.maxHealth);
+    }
+    return true;
   }
 
   _playerGetsUp() {

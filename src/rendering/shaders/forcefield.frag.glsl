@@ -1,10 +1,12 @@
-// Force-field dome: a lattice of hexagons that glows brightest at the edges seen side-on
-// (fresnel), with bands of energy rolling up it. uOpacity fades it out; uFlicker makes it
-// stutter (while it collapses). Drawn additively, so alpha scales how much light it adds.
+// Force field (a dome, or a flat wall when uFlat is 1): a lattice of hexagons that glows
+// brightest at the edges seen side-on (fresnel), with bands of energy rolling up it. uOpacity
+// fades it out; uFlicker makes it stutter (while it collapses). Drawn additively, so alpha
+// scales how much light it adds.
 uniform vec3 uColor;
 uniform float uTime;
 uniform float uOpacity;
 uniform float uFlicker;
+uniform float uFlat;
 
 varying vec3 vNormal;
 varying vec3 vViewDir;
@@ -25,12 +27,12 @@ void main() {
   float facing = abs(dot(normalize(vNormal), normalize(vViewDir)));
   float rim = pow(1.0 - facing, 2.5);
 
-  // Hexagons wrapped round the dome: around it (angle) and up it (height)
-  vec2 p = vec2(atan(vLocal.z, vLocal.x) * 9.0, vLocal.y * 14.0);
+  // Hexagons wrapped round the dome (around it and up it), or laid flat across a wall
+  vec2 p = uFlat > 0.5 ? vLocal.xy * 1.6 : vec2(atan(vLocal.z, vLocal.x) * 9.0, vLocal.y * 14.0);
   float lattice = hexEdge(p);
-  float band = pow(0.5 + 0.5 * sin(vLocal.y * 12.0 - uTime * 2.2), 8.0);
+  float band = pow(0.5 + 0.5 * sin(vLocal.y * mix(12.0, 1.5, uFlat) - uTime * 2.2), 8.0);
 
-  float alpha = 0.05 + rim * 0.75 + lattice * 0.22 + band * 0.12;
+  float alpha = 0.05 + rim * 0.75 + lattice * 0.22 + band * 0.12 + uFlat * 0.12;
   float stutter = step(0.5, fract(sin(floor(uTime * 24.0) * 91.7) * 43758.5));
   alpha *= uOpacity * (1.0 - uFlicker * stutter);
 

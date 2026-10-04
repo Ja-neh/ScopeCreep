@@ -1,6 +1,7 @@
 // Level 3's force field over the hall and the three generators that feed it: where they stand
-// and who guards them, the dome keeping people and bullets out, holding [E] to shut a generator
-// down, the dome collapsing when all three are down, and clean teardown.
+// and who guards them, aliens that never stop coming (to each generator, and at the player from
+// every direction in the village), the dome keeping people and bullets out, holding [E] to shut
+// a generator down, wave 2 at the sealed hall, the revive points, and clean teardown.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -10,6 +11,7 @@ import { HitscanWeapon } from '../src/weapons/HitscanWeapon.js';
 import config from '../src/config.json';
 
 const cfg = config.levels.level03.generator;
+const levelCfg = config.levels.level03;
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 async function loadLevel(seed = 4) {
@@ -25,8 +27,9 @@ function teardown(world, level) {
   return bodyCount(world);
 }
 
-/** The player alone (no aliens, no squad) standing at (x, z). */
+/** The player alone (no aliens, none coming, no squad) standing at (x, z). */
 function alone(world, level, x, z) {
+  level._stopDefenses();
   for (const alien of [...level.squad.members]) level.squad.remove(alien);
   level.allies.removeAllMates();
   level.player.teleport(x, level.environment.heightAt(x, z) + 0.4, z);
@@ -48,7 +51,7 @@ test('three generators stand by three landed ships far apart, each guarded, thei
       .add(generator.beam.position).add(generator.position);
     assert.ok(end.distanceTo(dome.top) < 0.5, 'beam reaches the top of the dome');
     const guards = level.squad.members.filter((alien) => flat(alien.position, generator.position) < 10);
-    assert.equal(guards.length, config.levels.level03.generatorGuards, `${generator.name} has its guards`);
+    assert.equal(guards.length, levelCfg.generatorDefense.guards, `${generator.name} has its guards`);
   }
   for (let i = 0; i < 3; i++) {
     for (let j = i + 1; j < 3; j++) assert.ok(flat(generators[i].position, generators[j].position) > 100, 'spread across the village');
@@ -122,37 +125,172 @@ test('hold [E] beside a generator to shut it down; the progress drains if you le
   assert.equal(generator.light.intensity, 0, 'dark');
   assert.equal(generator.beam.visible, false, 'its beam is gone');
   assert.ok(ui.callsTo('hidePrompt').some((call) => call.args[0] === generator), 'prompt gone');
-  assert.match(ui.callsTo('showToast').at(-1).args[0], /West generator is down\. 2 to go/);
+  assert.match(ui.callsTo('showToast').at(-1).args[0], /West generator is down.*2 to go/);
   assert.match(ui.callsTo('showObjective').at(-1).args[1], /1\/3/);
   assert.ok(level.dome.isUp, 'the others still hold the field up');
   assert.equal(teardown(world, level), 0);
 });
 
-test('with all three generators down the dome collapses: the way in opens, and the hall is next', async () => {
+test('aliens never stop coming to a generator while it runs and the player is near; shutting it down stops them', async () => {
   const { world, level } = await loadLevel();
-  const { dome, village } = level;
+  const defense = levelCfg.generatorDefense;
+  const generator = level.generators[0];
+  const spawner = level.generatorDefenses[0];
+  level.streetAliens.stop(); // Only the generator's own defenders
+  level.allies.removeAllMates();
+  level.player.health.invulnerable = true;
+  const p = generator.position;
+  level.player.teleport(p.x + 2, p.y + 0.4, p.z);
+
+  let killed = 0;
+  stepWorld(world, 60, {
+    level,
+    onFrame: (frame) => {
+      assert.ok(spawner.members.length <= defense.maxAlive, 'never more than maxAlive at once');
+      if (frame % 300 === 299) { // Every 5 s, clear them out: more keep coming
+        for (const alien of spawner.members) { alien.health.takeDamage({ amount: 9999 }); killed++; }
+      }
+    }
+  });
+  assert.ok(spawner.spawned > defense.maxAlive, `${spawner.spawned} arrivals: more than one batch`);
+  assert.ok(killed > defense.maxAlive);
+  for (const alien of level.squad.members) {
+    if (spawner.members.includes(alien)) assert.ok(flat(alien.position, level.player.position) > 5 || alien.brain.is('engage'), 'coming in to fight');
+  }
+
+  // Down: no more
+  generator.shutDown();
+  const spawned = spawner.spawned;
+  for (const alien of spawner.members) alien.health.takeDamage({ amount: 9999 });
+  stepWorld(world, defense.reinforceSeconds * 3, { level });
+  assert.equal(spawner.spawned, spawned, 'no more aliens once it is down');
+  assert.equal(teardown(world, level), 0);
+});
+
+test('a generator far away calls no help; in the village aliens come at the player from every direction', async () => {
+  const { world, level } = await loadLevel();
+  for (const defense of level.generatorDefenses) defense.stop();
+  level.allies.removeAllMates();
+  level.player.health.invulnerable = true;
+
+  // Still on the jungle path: nobody comes
+  stepWorld(world, levelCfg.streetAliens.reinforceSeconds * 3, { level });
+  assert.equal(level.streetAliens.spawned, 0, 'not in the village yet');
+
+  // In the middle of the village: from all sides, at a distance, for as long as it takes
+  level.player.teleport(0, 12.4, -360);
+  const bearings = [];
+  let seen = 0;
+  stepWorld(world, 90, {
+    level,
+    onFrame: (frame) => {
+      for (const alien of level.streetAliens.members) {
+        if (alien._bearing === undefined) {
+          alien._bearing = Math.atan2(alien.position.x - level.player.position.x, alien.position.z - level.player.position.z);
+          bearings.push(alien._bearing);
+          const distance = flat(alien.position, level.player.position);
+          assert.ok(distance >= levelCfg.spawnMinPlayerDistance, `appeared ${distance.toFixed(0)} m away`);
+          seen++;
+        }
+      }
+      if (frame % 600 === 599) for (const alien of level.streetAliens.members) alien.health.takeDamage({ amount: 9999 });
+    }
+  });
+  assert.ok(seen > levelCfg.streetAliens.maxAlive, `${seen} aliens came`);
+  const quarters = new Set(bearings.map((b) => Math.floor(((b + Math.PI) / (Math.PI * 2)) * 4) % 4));
+  assert.ok(quarters.size >= 3, `from ${quarters.size} directions`);
+  for (const alien of level.streetAliens.members) assert.ok(alien.brain.is('investigate') || alien.brain.is('engage') || alien.brain.is('search'), 'hunting the player');
+  assert.ok(level.squad.aliveCount <= levelCfg.maxAliveAliens, 'within the level\'s cap');
+  assert.equal(teardown(world, level), 0);
+});
+
+test('wave 2: with all three generators down the dome falls, the hall door is sealed and its guards come out; clear them and the way in opens', async () => {
+  const { world, level } = await loadLevel();
+  const { dome, doorSeal, village } = level;
   const hall = village.hall;
+  const already = new Set(level.squad.members.filter((alien) => !alien.isDead)); // The generator guards
   for (const generator of level.generators) generator.shutDown();
   stepWorld(world, 0.2, { level });
   assert.equal(dome.state, 'collapsing');
-  assert.equal(dome.collider, null, 'the way in is open at once');
-  assert.equal(level.state, 'hall');
-  assert.match(world.ui.callsTo('showObjective').at(-1).args[1], /Get inside the hall/);
-  assert.ok(level._isWalkable(hall.entrance.x, hall.entrance.z), 'the squad can stand at the door now');
+  assert.equal(dome.collider, null);
+  assert.equal(level.state, 'guards');
+  assert.ok(doorSeal.isUp && doorSeal.collider, 'the hall door is sealed');
+  const wave = levelCfg.hallWave;
+  assert.equal(level.hallGuards.length, wave.troopers + wave.brutes, 'the aliens still about, made up to the size of the wave');
+  assert.equal(level.hallGuards.filter((a) => a.name === 'AlienBrute').length, wave.brutes);
+  for (const guard of level.hallGuards) {
+    assert.ok(!hall.contains(guard.position.x, guard.position.z), 'outside the hall');
+    if (already.has(guard)) assert.ok(guard.brain.is('investigate'), 'the ones already about fall back to guard the hall');
+    else assert.ok(flat(guard.position, hall.entrance) <= wave.postMaxDistance + 1, 'fresh ones at posts by its door');
+  }
+  assert.ok(level.generatorDefenses.every((d) => d.stopped) && level.streetAliens.stopped, 'no more endless aliens: wave 2 can be cleared');
+  assert.match(world.ui.callsTo('showObjective').at(-1).args[0], /WAVE 2/);
 
-  stepWorld(world, 3, { level });
-  assert.equal(dome.state, 'down');
-  assert.equal(dome.mesh.visible, false, 'faded out');
-
-  // Through the door: the Warden wakes
-  const outside = hall.doorway.clone().addScaledVector(hall.forward, 10);
-  alone(world, level, outside.x, outside.z);
+  // The seal holds: walk straight at the door
+  const outside = hall.doorway.clone().addScaledVector(hall.forward, 8);
+  const guards = [...level.hallGuards];
+  level.allies.removeAllMates();
+  level.player.health.invulnerable = true;
+  level.player.teleport(outside.x, outside.y + 0.4, outside.z);
   level.player.yaw = Math.atan2(hall.forward.x, hall.forward.z);
+  world.input.hold('forward');
+  stepWorld(world, 3, { level });
+  world.input.release('forward');
+  assert.ok(!hall.contains(level.player.position.x, level.player.position.z), 'the seal stops you at the door');
+  assert.equal(level.state, 'guards');
+
+  // Clear them: the seal breaks, and in you go
+  for (const guard of guards) guard.health.takeDamage({ amount: 9999 });
+  stepWorld(world, 0.2, { level });
+  assert.equal(level.state, 'hall');
+  assert.equal(doorSeal.collider, null, 'the seal is down');
   world.input.hold('forward');
   stepWorld(world, 4, { level, onFrame: () => level.state === 'boss' });
   world.input.release('forward');
   assert.equal(level.state, 'boss');
-  assert.ok(level.arena.warden.brain.is('engage'));
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
-  assert.equal(world.environmentGroup.children.length, 0, 'the dome is gone from the scene');
+  assert.equal(world.environmentGroup.children.length, 0, 'the force fields are gone from the scene');
+});
+
+test('revive points: no more than five along the way; lost, the player comes back at the last one reached, with the squad', async () => {
+  const { world, level } = await loadLevel();
+  const points = level.revivePoints;
+  assert.ok(points.length >= 3 && points.length <= 5, `${points.length} revive points`);
+  for (const point of points) {
+    assert.ok(level.village.isOpenGround(point.position.x, point.position.z, 0.3), `${point.name} stands in the open`);
+    assert.equal(point.reached, false);
+  }
+  const gate = points[0];
+  assert.ok(gate.position.z < level.village.gate.z && flat(gate.position, level.village.gate) < 20, 'the first one is just inside the gate');
+
+  // Walk past the first one
+  level._stopDefenses();
+  for (const alien of [...level.squad.members]) level.squad.remove(alien);
+  level.player.teleport(gate.position.x + 3, gate.position.y + 0.4, gate.position.z);
+  stepWorld(world, 0.2, { level });
+  assert.ok(gate.reached && level.lastRevivePoint === gate);
+  assert.match(world.ui.callsTo('showToast').at(-1).args[0], /Revive point reached/);
+
+  // The one in the hall can't be reached from outside the door
+  const hallPoint = points.at(-1);
+  const hall = level.village.hall;
+  const door = hall.doorway.clone().addScaledVector(hall.forward, 1.5);
+  level.shutDownGenerators({ instant: true });
+  level.player.teleport(door.x, door.y + 0.4, door.z);
+  stepWorld(world, 0.2, { level });
+  if (flat(door, hallPoint.position) <= levelCfg.revivePointRadius) assert.equal(hallPoint.reached, false, 'not from outside the hall');
+
+  // Lost far away: back at the gate's revive point, squad and all, no mission failed
+  level.player.teleport(-60, 12.4, -430);
+  stepWorld(world, 0.2, { level });
+  level.player.health.takeDamage({ amount: 9999 });
+  level._playerLost = true;
+  stepWorld(world, config.player.vitals.respawnSeconds + 0.5, { level });
+  assert.equal(level.player.health.isDead, false, 'back on their feet');
+  assert.ok(flat(level.player.position, gate.position) < 3, 'at the revive point');
+  for (const mate of level.allies.mates) {
+    if (!mate.isDead) assert.ok(flat(mate.position, level.player.position) < 6, `${mate.name} regrouped`);
+  }
+  assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'no mission failed');
+  assert.equal(teardown(world, level), 0);
 });

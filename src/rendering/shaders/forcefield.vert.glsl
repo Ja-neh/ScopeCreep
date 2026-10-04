@@ -1,5 +1,5 @@
-// Force-field dome: a unit hemisphere scaled to the dome's size. Passes the surface normal, the
-// direction to the camera and the point on the unit hemisphere to the fragment shader.
+// Force field: a unit hemisphere scaled to the dome's size (or a flat wall, in meters). Passes the
+// surface normal, the direction to the camera and the local point to the fragment shader.
 varying vec3 vNormal;
 varying vec3 vViewDir;
 varying vec3 vLocal;

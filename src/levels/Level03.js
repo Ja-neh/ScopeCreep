@@ -2,13 +2,16 @@ import * as THREE from 'three';
 import { IslandLevel, CREW_NAMES } from './IslandLevel.js';
 import { Village } from './level03/Village.js';
 import { BossArena } from './level03/BossArena.js';
-import { ForceFieldDome } from './level03/ForceFieldDome.js';
+import { ForceFieldDome, ForceFieldWall } from './level03/ForceFieldDome.js';
 import { ShieldGenerator } from './level03/ShieldGenerator.js';
+import { AlienSpawner } from './level03/AlienSpawner.js';
+import { RevivePoint } from './level03/RevivePoint.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
 import config from '../config.json';
 
-const DOME_RADIUS = 22;  // The force field covers the hall and a little of the ground round it
-const GUARD_DISTANCE = 6; // Generator guards start this far from their generator
+const DOME_RADIUS = 22;      // The force field covers the hall and a little of the ground round it
+const GUARD_DISTANCE = 6;    // Generator guards start this far from their generator
+const GUARD_POST_TRIES = 30; // Attempts to find each hall guard a post
 
 /**
  * Level03
@@ -16,12 +19,19 @@ const GUARD_DISTANCE = 6; // Generator guards start this far from their generato
  * on the plateau at the island's far end, fights through its streets to the square, brings down
  * the force field over the hall, defeats the Warden inside and frees the hostages.
  *
- * Built in phases. So far: the night village (a big old village of streets, creepy houses and
- * landed alien ships, the square, the hall) with the player and squad arriving at the gate and
- * shutting down the three generators (ShieldGenerator, by three of the landed ships, each with
- * two guards) that feed the force field over the hall (ForceFieldDome). When the dome falls, into
- * the hall, where the Warden wakes (BossArena). Bringing it down wins, for now (the hostages
- * come in a later phase). On-foot combat, downed and revive come from IslandLevel.
+ * Built in phases. So far:
+ * - 'generators': once the player is in the village, aliens keep coming at them from every
+ *   direction (an AlienSpawner round the player). Three generators (ShieldGenerator, by three of
+ *   the landed ships) feed the force field over the hall (ForceFieldDome); each has guards, and
+ *   while it runs and the player is near, more aliens keep coming to defend it. Hold [E] to shut
+ *   each one down.
+ * - 'guards' (wave 2): the dome falls, but the hall's door is sealed (ForceFieldWall) and a wave of
+ *   aliens takes up posts round it. Clear them all and the seal breaks.
+ * - 'hall' -> 'boss': into the hall, where the Warden wakes (BossArena). Bringing it down wins, for
+ *   now (the hostages come in a later phase).
+ * Up to five revive points (RevivePoint) along the way: lost, the player comes back at the last
+ * one reached (with the squad), rather than failing. On-foot combat, downed and revive come from
+ * IslandLevel.
  *
  * Level03TestLevel extends this with a respawning alien group and the sandbox dev tools.
  */
@@ -33,10 +43,17 @@ export class Level03 extends IslandLevel {
     this.supplyCrate = null;
     this.hallCrate = null;
     this.dome = null;
+    this.doorSeal = null;
     this.generators = [];
+    this.revivePoints = [];
+    this.lastRevivePoint = null;
+    this.streetAliens = null;       // AlienSpawner round the player
+    this.generatorDefenses = [];    // AlienSpawner round each generator
+    this.hallGuards = [];           // Wave 2
     this.arena = null;
-    this.state = 'generators'; // generators -> hall -> boss -> victory (-> won)
+    this.state = 'generators'; // generators -> guards -> hall -> boss -> victory (-> won)
     this._victoryTimer = 0;
+    this._skipHallWave = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -56,8 +73,13 @@ export class Level03 extends IslandLevel {
   async _buildWorld() {
     this.village = this.trackDisposable(new Village(this.gameWorld, this.environment));
     this.village.build();
-    this.dome = this.trackDisposable(new ForceFieldDome(this.gameWorld, { centre: this.village.hall.centre, radius: DOME_RADIUS }));
+    const hall = this.village.hall;
+    this.dome = this.trackDisposable(new ForceFieldDome(this.gameWorld, { centre: hall.centre, radius: DOME_RADIUS }));
     this.dome.build();
+    this.doorSeal = this.trackDisposable(new ForceFieldWall(this.gameWorld, {
+      centre: hall.doorway, yaw: hall.yaw, width: hall.entranceWidth + 0.4, height: hall.entranceHeight + 0.3
+    }));
+    this.doorSeal.build();
   }
 
   _clearings() {
@@ -69,7 +91,10 @@ export class Level03 extends IslandLevel {
     return { position: this.village.spawnPoints.start, yaw: 0 };
   }
 
-  /** Supply crates the helicopters dropped: one by the gate, one just inside the hall door. */
+  /**
+   * Supply crates the helicopters dropped (by the gate, and just inside the hall door), the
+   * generators, and the revive points.
+   */
   _createProps() {
     this.supplyCrate = new SupplyCrate(this.gameWorld, {
       position: this.village.spawnPoints.supplyCrate,
@@ -96,18 +121,41 @@ export class Level03 extends IslandLevel {
       this.gameWorld.addEntity(generator);
       return generator;
     });
+
+    this.revivePoints = this._revivePointSpots().map(({ name, position, canReach }) => {
+      const point = new RevivePoint(this.gameWorld, {
+        name,
+        position,
+        player: this.player,
+        radius: this.cfg.revivePointRadius,
+        canReach,
+        onReached: (p) => this._onRevivePointReached(p)
+      });
+      this.gameWorld.addEntity(point);
+      return point;
+    });
   }
 
-  /** Two troopers guard each generator, patrolling round it. */
-  spawnGuards() {
-    for (const generator of this.generators) {
-      for (let i = 0; i < this.cfg.generatorGuards; i++) {
-        const angle = (i / this.cfg.generatorGuards) * Math.PI * 2 + 0.6;
-        const x = generator.position.x + Math.cos(angle) * GUARD_DISTANCE;
-        const z = generator.position.z + Math.sin(angle) * GUARD_DISTANCE;
-        this.createAlien('trooper', x, z);
-      }
+  /**
+   * Five revive points along the way: inside the gate, by the west and east generators (on the
+   * nearest street), on the square, and just inside the hall door (for the Warden).
+   */
+  _revivePointSpots() {
+    const { village } = this;
+    const { gate, square, hall } = village;
+    const onGround = (x, z) => new THREE.Vector3(x, this.environment.heightAt(x, z), z);
+    const spots = [{ name: 'the village gate', position: onGround(gate.x - 3, gate.z - 12) }];
+    for (const generator of this.generators.slice(0, 2)) {
+      const spot = village.streetSpotNear(generator.position.x, generator.position.z);
+      spots.push({ name: `the ${generator.name.toLowerCase()}`, position: onGround(spot.x, spot.z) });
     }
+    spots.push({ name: 'the square', position: onGround(square.x - 12, square.z + 12) });
+    const inside = hall.doorway.clone().addScaledVector(hall.forward, -3);
+    const across = new THREE.Vector3(hall.forward.z, 0, -hall.forward.x);
+    // Only from inside: never bring the player back behind the sealed door
+    const p = this.player.position;
+    spots.push({ name: 'the hall', position: onGround(inside.x + across.x * 4.5, inside.z + across.z * 4.5), canReach: () => hall.contains(p.x, p.z) });
+    return spots.slice(0, 5);
   }
 
   _resultText(victory) {
@@ -132,9 +180,35 @@ export class Level03 extends IslandLevel {
     return super._isWalkable(x, z) && (!this.village || this.village.isOpenGround(x, z, 0.8));
   }
 
-  /** The force field shimmers (and collapses) every frame. */
+  /** The force fields shimmer (and collapse) every frame. */
   _updateWorld(delta) {
     if (this.dome) this.dome.update(delta);
+    if (this.doorSeal) this.doorSeal.update(delta);
+  }
+
+  /**
+   * Lost (bled out, or nobody left to come): back on their feet at the last revive point reached
+   * (or the start, before the first), with the squad regrouping there.
+   */
+  _onPlayerKilled(delta) {
+    const point = this.lastRevivePoint;
+    const back = this._respawnPlayer(delta, () => (point ? point.respawnPosition : this.village.spawnPoints.start),
+      'YOU WENT DOWN: back to the last revive point...');
+    if (!back) return;
+    const p = this.player.position;
+    this.allies.mates.forEach((mate, i) => {
+      if (mate.isDead) return;
+      const angle = (i / Math.max(1, this.allies.mates.length)) * Math.PI * 2;
+      const x = p.x + Math.cos(angle) * 3;
+      const z = p.z + Math.sin(angle) * 3;
+      mate.teleport(x, this.environment.heightAt(x, z) + 0.1, z);
+    });
+    if (this.gameWorld.ui) this.gameWorld.ui.showToast(`Back on your feet at ${point ? point.name : 'the start'}.`, 'info', 3000);
+  }
+
+  _onRevivePointReached(point) {
+    this.lastRevivePoint = point;
+    if (this.gameWorld.ui) this.gameWorld.ui.showToast(`Revive point reached: ${point.name}. If you fall, you come back here.`, 'success', 3500);
   }
 
   // ---------------------------------------------------------------------------
@@ -143,7 +217,7 @@ export class Level03 extends IslandLevel {
 
   async _startScenario() {
     this.spawnCrew();
-    this.spawnGuards();
+    this.setUpDefenses();
     this._showGeneratorObjective();
   }
 
@@ -157,16 +231,79 @@ export class Level03 extends IslandLevel {
     this.allies.followLeader();
   }
 
+  /**
+   * The aliens holding the village: guards at every generator, more coming to defend each one
+   * while it runs and the player is near, and more coming at the player from every direction
+   * once they are in the village. None of them ever run out until the generators are down.
+   */
+  setUpDefenses() {
+    const cap = () => this.squad.aliveCount < this.cfg.maxAliveAliens;
+    const generatorCfg = this.cfg.generatorDefense;
+    this.generatorDefenses = this.generators.map((generator) => {
+      const defense = new AlienSpawner(this, {
+        centre: () => generator.position,
+        maxAlive: generatorCfg.maxAlive,
+        interval: generatorCfg.reinforceSeconds,
+        minDistance: generatorCfg.spawnMinDistance,
+        maxDistance: generatorCfg.spawnMaxDistance,
+        minPlayerDistance: this.cfg.spawnMinPlayerDistance,
+        bruteChance: generatorCfg.bruteChance,
+        isActive: () => !generator.isShutDown && this._playerWithin(generator.position, generatorCfg.activeRange),
+        canSpawn: cap
+      });
+      for (let i = 0; i < generatorCfg.guards; i++) {
+        const angle = (i / generatorCfg.guards) * Math.PI * 2 + 0.6;
+        const x = generator.position.x + Math.cos(angle) * GUARD_DISTANCE;
+        const z = generator.position.z + Math.sin(angle) * GUARD_DISTANCE;
+        defense.adopt(this.createAlien('trooper', x, z));
+      }
+      return defense;
+    });
+
+    const streetCfg = this.cfg.streetAliens;
+    this.streetAliens = new AlienSpawner(this, {
+      centre: () => this.player.position,
+      target: () => this.player.position,
+      maxAlive: streetCfg.maxAlive,
+      interval: streetCfg.reinforceSeconds,
+      minDistance: streetCfg.spawnMinDistance,
+      maxDistance: streetCfg.spawnMaxDistance,
+      minPlayerDistance: this.cfg.spawnMinPlayerDistance,
+      bruteChance: streetCfg.bruteChance,
+      isActive: () => !this.player.health.isDead && this.environment.isInVillage(this.player.position.x, this.player.position.z),
+      canSpawn: cap
+    });
+  }
+
+  _playerWithin(point, distance) {
+    const p = this.player.position;
+    return Math.hypot(p.x - point.x, p.z - point.z) <= distance;
+  }
+
+  _updateDefenses(delta) {
+    for (const defense of this.generatorDefenses) defense.update(delta);
+    if (this.streetAliens) this.streetAliens.update(delta);
+  }
+
+  _stopDefenses() {
+    for (const defense of this.generatorDefenses) defense.stop();
+    if (this.streetAliens) this.streetAliens.stop();
+  }
+
   _updateScenario(delta) {
     const hall = this.village.hall;
     const p = this.player.position;
     switch (this.state) {
       case 'generators':
+        this._updateDefenses(delta);
         this._showGeneratorObjective();
+        break;
+      case 'guards':
+        this._updateHallWave();
         break;
       case 'hall': {
         const distance = Math.hypot(p.x - hall.doorway.x, p.z - hall.doorway.z);
-        this._showObjective('THE HALL', `The force field is down. Get inside the hall — ${Math.round(distance)} m`);
+        this._showObjective('THE HALL', `The way in is open. Get inside the hall — ${Math.round(distance)} m`);
         if (hall.contains(p.x, p.z)) this.startBossFight();
         break;
       }
@@ -193,21 +330,81 @@ export class Level03 extends IslandLevel {
   }
 
   _onGeneratorShutDown(generator) {
+    const index = this.generators.indexOf(generator);
+    if (this.generatorDefenses[index]) this.generatorDefenses[index].stop();
     const left = this.generators.filter((g) => !g.isShutDown).length;
     const ui = this.gameWorld.ui;
     if (left > 0) {
-      if (ui) ui.showToast(`${generator.name} is down. ${left} to go.`, 'success', 3000);
+      if (ui) ui.showToast(`${generator.name} is down: no more aliens coming to it. ${left} to go.`, 'success', 3000);
+      return;
+    }
+
+    this._stopDefenses();
+    if (this._skipHallWave) {
+      this.dome.collapse({ instant: true });
+      if (this.state === 'generators') this.state = 'hall';
       return;
     }
     this.dome.collapse();
-    if (this.state === 'generators') this.state = 'hall';
-    if (ui) ui.showToast('The force field is collapsing! Get into the hall!', 'success', 4000);
+    this._startHallWave();
+    if (ui) ui.showToast('WAVE 2! The force field is down, but the hall is sealed and its guards are coming out!', 'danger', 4500);
   }
 
-  /** Shuts every generator down at once; `instant` also drops the dome without its collapse (dev tools, tests). */
+  /**
+   * Shuts every generator down at once. `instant` skips wave 2 as well: the dome just vanishes and
+   * the way into the hall is open (dev tools, tests).
+   */
   shutDownGenerators({ instant = false } = {}) {
+    this._skipHallWave = instant;
     for (const generator of this.generators) generator.shutDown();
-    if (instant) this.dome.collapse({ instant: true });
+    this._skipHallWave = false;
+  }
+
+  /**
+   * Wave 2: the hall's door is sealed, and its guards take up posts round the door and the
+   * square. The aliens still about fall back to guard it too; fresh ones (the brutes first) make
+   * the wave up to its full size.
+   */
+  _startHallWave() {
+    this.state = 'guards';
+    this.doorSeal.raise();
+    const wave = this.cfg.hallWave;
+    this.hallGuards = this.squad.members.filter((alien) => !alien.isDead);
+    for (const alien of this.hallGuards) {
+      const post = this._hallGuardPost();
+      if (post) alien.assault(new THREE.Vector3(post.x, this.environment.heightAt(post.x, post.z), post.z));
+    }
+    const fresh = Math.max(0, wave.troopers + wave.brutes - this.hallGuards.length);
+    for (let i = 0; i < fresh; i++) {
+      const post = this._hallGuardPost();
+      if (post) this.hallGuards.push(this.createAlien(i < wave.brutes ? 'brute' : 'trooper', post.x, post.z));
+    }
+    this._updateHallWave();
+  }
+
+  /** A post in front of the hall door (towards the square), on open ground. */
+  _hallGuardPost() {
+    const { hall } = this.village;
+    const wave = this.cfg.hallWave;
+    const facing = Math.atan2(hall.forward.x, hall.forward.z);
+    for (let i = 0; i < GUARD_POST_TRIES; i++) {
+      const angle = facing + (Math.random() - 0.5) * Math.PI * 1.2;
+      const distance = wave.postMinDistance + Math.random() * (wave.postMaxDistance - wave.postMinDistance);
+      const x = hall.entrance.x + Math.sin(angle) * distance;
+      const z = hall.entrance.z + Math.cos(angle) * distance;
+      if (!hall.contains(x, z) && this._isWalkable(x, z)) return { x, z };
+    }
+    return null;
+  }
+
+  /** Counts the hall's guards down; the seal on the door breaks when they are all dead. */
+  _updateHallWave() {
+    const left = this.hallGuards.filter((alien) => !alien.isDead).length;
+    this._showObjective('WAVE 2', `The hall is sealed. Clear the aliens guarding it — ${left} left`);
+    if (left > 0) return;
+    this.doorSeal.collapse();
+    this.state = 'hall';
+    if (this.gameWorld.ui) this.gameWorld.ui.showToast('The seal on the hall door is breaking. The Warden is waiting inside.', 'success', 4000);
   }
 
   /** The Warden wakes: the fight in the hall begins. */
@@ -239,9 +436,15 @@ export class Level03 extends IslandLevel {
     this.supplyCrate = null; // Entities: the GameWorld disposes them
     this.hallCrate = null;
     this.generators = [];
-    super.dispose();         // Also the village, the dome and the arena (tracked)
+    this.revivePoints = [];
+    this.lastRevivePoint = null;
+    this.generatorDefenses = [];
+    this.streetAliens = null;
+    this.hallGuards = [];    // Aliens: the alien squad removes them
+    super.dispose();         // Also the village, the force fields and the arena (tracked)
     this.village = null;
     this.dome = null;
+    this.doorSeal = null;
     this.arena = null;
   }
 }

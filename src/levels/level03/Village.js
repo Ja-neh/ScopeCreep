@@ -918,6 +918,29 @@ export class Village {
     return !this._reserved.some(touches) && !this._obstacles.some(touches) && !this._keepClear.some(touches);
   }
 
+  /**
+   * The nearest spot on a street to (x, z): on the street's middle line, moved over towards (x, z)
+   * but kept a meter inside the street's edge.
+   * @returns {{x: number, z: number}}
+   */
+  streetSpotNear(x, z) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (const street of this.streets) {
+      const cx = Math.max(Math.min(street.from.x, street.to.x), Math.min(x, Math.max(street.from.x, street.to.x)));
+      const cz = Math.max(Math.min(street.from.z, street.to.z), Math.min(z, Math.max(street.from.z, street.to.z)));
+      const distance = Math.hypot(x - cx, z - cz);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        const over = Math.min(distance, street.width / 2 - 1);
+        best = distance > 0
+          ? { x: cx + ((x - cx) / distance) * over, z: cz + ((z - cz) / distance) * over }
+          : { x: cx, z: cz };
+      }
+    }
+    return best;
+  }
+
   /** True if (x, z) is open ground (not inside a house, the hall, a wall, a tree or a ship's leg). */
   isOpenGround(x, z, margin = 0.5) {
     const point = { minX: x, maxX: x, minZ: z, maxZ: z };

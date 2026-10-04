@@ -23,8 +23,9 @@ function teardown(world, level) {
 
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
-/** Takes the generator guards away, so the crew only follow. */
+/** Takes the aliens away (and stops more coming), so the crew only follow. */
 function clearAliens(level) {
+  level._stopDefenses();
   for (const alien of [...level.squad.members]) level.squad.remove(alien);
 }
 
@@ -42,6 +43,8 @@ test('Level 3 starts at night below the village gate, with the crew right behind
   }
   assert.ok(level.supplyCrate && level.supplyCrate.collider, 'a supply crate by the gate');
   assert.match(world.ui.callsTo('showObjective').at(-1).args[1], /Shut down its generators .* 0\/3/);
+  const guards = config.levels.level03.generatorDefense.guards * level.generators.length;
+  assert.equal(level.squad.aliveCount, guards, 'guards at every generator');
   // The jungle grows right up to the village, but not into it
   let inVillage = 0;
   for (const set of level.cover.vegetation) {

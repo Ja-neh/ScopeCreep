@@ -244,7 +244,31 @@
         "radius": 3,
         "drainPerSecond": 1
       },
-      "generatorGuards": 2,
+      "generatorDefense": {
+        "guards": 4,
+        "maxAlive": 7,
+        "reinforceSeconds": 5,
+        "activeRange": 140,
+        "spawnMinDistance": 45,
+        "spawnMaxDistance": 75,
+        "bruteChance": 0.15
+      },
+      "streetAliens": {
+        "maxAlive": 8,
+        "reinforceSeconds": 6,
+        "spawnMinDistance": 50,
+        "spawnMaxDistance": 80,
+        "bruteChance": 0.1
+      },
+      "spawnMinPlayerDistance": 40,
+      "maxAliveAliens": 22,
+      "hallWave": {
+        "troopers": 14,
+        "brutes": 4,
+        "postMinDistance": 6,
+        "postMaxDistance": 30
+      },
+      "revivePointRadius": 6,
       "victoryDelaySeconds": 3
     }
   },

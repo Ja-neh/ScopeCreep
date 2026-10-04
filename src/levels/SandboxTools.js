@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import config from '../config.json';
 
 const DEV_SPAWN_DISTANCE = 30; // F3 drops an alien this far ahead of the player
 
@@ -34,7 +33,6 @@ export class SandboxTools {
     this.cameraMode = 'PLAYER'; // 'PLAYER' | 'AERIAL'
     this.aerialCamera = null;
     this.orbitControls = null;
-    this._respawnTimer = -1;
   }
 
   /**
@@ -131,29 +129,7 @@ export class SandboxTools {
    * back at the respawn point at full health. Call every frame while that lasts.
    */
   onPlayerKilled(delta) {
-    const { player } = this.level;
-    const ui = this.gameWorld.ui;
-
-    if (this._respawnTimer < 0) {
-      this._respawnTimer = config.player.vitals.respawnSeconds;
-      player.isDevSuspended = true; // Freezes movement, camera and weapons while down
-      if (ui) ui.showStatusIndicator('YOU WERE KILLED', 'danger');
-      return;
-    }
-
-    this._respawnTimer -= delta;
-    if (this._respawnTimer > 0) return;
-
-    this._respawnTimer = -1;
-    const spawn = this.respawnPoint();
-    player.teleport(spawn.x, spawn.y, spawn.z);
-    player.health.reset();
-    player.isDevSuspended = this.keepsPlayerStill;
-    this.level._wasConcealed = false;
-    if (ui) {
-      ui.hideStatusIndicator();
-      ui.updatePlayerHealth(player.health.currentHealth, player.health.maxHealth);
-    }
+    this.level._respawnPlayer(delta, this.respawnPoint);
   }
 
   /**

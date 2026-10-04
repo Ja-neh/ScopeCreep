@@ -44,6 +44,8 @@ export class VillageHall {
     this.width = WIDTH;
     this.depth = DEPTH;
     this.wallHeight = WALL_HEIGHT;
+    this.entranceWidth = ENTRANCE_WIDTH;
+    this.entranceHeight = ENTRANCE_HEIGHT;
 
     this.entrance = new THREE.Vector3();   // Just outside the doorway
     this.doorway = new THREE.Vector3();    // In the doorway

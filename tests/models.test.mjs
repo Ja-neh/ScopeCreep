@@ -26,7 +26,10 @@ test('an alien is drawn in at most 8 pieces, keeping its armour colour and glowi
     const model = new AlienModel(options);
     const meshes = meshesOf(model);
     assert.ok(meshes.length <= 8, `${meshes.length} meshes`);
-    assert.ok(meshes.every((mesh) => mesh.castShadow && mesh.geometry.getAttribute('color')), 'shadowed, vertex-coloured');
+    assert.ok(meshes.every((mesh) => mesh.geometry.getAttribute('color')), 'vertex-coloured');
+    // Only the body casts a shadow (a big wave of aliens would otherwise be many shadow draws)
+    assert.ok(meshes.every((mesh) => mesh.castShadow === (mesh.parent === model.body)), 'the body casts the shadow');
+    assert.ok(meshes.some((mesh) => mesh.castShadow), 'it does cast one');
     assert.ok(meshes.some((mesh) => mesh.material === model.materials.solid && hasVertexColor(mesh, options.armorColor || 0x5d5480)), 'armour colour');
     assert.ok(meshes.some((mesh) => mesh.material === model.materials.light), 'glowing parts');
     assert.ok(model.muzzle.parent === model.gun, 'muzzle still at the rifle tip');

@@ -96,9 +96,11 @@ export class AlienModel {
     this._walkPhase = 0;
     this._mergeParts();
 
+    // Only the body casts a shadow: limbs and the rifle would add a shadow draw each for very
+    // little (a big wave of aliens is many draw calls)
     this.mesh.traverse((child) => {
       if (child.isMesh) {
-        child.castShadow = true;
+        child.castShadow = child.parent === this.body;
         child.receiveShadow = true;
       }
     });
