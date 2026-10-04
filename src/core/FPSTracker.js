@@ -38,7 +38,7 @@ export class FPSTracker {
 
       const gw = gameWorld || this.gameWorld;
       if (gw && gw.ui) {
-        gw.ui.updateFPS(this.fps, this.frameTime);
+        gw.ui.updateFPS(this.fps, this.frameTime, gw.quality ? gw.quality.renderScale : 1);
       }
     }
   }

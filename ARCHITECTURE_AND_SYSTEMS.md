@@ -108,6 +108,12 @@ The engine infrastructure is stage-agnostic and located in `src/core/`:
 - **`InputManager`:** Centralized input mapper. Captures raw keyboard and mouse events, manages browser pointer lock for FPS mouselook, and maps keys to semantic action bindings (`forward`, `jump`, `toggleColliders`). Clears single-frame transitions at the end of every frame.
 - **`UIManager` (`src/ui/UIManager.js`):** Central UI coordinator owned by `GameWorld` (`gameWorld.ui`). Manages modular DOM overlays (interaction prompts, station telemetry HUDs, crosshairs, warship health meter, toast notifications, FPS display, controls helpers, and dev tools) styled exclusively through `src/ui/ui.css`. Entities and levels never inject inline DOM or CSS.
 - **`FPSTracker`:** Real-time on-screen HUD performance and framerate diagnostic widget.
+- **`RenderQuality`:** The graphics settings. The player chooses them, and the game recommends settings for their computer.
+  - **Settings:** resolution as a share of the screen's full resolution (`RESOLUTION_CHOICES`: 100%, 85%, 70%, 55% or 40%), or `'auto'`, plus shadows on or off. The player picks them in Options (Esc) → Graphics (`GraphicsSettings`), and the choice is saved in `localStorage`.
+  - **Auto:** once a second it checks the median frame time. Below about 28 fps it lowers the resolution a step, and above about 50 fps it raises it again. It never changes shadows.
+  - **Recommendation:** at first it comes from the graphics card. A software renderer (no GPU in use, e.g. SwiftShader or the Microsoft Basic Render Driver) gets 40% with no shadows; a GPU gets 100% with shadows. After that it follows the frame rate measured during gameplay: lighter settings below 30 fps, one step sharper at 50 fps or more. The menu shows the reason, naming the card and the measured fps.
+  - **First run:** the recommended settings are used. With a software renderer, GameWorld also creates the context without antialiasing and shows a warning toast.
+  - **FPS display:** shows "N% res" while rendering below full resolution.
 
 ---
 
@@ -212,13 +218,21 @@ The edge server runs headless without DOM, WebGL, GPU, or Three.js. If and when 
 
 Level 2 is fought on foot. The squad lands from the anchored warship onto the south beach of the island and holds it against three waves of aliens coming down from the village, then pushes inland to the jungle path. All of its code is new and lives in its own files; shared engine files only gained small, opt-in additions.
 
-**Flow (`Level02`):** opening (10 s camera sweep) -> `landing` (until the player is ashore, or `firstWaveTriggerSeconds`) -> `waves` -> `objective` (reach the beacon) -> `won`. Being killed -> `lost` (downed and revive are not built yet). The result screen offers Retry or Play again, and Main menu. `Level02TestLevel` extends it as the sandbox: training dummies, a respawning alien group, player respawn instead of failure, and dev keys.
+**Flow (`Level02`):** opening (10 s camera sweep) -> `landing` (until the player is ashore, or `firstWaveTriggerSeconds`) -> `waves` -> `objective` (reach the beacon) -> `won`. The result screen offers Retry or Play again, and Main menu. `Level02TestLevel` extends it as the sandbox: training dummies, a respawning alien group, player respawn instead of failure, and dev keys.
+
+**Downed, revive and healing:**
+- At 0 health the player (or a squadmate) is downed, not killed. Aliens ignore the downed, because `Perception` skips anyone whose health `isDead`.
+- `HumanSquad` sends the nearest squadmate who is on their feet. It runs over and holds still beside them for `revive.holdSeconds`, then revives them with `revive.healthFraction` of their health.
+- The player revives a downed squadmate by holding [E] (`specialAction`) beside them. Letting go starts over.
+- Anyone not revived within `revive.bleedOutSeconds` is lost. For the player, that, or going down with nobody left standing, fails the mission (the sandbox respawns instead).
+- The supply crate refills ammo and health, and a hint points to it when health falls below `player.vitals.lowHealthFraction`.
+- Shared hooks: `HealthComponent.revive(amount)` and `GroundCombatant.revive(health)` / `onRevived()`.
 
 **World (`src/levels/level02/`)**
 - `BeachEnvironment`: the island. Procedural terrain mesh plus a matching Rapier heightfield (the grid is shifted 0.173 m off round coordinates, because a vertical ray through an exact grid corner can slip between heightfield triangles), a calm sea, a sunset sky and clouds, and fog. Public helpers: `heightAt`, `slopeAt`, `pathCentreX`, `pathDistance`, `sunDirection`, and `village` (where Level 3's houses go).
 - `LandingZone`: the battleship anchored offshore (`AnchoredShip`, a static copy of Level 1's ship), the boarding ramp and gangway (ramps, not steps; solid handrails), the two helicopter bays, and spawn points (`gangwayTop`, `gangwayFoot`, `supplyCrate`). `flyInHelicopters()` sends the helicopters back out to sea and lands them (`HelicopterArrival` flight path plus `RotorWash` sand and spray); their cover colliders only switch on at touchdown.
-- `BeachCover`: instanced trees, rocks and bushes with convex-hull rock colliders and trunk cylinders. AI helpers: `findCover(from, threat, ...)` (the edge of a tall rock, so a shooter in cover still has a line of fire), `isInBush`, `updateConcealment(actor)`, `isClearOfSolids`.
-- `ObjectiveBeacon`, `SupplyCrate` (press [E] to refill machine-gun reserve ammo), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
+- `BeachCover`: instanced trees, rocks and bushes with convex-hull rock colliders and trunk cylinders. The scenery is split into 120 m map tiles (`THREE.LOD` each). Tiles off screen are culled, tiles beyond 170 m use low-detail models, and tiles beyond 720 m (lost in the fog) are not drawn. AI helpers: `findCover(from, threat, ...)` (the edge of a tall rock, so a shooter in cover still has a line of fire), `isInBush`, `updateConcealment(actor)`, `isClearOfSolids`.
+- `ObjectiveBeacon`, `SupplyCrate` (press [E] to refill machine-gun reserve ammo and health), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
 
 **Combatants (`src/entities/`)**
 - `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model.
@@ -229,16 +243,16 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 **AI coordination (`src/ai/`)**
 - `StateMachine` (states are `{ enter, update, exit }`; `update` returns the next state's name) and `Perception` (sight range and field of view with a line-of-sight ray, a shorter range against concealed targets, hearing, last known position).
 - `AlienSquad`: registers aliens, gives them targets and cover, passes call-outs and gunshot noise, counts kills and clears corpses.
-- `HumanSquad`: the leader (the player) plus `SquadMate`s. It provides formation places that turn with the leader's travel direction, the enemy list, shared tracers, and gunshot reporting. Its `members` array is passed as `AlienSquad.targets`, so the aliens hunt the whole squad.
+- `HumanSquad`: the leader (the player) plus `SquadMate`s. It provides formation places that turn with the leader's travel direction, the enemy list, shared tracers, and gunshot reporting. It also runs downed and revive: who is down and for how long (`isDowned`, `bleedOutLeft`), sending revivers, `reviveMember`, and bleed-out. Its `members` array is passed as `AlienSquad.targets`, so the aliens hunt the whole squad.
 - `WaveDirector`: spawns each wave's units round-robin across its lanes, at most `maxAlive` at a time, waits for the wave to be cleared, then pauses before the next.
 
 **Weapons (`src/weapons/`):** `WeaponController` (the player's machine gun and knife, switching, aiming down sights, recoil and HUD), `HitscanWeapon` (no friendly fire: a shot stops on a teammate but does not hurt them), `MeleeWeapon` (backstab bonus), `WeaponEffects` (pooled tracers, impacts, muzzle flash) and `WeaponModels`.
 
 **Rendering additions (`src/rendering/`):** `Terrain`, `Vegetation` (instanced scatter), `Noise`, `SkyDome` (sunset gradient and sun disc, drawn at infinity around the camera; its horizon colour is the fog colour), `Clouds` (one instanced mesh following the camera) and `MeshMerge`.
 
-**UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult` and `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
+**UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class) and `GraphicsSettings` (the Graphics section of the Options menu). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
 
-**Balance (`config.json`):** `player.vitals`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, `maxAliveAliens`, timings, radii).
+**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, `maxAliveAliens`, timings, radii).
 
 **Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad.
 

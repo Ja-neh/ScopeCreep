@@ -7,6 +7,10 @@ const VILLAGE_MARGIN = 10;    // Extra open ground around Level 3's village plat
 const BATTLEFIELD_MIN_Z = 30; // Full density south of here (Level 2's fight); thinner elsewhere
 const OUTSIDE_DENSITY = 0.35;
 const SHADOW_MIN_Z = 0;       // Props south of here cast shadows (the sun's shadow map covers z = -30..310)
+// Scenery is drawn in map tiles: full detail nearby, low detail further out, nothing deep in the fog
+const SCENERY_TILE = 120;
+const SCENERY_LOD_DISTANCE = 170;
+const SCENERY_CULL_DISTANCE = 720;
 
 // Bush concealment
 const BUSH_RADIUS = 1.5;      // Hiding radius of a bush at scale 1 (meters)
@@ -100,7 +104,12 @@ export class BeachCover {
       }
     }
     for (const [set, castShadows] of [[near, true], [far, false]]) {
-      const vegetation = new Vegetation(set, { castShadows });
+      const vegetation = new Vegetation(set, {
+        castShadows,
+        tileSize: SCENERY_TILE,
+        lodDistance: SCENERY_LOD_DISTANCE,
+        cullDistance: SCENERY_CULL_DISTANCE
+      });
       this.gameWorld.environmentGroup.add(vegetation.mesh);
       vegetation.createColliders(this.gameWorld.physics);
       this.vegetation.push(vegetation);

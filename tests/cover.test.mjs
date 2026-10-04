@@ -61,8 +61,10 @@ test('plenty of rock cover on the battlefield, including head-high boulders', ()
 test('vegetation stays within the triangle budget for lab PCs', () => {
   let triangles = 0;
   let shadowTriangles = 0;
+  // Worst case: every tile at full detail (the first level of each tile)
   for (const set of cover.vegetation) {
-    for (const mesh of set.mesh.children) {
+    for (const tile of set.mesh.children) {
+      const mesh = tile.isLOD ? tile.levels[0].object : tile;
       const count = (mesh.geometry.getAttribute('position').count / 3) * mesh.count;
       triangles += count;
       if (mesh.castShadow) shadowTriangles += count;
@@ -70,6 +72,36 @@ test('vegetation stays within the triangle budget for lab PCs', () => {
   }
   assert.ok(triangles <= 200000, `${triangles} triangles`);
   assert.ok(shadowTriangles <= 120000, `${shadowTriangles} shadow-casting triangles`);
+});
+
+test('scenery is tiled: from the beach, far tiles draw in low detail, fogged ones not at all', () => {
+  const camera = new THREE.PerspectiveCamera(60, 1280 / 650, 0.1, 2000);
+  camera.position.set(-10, 8, 200);
+  camera.lookAt(-10, 4, 100);
+  camera.updateMatrixWorld();
+  const frustum = new THREE.Frustum().setFromProjectionMatrix(
+    new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+  world.scene.updateMatrixWorld(true);
+
+  const triangles = (mesh) => (mesh.geometry.getAttribute('position').count / 3) * mesh.count;
+  let fullDetail = 0;
+  let drawn = 0;
+  let lowTiles = 0;
+  let skippedTiles = 0;
+  for (const set of cover.vegetation) {
+    for (const tile of set.mesh.children) {
+      assert.ok(tile.isLOD, 'tiles are LODs');
+      fullDetail += triangles(tile.levels[0].object);
+      tile.update(camera); // What the renderer does every frame
+      const shown = tile.levels.find((level) => level.object.visible).object;
+      if (shown === tile.levels[1].object) lowTiles++;
+      if (!shown.isInstancedMesh) { skippedTiles++; continue; }
+      if (shown === tile.levels[0].object) assert.ok(tile.position.distanceTo(camera.position) < 170, 'full detail only up close');
+      if (frustum.intersectsObject(shown)) drawn += triangles(shown);
+    }
+  }
+  assert.ok(lowTiles > 0 && skippedTiles > 0, `${lowTiles} low-detail tiles, ${skippedTiles} skipped`);
+  assert.ok(drawn < fullDetail * 0.5, `drawing ${drawn} of ${fullDetail} triangles`);
 });
 
 test('every trunk and rock has a collider', () => {

@@ -156,19 +156,67 @@ test('aliens hunt squadmates too; a squadmate shot from behind turns and fights 
   assert.ok(mate.brain.is('engage') || trooper.isDead, `turned to fight (${mate.brain.current})`);
 });
 
-test('a fallen squadmate is reported once and cleared away; teardown leaves no physics bodies', () => {
+test('a downed squadmate is revived by the nearest squadmate, back up with half health', () => {
+  const downed = [];
+  const revived = [];
+  humans.onMemberDowned = (member) => downed.push(member.name);
+  humans.onMemberRevived = (member, by) => revived.push(`${by.name} revived ${member.name}`);
+  placePlayer(pathX(185), 185);
+  const okafor = addMate(pathX(170) - 3, 170, 'Okafor');
+  addMate(pathX(170) + 4, 174, 'Reyes');
+  run(0.5);
+
+  okafor.health.takeDamage({ amount: 9999 });
+  run(0.5);
+  assert.deepEqual(downed, ['Okafor']);
+  assert.ok(humans.isDowned(okafor));
+  assert.equal(okafor.collider.isEnabled(), false, 'the downed do not block the way');
+
+  run(12, () => !okafor.isDead);
+  assert.equal(okafor.isDead, false);
+  assert.deepEqual(revived, ['Reyes revived Okafor']);
+  assert.equal(okafor.health.currentHealth, config.allies.squadMate.maxHealth * config.revive.healthFraction);
+  assert.equal(okafor.collider.isEnabled(), true);
+  run(0.5);
+  assert.ok(okafor.brain.is('follow') || okafor.brain.is('engage'), `back to work (${okafor.brain.current})`);
+  assert.deepEqual(downed, ['Okafor'], 'reported once');
+});
+
+test('the downed player is not shot at any more, and a squadmate revives them', () => {
+  const revived = [];
+  humans.onMemberRevived = (member, by) => revived.push(by.name);
+  placePlayer(pathX(178), 178);
+  addMate(pathX(178) + 6, 182, 'Novak');
+  run(0.5);
+
+  player.health.takeDamage({ amount: 1000 });
+  run(0.2);
+  assert.ok(humans.isDowned(player));
+  const trooper = addTrooper(pathX(150), 150, player.position);
+  run(1);
+  assert.ok(trooper.perception.target !== player, 'aliens ignore a downed player');
+
+  run(12, () => !player.health.isDead);
+  assert.equal(player.health.isDead, false);
+  assert.deepEqual(revived, ['Novak']);
+  assert.equal(player.health.currentHealth, 100 * config.revive.healthFraction);
+});
+
+test('a downed squadmate nobody revives bleeds out: reported once, cleared away; teardown leaves no physics bodies', () => {
   const bodiesBefore = bodyCount(world);
   const killed = [];
   humans.onMateKilled = (mate) => killed.push(mate.name);
+  humans.bleedOutSeconds = 1.5;
   placePlayer(pathX(170), 170);
   const mate = addMate(pathX(170), 176, 'Okafor');
   run(0.2);
 
   mate.health.takeDamage({ amount: 9999 });
   run(0.5);
+  assert.deepEqual(killed, [], 'downed, not yet lost');
+  run(1.2);
   assert.deepEqual(killed, ['Okafor']);
-  assert.equal(mate.collider.isEnabled(), false, 'the fallen do not block the way');
-  run(2);
+  run(2.5);
   assert.deepEqual(killed, ['Okafor'], 'reported once');
   assert.equal(humans.mates.length, 0);
   assert.ok(!humans.members.includes(mate) && humans.members.includes(player));

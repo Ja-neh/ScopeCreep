@@ -33,12 +33,15 @@ export class FPSDisplay {
           <span id="fps-ms-val" style="color: #94a3b8; font-size: 12px; min-width: 32px; text-align: right;">16.6</span>
           <span style="color: #64748b; font-size: 11px; font-weight: 500;">ms</span>
         </div>
+        <span class="ui-fps-res ui-hidden" data-role="res"></span>
       </div>
     `;
 
     this.dotEl = this.element.querySelector('#fps-dot');
     this.fpsValEl = this.element.querySelector('#fps-val');
     this.msValEl = this.element.querySelector('#fps-ms-val');
+    this.resEl = this.element.querySelector('[data-role="res"]');
+    this._shownScale = 1;
 
     this.parent.appendChild(this.element);
   }
@@ -47,8 +50,14 @@ export class FPSDisplay {
    * Update FPS display values and health color
    * @param {number} fps
    * @param {number} frameTime
+   * @param {number} [renderScale=1] - Share of full resolution being rendered (shown when below 1)
    */
-  update(fps, frameTime) {
+  update(fps, frameTime, renderScale = 1) {
+    if (this.resEl && Math.abs(renderScale - this._shownScale) > 0.005) {
+      this._shownScale = renderScale;
+      this.resEl.textContent = `${Math.round(renderScale * 100)}% res`;
+      this.resEl.classList.toggle('ui-hidden', renderScale > 0.995);
+    }
     if (this.fpsValEl) {
       this.fpsValEl.textContent = fps;
     }

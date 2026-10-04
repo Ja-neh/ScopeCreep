@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { InputManager } from './InputManager.js';
 import { PhysicsWorld } from './PhysicsWorld.js';
 import { FPSTracker } from './FPSTracker.js';
+import { RenderQuality } from './RenderQuality.js';
 import { UIManager } from '../ui/UIManager.js';
 
 /**
@@ -47,16 +48,18 @@ export class GameWorld {
     this.effectsGroup.name = 'EffectsGroup';
     this.scene.add(this.effectsGroup);
 
-    // 3. Renderer Setup
+    // 3. Renderer Setup. Antialiasing only when a real GPU draws (in software it is very costly).
+    const gpu = RenderQuality.probe();
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: true,
+      antialias: !gpu.software,
       powerPreference: 'high-performance'
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Graphics settings (resolution, shadows): the player's choice, with a recommendation for this computer
+    this.quality = new RenderQuality(this.renderer, this.scene, { software: gpu.software, gpuName: gpu.renderer });
 
     // 4. Master Camera
     this.camera = new THREE.PerspectiveCamera(
@@ -91,6 +94,14 @@ export class GameWorld {
 
     // 10. On-Screen Performance & FPS Monitor (Top-Left HUD)
     this.fpsTracker = new FPSTracker(this);
+
+    // Without a GPU everything is drawn on the CPU: say so, it explains a slow game
+    if (gpu.software) {
+      console.warn(`[GameWorld] Software WebGL renderer (${gpu.renderer}): starting with low graphics settings.`);
+      this.ui.showToast('Your graphics card is not being used (software rendering), so the game will be slow. ' +
+        'Turn on hardware acceleration in the browser and check the GPU is enabled in Windows Device Manager. ' +
+        'Until then, low graphics settings are recommended: change them under Options (Esc).', 'warning', 15000);
+    }
   }
 
   /**
@@ -173,7 +184,8 @@ export class GameWorld {
       this.ui.showPauseMenu({
         onResume: () => this.resume(),
         onRestart: () => this.restartCurrentLevel(),
-        onReturnToMenu: () => this.returnToMainMenu()
+        onReturnToMenu: () => this.returnToMainMenu(),
+        graphics: this.quality
       });
     }
   }
@@ -185,6 +197,7 @@ export class GameWorld {
     if (!this.isPaused) return;
     this.isPaused = false;
     this.clock.getDelta(); // Clear time delta accumulation during pause
+    this.quality.resetTiming(); // ...and the paused time is not one long frame
 
     if (this.ui) {
       this.ui.hidePauseMenu();
@@ -427,6 +440,7 @@ export class GameWorld {
     // PHASE 7: WEBGL RENDER
     // =========================================================================
     this.renderer.render(this.scene, this.getActiveCamera());
+    if (this.currentLevel && !this.isLevelLoading) this.quality.update(); // Measures gameplay frames only
 
     // Update on-screen FPS & performance diagnostics
     if (this.fpsTracker) {
@@ -482,7 +496,7 @@ export class GameWorld {
     }
 
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.quality.onResize();
   }
 
   /**

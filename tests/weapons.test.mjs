@@ -60,7 +60,8 @@ test('machine gun drops a dummy 12 m away with the crosshair on it', () => {
   const needed = Math.ceil(config.testing.trainingDummy.maxHealth / config.weapons.machineGun.damage);
   assert.ok(fired <= needed + 2, `${fired} rounds for ${needed} needed`);
   assert.ok(world.ui.callsTo('flashCrosshairHit').some((call) => call.args[0] === true), 'kill marker shown');
-  assert.ok(player.pitch > 0, 'recoil raised the aim');
+  assert.equal(player.pitch, 0, 'no recoil: the aim does not climb');
+  assert.equal(player.yaw, 0, 'no recoil: the aim does not wander');
 });
 
 test('the gun never hurts its shooter', () => {

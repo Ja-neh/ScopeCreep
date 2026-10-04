@@ -178,20 +178,26 @@ test('opening: [Space] skips the camera sweep', async () => {
   assert.equal(teardown(world, level), 0);
 });
 
-test('dying during the opening still leaves the player frozen behind the result screen', async () => {
+test('going down during the opening: a crewmate revives the player, who stays still until the sweep ends', async () => {
   const { world, level } = await loadLevel();
   stepWorld(world, 0.5, { level });
   level.player.health.takeDamage({ amount: 1000 });
-  stepWorld(world, 5, { level }); // Longer than the sweep
-  assert.equal(level.state, 'lost');
-  assert.equal(level.player.isDevSuspended, true);
-  assert.ok(world.activeCamera === null);
-  const stats = world.ui.callsTo('showMissionResult').at(-1).args[0].stats;
-  assert.ok(stats.some((stat) => stat.label === 'Squadmates lost'));
+  stepWorld(world, 3, { level });
+  assert.notEqual(level.state, 'lost', 'downed, not dead');
+  assert.ok(level.allies.isDowned(level.player));
+  assert.ok(level.allies.mates.some((mate) => mate.isReviving && mate.reviveTarget === level.player), 'a crewmate is on the way');
+
+  stepWorld(world, 8, { level }); // Past the end of the sweep
+  assert.equal(level.player.health.isDead, false, 'revived');
+  assert.equal(level.player.health.currentHealth, level.player.health.maxHealth * config.revive.healthFraction);
+  assert.equal(level.cinematic.isFinished, true);
+  assert.equal(level.player.isDevSuspended, false, 'free to move once revived and the sweep is over');
+  assert.equal(level.player.mesh.rotation.x, 0, 'back on their feet');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /got you back on your feet/.test(call.args[0])));
   assert.equal(teardown(world, level), 0);
 });
 
-test('the ammo crate refills the machine gun when the player presses [E] beside it', async () => {
+test('the supply crate refills the machine gun and heals the player when they press [E] beside it', async () => {
   const { world, level } = await loadLevel();
   world.input.press('skipCutscene');
   stepWorld(world, 0.2, { level });
@@ -199,18 +205,21 @@ test('the ammo crate refills the machine gun when the player presses [E] beside 
   const crate = level.supplyCrate;
   const rifle = level.weapons.rifle;
   rifle.reserve = 10;
+  level.player.health.takeDamage({ amount: 75 });
+  assert.ok(world.ui.callsTo('showToast').some((call) => /^Low health!/.test(call.args[0])), 'low health points to the crate');
 
   const spot = crate.position;
   level.player.teleport(spot.x + 1.6, level.environment.heightAt(spot.x + 1.6, spot.z) + 0.05, spot.z);
   stepWorld(world, 0.3, { level });
   assert.equal(crate.isPlayerNear, true);
-  assert.equal(world.ui.callsTo('showPrompt').at(-1).args[1], 'RESUPPLY AMMO');
+  assert.equal(world.ui.callsTo('showPrompt').at(-1).args[1], 'RESUPPLY (AMMO + HEALTH)');
 
   world.input.press('specialAction');
   stepWorld(world, 0.1, { level });
   assert.equal(rifle.reserve, config.weapons.machineGun.reserveAmmo);
-  assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === 'Ammo resupplied'));
-  assert.equal(world.ui.callsTo('showPrompt').at(-1).args[1], 'AMMO FULL');
+  assert.equal(level.player.health.currentHealth, level.player.health.maxHealth, 'patched up');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /^Resupplied/.test(call.args[0])));
+  assert.equal(world.ui.callsTo('showPrompt').at(-1).args[1], 'FULLY SUPPLIED');
 
   level.player.teleport(spot.x + 10, level.environment.heightAt(spot.x + 10, spot.z) + 0.05, spot.z);
   stepWorld(world, 0.2, { level });

@@ -32,7 +32,8 @@
   "player": {
     "vitals": {
       "maxHealth": 100,
-      "respawnSeconds": 3.0
+      "respawnSeconds": 3.0,
+      "lowHealthFraction": 0.3
     },
     "locomotion": {
       "walkSpeed": 8.0,
@@ -107,8 +108,8 @@
       "movingSpreadPenalty": 0.01,
       "adsSpreadMultiplier": 0.35,
       "crouchSpreadMultiplier": 0.7,
-      "recoilPitch": 0.012,
-      "recoilYaw": 0.004
+      "recoilPitch": 0,
+      "recoilYaw": 0
     },
     "knife": {
       "damage": 75,
@@ -159,6 +160,13 @@
       "searchSeconds": 6,
       "corpseSeconds": 5
     }
+  },
+  "revive": {
+    "bleedOutSeconds": 30,
+    "holdSeconds": 3,
+    "healthFraction": 0.5,
+    "radius": 2.5,
+    "searchRadius": 150
   },
   "allies": {
     "crewSize": 5,

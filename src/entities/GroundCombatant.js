@@ -148,6 +148,27 @@ export class GroundCombatant extends BaseEntity {
    */
   onDied(info) { }
 
+  /**
+   * Back on its feet after being downed (e.g. a squadmate revived it).
+   * @param {number} health
+   */
+  revive(health) {
+    if (!this.isDead || !this.rigidBody) return;
+    this.health.revive(health);
+    this.isDead = false;
+    this.deathTime = 0;
+    this.velocity.set(0, 0, 0);
+    this.verticalVelocity = 0;
+    if (this.collider) this.collider.setEnabled(true);
+    if (this.model) this.model.setFallen(0);
+    this.onRevived();
+  }
+
+  /**
+   * Hook for subclasses: called after revive().
+   */
+  onRevived() { }
+
   _die(info) {
     this.isDead = true;
     this.deathTime = 0;

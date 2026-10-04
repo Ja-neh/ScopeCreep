@@ -383,9 +383,9 @@ export class UIManager {
    * @param {number} fps
    * @param {number} frameTime
    */
-  updateFPS(fps, frameTime) {
+  updateFPS(fps, frameTime, renderScale = 1) {
     if (this.fpsDisplay) {
-      this.fpsDisplay.update(fps, frameTime);
+      this.fpsDisplay.update(fps, frameTime, renderScale);
     }
   }
 

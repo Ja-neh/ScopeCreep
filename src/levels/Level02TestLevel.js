@@ -160,9 +160,14 @@ export class Level02TestLevel extends Level02 {
     }
   }
 
+  /** The aerial camera also keeps the player still. */
+  _shouldStaySuspended() {
+    return super._shouldStaySuspended() || this.cameraMode === 'AERIAL';
+  }
+
   /**
-   * Stand-in for downed and revive (coming with the squad systems): a few seconds down,
-   * then back on the beach at full health.
+   * Bled out, or nobody left to revive you: instead of failing, a few seconds later you are
+   * back on the beach at full health.
    */
   _onPlayerKilled(delta) {
     const player = this.player;

@@ -12,6 +12,7 @@ const RUN_DISTANCE = 10;            // Run, not walk, to a post further than thi
 const REPOSITION_SECONDS = [4, 7];  // Look for a better firing spot this often
 const CHEST_HEIGHT = 1.2;
 const ALERT_SECONDS = 2;            // After being shot, look towards the shooter this long
+const REVIVE_REACH_SLACK = 0.5;     // Extra reach once a revive has started
 
 /**
  * SquadMate
@@ -19,7 +20,8 @@ const ALERT_SECONDS = 2;            // After being shot, look towards the shoote
  * its HumanSquad: walk a route (down the gangway), then follow the leader in formation or hold a
  * point. When it sees an alien it fights from the edge of cover near its post, firing machine-gun
  * bursts, and goes back to its post once the area is clear. It never strays further than
- * `leashRadius` from its post, so the squad stays together.
+ * `leashRadius` from its post, so the squad stays together. Sent to a downed teammate, it runs
+ * over and revives them (not shooting meanwhile); downed itself, it waits for someone to do the same.
  * Balance values come from config.json (`allies.squadMate`).
  */
 export class SquadMate extends GroundCombatant {
@@ -44,6 +46,8 @@ export class SquadMate extends GroundCombatant {
     this.holdPoint = new THREE.Vector3();
     this.holdFacing = 0;
     this.slotIndex = 0; // Formation place, set by the squad
+    this.reviveTarget = null; // Downed teammate this squadmate is going to revive
+    this._reviveProgress = 0;
 
     // The same machine gun as the player, with its own damage and an endless reserve
     this.weapon = new HitscanWeapon({ ...config.weapons.machineGun, damage: cfg.damage, range: cfg.sightRange + 10 });
@@ -80,7 +84,7 @@ export class SquadMate extends GroundCombatant {
   /** Keep to a place in formation around the squad leader. */
   follow() {
     this.order = 'follow';
-    if (!this.brain.is('route') && !this.brain.is('engage')) this.brain.change('follow');
+    if (!this.brain.is('route') && !this.brain.is('engage') && !this.brain.is('revive')) this.brain.change('follow');
   }
 
   /**
@@ -90,11 +94,31 @@ export class SquadMate extends GroundCombatant {
     this.order = 'hold';
     this.holdPoint.copy(point);
     this.holdFacing = facing;
-    if (!this.brain.is('route') && !this.brain.is('engage')) this.brain.change('hold');
+    if (!this.brain.is('route') && !this.brain.is('engage') && !this.brain.is('revive')) this.brain.change('hold');
   }
 
   get isWalkingRoute() {
     return this.brain.is('route');
+  }
+
+  get isReviving() {
+    return this.brain.is('revive');
+  }
+
+  /**
+   * Go to a downed teammate (the player or another squadmate) and revive them.
+   */
+  reviveTeammate(member) {
+    this.reviveTarget = member;
+    if (this.brain.is('revive')) SQUADMATE_STATES.revive.enter(this);
+    else this.brain.change('revive');
+  }
+
+  /** Revived: back to work. */
+  onRevived() {
+    this.reviveTarget = null;
+    this.perception.forget();
+    this.brain.change(this.order);
   }
 
   /**
@@ -136,7 +160,7 @@ export class SquadMate extends GroundCombatant {
    */
   _updateWeapon(delta) {
     const target = this.perception.target;
-    this.isAiming = target !== null && !this.brain.is('route');
+    this.isAiming = target !== null && !this.brain.is('route') && !this.brain.is('revive');
     if (!this.isAiming) {
       this._burstLeft = 0;
       return;
@@ -261,6 +285,43 @@ const SQUADMATE_STATES = {
     update(m) {
       if (m.perception.target) return 'engage';
       standAtPost(m);
+      return null;
+    }
+  },
+
+  revive: {
+    enter(m) {
+      m._reviveProgress = 0;
+      m.clearLook();
+    },
+    exit(m) {
+      m.reviveTarget = null;
+      m._reviveProgress = 0;
+    },
+    update(m, delta) {
+      const target = m.reviveTarget;
+      const squad = m.squad;
+      if (!target || !squad || !squad.isDowned(target)) return m.order;
+
+      // Start within 80% of the reach; once started, keep going until clearly out of reach
+      // (bumping against the downed player's body must not restart the count)
+      const distance = Math.hypot(target.position.x - m.position.x, target.position.z - m.position.z);
+      const reach = m._reviveProgress > 0 ? squad.reviveRadius + REVIVE_REACH_SLACK : squad.reviveRadius * 0.8;
+      if (distance > reach) {
+        m._reviveProgress = 0;
+        if (!m.hasMoveTarget || Math.hypot(m.moveTarget.x - target.position.x, m.moveTarget.z - target.position.z) > 1) {
+          m.moveTo(target.position, m.cfg.runSpeed);
+        }
+        return null;
+      }
+
+      m.stop();
+      m.lookAt(target.position);
+      m._reviveProgress += delta;
+      if (m._reviveProgress >= squad.reviveHoldSeconds) {
+        squad.reviveMember(target, m);
+        return m.order;
+      }
       return null;
     }
   },

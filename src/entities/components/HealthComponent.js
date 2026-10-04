@@ -75,4 +75,13 @@ export class HealthComponent {
     this.currentHealth = this.maxHealth;
     this.isDead = false;
   }
+
+  /**
+   * Back up after being downed, with `amount` health (at least 1, at most max).
+   * @param {number} [amount]
+   */
+  revive(amount = this.maxHealth) {
+    this.isDead = false;
+    this.currentHealth = Math.max(1, Math.min(this.maxHealth, amount));
+  }
 }

@@ -105,31 +105,103 @@ test('Level 2: the first wave also starts if the player stays aboard', async () 
   assert.equal(teardown(world, level), 0);
 });
 
-test('Level 2: dying fails the mission and Retry restarts it', async () => {
+test('Level 2: going down with nobody left standing fails the mission; Retry restarts it', async () => {
   const { world, level } = await loadLevel(Level02);
   stepWorld(world, 0.5, { level });
+  level.allies.removeAllMates();
   level.player.health.takeDamage({ amount: 1000 });
   stepWorld(world, 0.2, { level });
   assert.equal(level.state, 'lost');
 
   const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
   assert.equal(result.outcome, 'defeat');
+  assert.match(result.message, /whole squad/);
   result.actions.find((action) => action.label === 'Retry').onClick();
   assert.equal(world.restartRequested, true);
   assert.equal(teardown(world, level), 0);
 });
 
-test('Level 2 test level: dummies, a respawning alien group including a brute, and player respawn', async () => {
+test('Level 2: a squadmate revives the downed player; out of reach of everyone, the player bleeds out', async () => {
+  const { world, level } = await loadLevel(Level02);
+  world.input.press('skipCutscene');
+  stepWorld(world, 12, { level }); // Crew down the gangway and at the rally
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+  level.player.teleport(foot.x, foot.y, foot.z - 6);
+  stepWorld(world, 0.5, { level });
+
+  level.player.health.takeDamage({ amount: 1000 });
+  stepWorld(world, 0.5, { level });
+  assert.notEqual(level.state, 'lost');
+  assert.equal(level.player.isDevSuspended, true, 'downed: lying still');
+  assert.ok(world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED/.test(call.args[0])));
+  stepWorld(world, 15, { level, onFrame: () => !level.player.health.isDead });
+  stepWorld(world, 0.1, { level });
+  assert.equal(level.player.health.isDead, false, 'revived by a squadmate');
+  assert.equal(level.player.isDevSuspended, false);
+
+  // Far from everyone (beyond the squad's search radius): nobody comes, and the player bleeds out
+  const x = -150;
+  const z = 40;
+  level.player.teleport(x, level.environment.heightAt(x, z) + 0.05, z);
+  stepWorld(world, 0.3, { level });
+  level.player.health.takeDamage({ amount: 1000 });
+  stepWorld(world, config.revive.bleedOutSeconds + 1, { level });
+  assert.equal(level.state, 'lost');
+  assert.match(world.ui.callsTo('showMissionResult').at(-1).args[0].message, /bled out/);
+  assert.equal(teardown(world, level), 0);
+});
+
+test('Level 2: holding [E] beside a downed squadmate revives them; letting go starts over', async () => {
+  const { world, level } = await loadLevel(Level02);
+  world.input.press('skipCutscene');
+  stepWorld(world, 12, { level });
+  level.allies.reviveSearchRadius = 0; // Only the player revives in this test
+  const mate = level.allies.mates[0];
+  mate.health.takeDamage({ amount: 9999 });
+  stepWorld(world, 0.5, { level });
+  assert.ok(level.allies.isDowned(mate));
+  level.player.teleport(mate.position.x + 1.2, mate.position.y + 0.1, mate.position.z);
+  stepWorld(world, 0.3, { level });
+  const prompt = () => world.ui.callsTo('showPrompt').at(-1).args[1];
+  assert.equal(prompt(), `HOLD TO REVIVE ${mate.name.toUpperCase()}`);
+
+  world.input.hold('specialAction');
+  stepWorld(world, 1, { level });
+  assert.match(prompt(), /^REVIVING .* 30%$/);
+  world.input.release('specialAction');
+  stepWorld(world, 0.2, { level });
+  assert.equal(prompt(), `HOLD TO REVIVE ${mate.name.toUpperCase()}`, 'letting go starts over');
+
+  world.input.hold('specialAction');
+  stepWorld(world, config.revive.holdSeconds + 0.2, { level });
+  world.input.release('specialAction');
+  assert.equal(mate.isDead, false, 'revived');
+  assert.equal(mate.health.currentHealth, mate.health.maxHealth * config.revive.healthFraction);
+  assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === `You revived ${mate.name}.`));
+  assert.equal(teardown(world, level), 0);
+});
+
+test('Level 2 test level: dummies, a respawning alien group including a brute, revive and respawn', async () => {
   const { world, level } = await loadLevel(Level02TestLevel);
   assert.equal(level.dummies.length, 5);
   assert.equal(level.squad.aliveCount, 4);
   assert.equal(level.squad.members.filter((alien) => alien.name === 'AlienBrute').length, 1);
 
+  // With the squad around, a downed player is revived...
+  level.player.health.takeDamage({ amount: 1000 });
+  stepWorld(world, 20, { level, onFrame: () => !level.player.health.isDead });
+  assert.equal(level.player.health.isDead, false, 'revived by the crew');
+
+  // ...and with nobody to come, the sandbox respawns them instead of failing
+  world.input.press('devSquad');
+  stepWorld(world, 0.1, { level });
   level.player.health.takeDamage({ amount: 1000 });
   stepWorld(world, config.player.vitals.respawnSeconds + 0.5, { level });
   assert.equal(level.player.health.isDead, false, 'respawned');
   assert.equal(level.player.health.currentHealth, level.player.health.maxHealth);
   assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'no mission failure in the sandbox');
+  world.input.press('devSquad');
+  stepWorld(world, 0.1, { level });
 
   for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
   stepWorld(world, 6, { level });

@@ -8,12 +8,18 @@ const PALM_BEND = 0.012;
 const PALM_TRUNK_RADIUS = 0.32;
 const TREE_TRUNK_HEIGHT = 5;
 const TREE_TRUNK_RADIUS = 0.35;
+const LOD_HYSTERESIS = 0.1;      // Fraction of a switch distance to wait before switching back (no flicker)
 
 /**
  * Vegetation
  * Procedural low-poly palms, jungle trees, rocks and bushes drawn as instanced meshes,
  * so each kind costs one or two draw calls however many there are. Optional static colliders:
  * trunks as cylinders, rocks as convex hulls of their exact shape, bushes left passable.
+ *
+ * With `tileSize`, each kind is split into square tiles of the map, each its own THREE.LOD:
+ * tiles off screen are culled (one instanced mesh for a whole island never is), tiles past
+ * `lodDistance` swap to a low-detail version, and tiles past `cullDistance` (lost in the fog)
+ * are not drawn at all.
  *
  * Each placement is { x, y, z, rotation, scale } where y is the ground height at the base,
  * rotation is about Y in radians, and scale is a number (or { x, y, z } for rocks).
@@ -27,10 +33,16 @@ export class Vegetation {
    * @param {Array} [placements.bushes]
    * @param {Object} [options]
    * @param {boolean} [options.castShadows=true] - Off for distant scenery outside the shadow map's area
+   * @param {number} [options.tileSize=0] - Split into map tiles of this size (meters); 0 = one mesh per kind
+   * @param {number} [options.lodDistance=Infinity] - Tiles further than this from the camera use low detail
+   * @param {number} [options.cullDistance=Infinity] - Tiles further than this are not drawn
    */
-  constructor({ palms = [], trees = [], rocks = [], bushes = [] } = {}, { castShadows = true } = {}) {
+  constructor({ palms = [], trees = [], rocks = [], bushes = [] } = {}, { castShadows = true, tileSize = 0, lodDistance = Infinity, cullDistance = Infinity } = {}) {
     this.placements = { palms, trees, rocks, bushes };
     this.castShadows = castShadows;
+    this.tileSize = tileSize;
+    this.lodDistance = lodDistance;
+    this.cullDistance = cullDistance;
 
     this.mesh = new THREE.Group();
     this.mesh.name = 'Vegetation';
@@ -52,13 +64,21 @@ export class Vegetation {
       rock: createRockGeometry(),
       bush: createBushGeometry()
     };
+    // Low-detail stand-ins for distant tiles
+    this.lowGeometries = Number.isFinite(lodDistance) && tileSize > 0 ? {
+      palmTrunk: createPalmTrunkGeometry({ segments: 3, radial: 5, coconuts: false }),
+      palmFronds: createPalmFrondsGeometry({ fronds: 5, steps: 3 }),
+      treeTrunk: createTreeTrunkGeometry({ radial: 5 }),
+      treeCanopy: createTreeCanopyGeometry({ lumps: 2, detail: 0 }),
+      rock: createRockGeometry({ detail: 0 }),
+      bush: createBushGeometry({ lumps: 2, detail: 0 })
+    } : null;
 
-    this._addInstances(this.geometries.palmTrunk, this.materials.palmTrunk, palms, 0.12);
-    this._addInstances(this.geometries.palmFronds, this.materials.palmFronds, palms, 0.15);
-    this._addInstances(this.geometries.treeTrunk, this.materials.treeTrunk, trees, 0.12);
-    this._addInstances(this.geometries.treeCanopy, this.materials.treeCanopy, trees, 0.2);
-    this._addInstances(this.geometries.rock, this.materials.rock, rocks, 0.15);
-    this._addInstances(this.geometries.bush, this.materials.bush, bushes, 0.2);
+    for (const [kind, list, tint] of [['palmTrunk', palms, 0.12], ['palmFronds', palms, 0.15], ['treeTrunk', trees, 0.12],
+      ['treeCanopy', trees, 0.2], ['rock', rocks, 0.15], ['bush', bushes, 0.2]]) {
+      if (tileSize > 0) this._addTiles(kind, list, tint);
+      else this.mesh.add(this._createInstances(this.geometries[kind], this.materials[kind], list, tint));
+    }
 
     this.colliders = [];
     this.physicsWorld = null;
@@ -66,15 +86,23 @@ export class Vegetation {
 
   /**
    * One instanced mesh for a geometry, with a small per-instance brightness variation.
+   * @param {THREE.Vector3} [origin] - Placements are stored relative to this point (a tile's centre)
+   * @returns {THREE.InstancedMesh|null}
    */
-  _addInstances(geometry, material, placements, tintVariation) {
-    if (placements.length === 0) return;
+  _createInstances(geometry, material, placements, tintVariation, origin = null) {
+    if (placements.length === 0) return null;
 
     const instanced = new THREE.InstancedMesh(geometry, material, placements.length);
     const matrix = new THREE.Matrix4();
     const color = new THREE.Color();
     placements.forEach((placement, i) => {
-      instanced.setMatrixAt(i, composePlacement(placement, matrix));
+      composePlacement(placement, matrix);
+      if (origin) {
+        matrix.elements[12] -= origin.x;
+        matrix.elements[13] -= origin.y;
+        matrix.elements[14] -= origin.z;
+      }
+      instanced.setMatrixAt(i, matrix);
       const shade = 1 + (valueNoise2D(placement.x * 0.7, placement.z * 0.7, 11) - 0.5) * 2 * tintVariation;
       instanced.setColorAt(i, color.setScalar(shade));
     });
@@ -83,7 +111,44 @@ export class Vegetation {
     instanced.computeBoundingSphere();
     instanced.castShadow = this.castShadows;
     instanced.receiveShadow = true;
-    this.mesh.add(instanced);
+    return instanced;
+  }
+
+  /**
+   * Splits one kind into map tiles, each a THREE.LOD: full detail near the camera, low detail
+   * past lodDistance, nothing past cullDistance. The renderer picks the level each frame.
+   */
+  _addTiles(kind, placements, tintVariation) {
+    const tiles = new Map();
+    for (const placement of placements) {
+      const key = `${Math.floor(placement.x / this.tileSize)},${Math.floor(placement.z / this.tileSize)}`;
+      if (!tiles.has(key)) tiles.set(key, []);
+      tiles.get(key).push(placement);
+    }
+
+    for (const [key, list] of tiles) {
+      const [tx, tz] = key.split(',').map(Number);
+      const centre = new THREE.Vector3((tx + 0.5) * this.tileSize, 0, (tz + 0.5) * this.tileSize);
+      const lod = new THREE.LOD();
+      lod.name = `Vegetation_${kind}_${key}`;
+      lod.position.copy(centre);
+      lod.addLevel(this._createInstances(this.geometries[kind], this.materials[kind], list, tintVariation, centre), 0, LOD_HYSTERESIS);
+      if (this.lowGeometries) {
+        lod.addLevel(this._createInstances(this.lowGeometries[kind], this.materials[kind], list, tintVariation, centre), this.lodDistance, LOD_HYSTERESIS);
+      }
+      if (Number.isFinite(this.cullDistance)) lod.addLevel(new THREE.Object3D(), this.cullDistance, LOD_HYSTERESIS);
+      this.mesh.add(lod);
+    }
+  }
+
+  /**
+   * Every instanced mesh, at every detail level.
+   * @returns {THREE.InstancedMesh[]}
+   */
+  get instancedMeshes() {
+    const meshes = [];
+    this.mesh.traverse((child) => { if (child.isInstancedMesh) meshes.push(child); });
+    return meshes;
   }
 
   /**
@@ -138,10 +203,9 @@ export class Vegetation {
     this.colliders = [];
     this.physicsWorld = null;
 
-    for (const child of this.mesh.children) {
-      if (child.isInstancedMesh) child.dispose();
-    }
+    for (const instanced of this.instancedMeshes) instanced.dispose();
     for (const geometry of Object.values(this.geometries)) geometry.dispose();
+    if (this.lowGeometries) for (const geometry of Object.values(this.lowGeometries)) geometry.dispose();
     for (const material of Object.values(this.materials)) material.dispose();
     if (this.mesh.parent) this.mesh.parent.remove(this.mesh);
   }
@@ -192,9 +256,8 @@ function lumpify(geometry, amount, seed, centre = new THREE.Vector3()) {
 // Procedural geometry
 // ---------------------------------------------------------------------------
 
-function createPalmTrunkGeometry() {
+function createPalmTrunkGeometry({ segments = 6, radial = 7, coconuts = true } = {}) {
   const parts = [];
-  const segments = 6;
   const segmentHeight = PALM_HEIGHT / segments;
 
   // Stacked tapered segments following the lean, so the rings read as palm bark
@@ -203,7 +266,7 @@ function createPalmTrunkGeometry() {
     const yMid = y0 + segmentHeight / 2;
     const radiusBottom = PALM_TRUNK_RADIUS * (1 - (i / segments) * 0.35);
     const radiusTop = PALM_TRUNK_RADIUS * (1 - ((i + 1) / segments) * 0.35);
-    const segment = new THREE.CylinderGeometry(radiusTop, radiusBottom * 1.08, segmentHeight, 7, 1);
+    const segment = new THREE.CylinderGeometry(radiusTop, radiusBottom * 1.08, segmentHeight, radial, 1);
     segment.rotateZ(-Math.atan(2 * PALM_BEND * yMid));
     segment.translate(PALM_BEND * yMid * yMid, yMid, 0);
     parts.push(segment);
@@ -211,7 +274,7 @@ function createPalmTrunkGeometry() {
 
   // Coconuts under the crown
   const crownX = PALM_BEND * PALM_HEIGHT * PALM_HEIGHT;
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; coconuts && i < 3; i++) {
     const nut = new THREE.IcosahedronGeometry(0.22, 0);
     const angle = (i / 3) * Math.PI * 2;
     nut.translate(crownX + Math.cos(angle) * 0.3, PALM_HEIGHT - 0.35, Math.sin(angle) * 0.3);
@@ -245,12 +308,11 @@ function createFrondGeometry(length, width, steps = 8) {
   return geometry.toNonIndexed();
 }
 
-function createPalmFrondsGeometry() {
+function createPalmFrondsGeometry({ fronds = 8, steps = 8 } = {}) {
   const parts = [];
   const crownX = PALM_BEND * PALM_HEIGHT * PALM_HEIGHT;
-  const fronds = 8;
   for (let i = 0; i < fronds; i++) {
-    const frond = createFrondGeometry(4.2 + (i % 3) * 0.4, 1.0);
+    const frond = createFrondGeometry(4.2 + (i % 3) * 0.4, fronds < 8 ? 1.3 : 1.0, steps);
     frond.rotateZ(((i % 2) - 0.5) * 0.25);
     frond.rotateY((i / fronds) * Math.PI * 2 + (i % 3) * 0.15);
     frond.translate(crownX, PALM_HEIGHT - 0.1, 0);
@@ -261,22 +323,23 @@ function createPalmFrondsGeometry() {
   return geometry;
 }
 
-function createTreeTrunkGeometry() {
-  const trunk = new THREE.CylinderGeometry(TREE_TRUNK_RADIUS * 0.7, TREE_TRUNK_RADIUS * 1.1, TREE_TRUNK_HEIGHT, 7, 1);
+function createTreeTrunkGeometry({ radial = 7 } = {}) {
+  const trunk = new THREE.CylinderGeometry(TREE_TRUNK_RADIUS * 0.7, TREE_TRUNK_RADIUS * 1.1, TREE_TRUNK_HEIGHT, radial, 1);
   trunk.translate(0, TREE_TRUNK_HEIGHT / 2, 0);
   return trunk.toNonIndexed();
 }
 
-function createTreeCanopyGeometry() {
+function createTreeCanopyGeometry({ lumps: lumpCount = 4, detail = 1 } = {}) {
   const lumps = [
     [0, 6.0, 0, 2.6],
     [1.3, 5.2, 0.6, 2.0],
     [-1.1, 5.4, -0.8, 2.1],
     [0.2, 7.3, -0.2, 1.7]
-  ];
+  ].slice(0, lumpCount);
   // Only the main lump gets the finer subdivision; trees are numerous, so keep them cheap
   const parts = lumps.map(([x, y, z, radius], i) => {
-    const lump = new THREE.IcosahedronGeometry(radius, i === 0 ? 1 : 0);
+    // Fewer lumps: make the ones left a little bigger so the crown keeps its size
+    const lump = new THREE.IcosahedronGeometry(radius * (lumpCount < 4 ? 1.15 : 1), i === 0 ? detail : 0);
     lumpify(lump, 0.35, 3 + i);
     lump.translate(x, y, z);
     return lump;
@@ -284,22 +347,22 @@ function createTreeCanopyGeometry() {
   return mergeNonIndexed(parts);
 }
 
-function createRockGeometry() {
-  const rock = new THREE.IcosahedronGeometry(1, 1);
+function createRockGeometry({ detail = 1 } = {}) {
+  const rock = new THREE.IcosahedronGeometry(1, detail);
   return lumpify(rock, 0.55, 21);
 }
 
-function createBushGeometry() {
+function createBushGeometry({ lumps: lumpCount = 5, detail = 1 } = {}) {
   const lumps = [
     [0, 0.7, 0, 1.0],
     [0.8, 0.55, 0.3, 0.75],
     [-0.7, 0.5, -0.4, 0.8],
     [0.1, 0.5, -0.85, 0.7],
     [-0.3, 0.45, 0.8, 0.7]
-  ];
+  ].slice(0, lumpCount);
   // Only the central lump gets the finer subdivision; bushes are numerous, so keep them cheap
   const parts = lumps.map(([x, y, z, radius], i) => {
-    const lump = new THREE.IcosahedronGeometry(radius, i === 0 ? 1 : 0);
+    const lump = new THREE.IcosahedronGeometry(radius * (lumpCount < 5 ? 1.2 : 1), i === 0 ? detail : 0);
     lumpify(lump, 0.4, 7 + i);
     lump.translate(x, y, z);
     return lump;

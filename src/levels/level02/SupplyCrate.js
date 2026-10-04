@@ -8,8 +8,9 @@ const PROMPT_COLOR = '#e9c46a';
 
 /**
  * SupplyCrate
- * An ammo crate dropped on the beach. Stand next to it and press [E] (specialAction) to refill
- * the machine gun's reserve ammo. Low cover as well. Updated in Phase 5.
+ * A supply crate dropped on the beach. Stand next to it and press [E] (specialAction) to refill
+ * the machine gun's reserve ammo and patch yourself up to full health. Low cover as well.
+ * Updated in Phase 5.
  */
 export class SupplyCrate extends BaseEntity {
   /**
@@ -83,13 +84,23 @@ export class SupplyCrate extends BaseEntity {
     return rifle.reserve >= rifle.cfg.reserveAmmo;
   }
 
+  get isHealthFull() {
+    const health = this.player.health;
+    return !health || health.currentHealth >= health.maxHealth;
+  }
+
   /**
-   * Tops the rifle's reserve back up to full.
-   * @returns {boolean} Whether any ammo was added
+   * Tops the rifle's reserve and the player's health back up to full.
+   * @returns {boolean} Whether anything was given
    */
   resupply() {
-    if (this.isAmmoFull) return false;
+    if (this.isAmmoFull && this.isHealthFull) return false;
     this.weapons.rifle.reserve = this.weapons.rifle.cfg.reserveAmmo;
+    const health = this.player.health;
+    if (health && !health.isDead) {
+      health.heal(health.maxHealth);
+      if (this.gameWorld.ui) this.gameWorld.ui.updatePlayerHealth(health.currentHealth, health.maxHealth);
+    }
     this.timesUsed++;
     return true;
   }
@@ -106,9 +117,9 @@ export class SupplyCrate extends BaseEntity {
 
     if (near) {
       if (gameWorld.input.isActionJustPressed('specialAction') && this.resupply() && ui) {
-        ui.showToast('Ammo resupplied', 'success', 1500);
+        ui.showToast('Resupplied: ammo and health topped up', 'success', 1500);
       }
-      const label = this.isAmmoFull ? 'AMMO FULL' : 'RESUPPLY AMMO';
+      const label = this.isAmmoFull && this.isHealthFull ? 'FULLY SUPPLIED' : 'RESUPPLY (AMMO + HEALTH)';
       if (ui && (label !== this._promptLabel || !this.isPlayerNear)) ui.showPrompt('E', label, PROMPT_COLOR, this);
       this._promptLabel = label;
     } else if (this.isPlayerNear && ui) {
