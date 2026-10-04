@@ -20,6 +20,7 @@ Guidelines follow RFC 2119 priority levels:
 - **Never send engine objects over the network:** PartyKit edge payloads must consist strictly of plain numeric Data Transfer Objects (primitives, booleans); never serialize Three.js scene graphs or Rapier physics objects.
 - **Dispose GPU, physics, and UI resources:** Geometries, materials, textures, Rapier colliders, and UI subscriptions/elements must be cleanly released in `dispose()` to prevent memory leaks.
 - **Build must pass:** Before considering a task complete, run `npm run build`. Do not consider the change complete if the production bundle build fails.
+- **Tests must pass:** Run `npm test` before committing. A change that breaks an existing test is not complete; fix the code or, if the behaviour change is intended, update the test in the same commit. New gameplay systems come with tests in `tests/` (see `tests/README.md`).
 
 ### SHOULD (Strong Engineering Practices)
 - **Avoid allocations in hot loops:** Preallocate math scratchpads (`THREE.Vector3`, `THREE.Quaternion`, `THREE.Matrix4`); do not instantiate temporary objects in per-frame updates.
@@ -154,7 +155,8 @@ All HUD elements, floating text, prompts, health meters, and telemetry panels mu
   ```
 - **UI Architecture Structure:**
   - `src/ui/UIManager.js`: Central coordinator attached to `gameWorld.ui`.
-  - `src/ui/components/`: Modular component classes (`InteractionPrompt`, `StationHUD`, `Crosshair`, `HealthBar`, `ToastNotification`, `FPSDisplay`, `ControlsHelper`, `DevToolsWidget`, `MainMenu`, `PauseMenu`, `PauseButton`).
+  - `src/ui/components/`: Modular component classes (`InteractionPrompt`, `StationHUD`, `Crosshair`, `HealthBar`, `ToastNotification`, `FPSDisplay`, `ControlsHelper`, `DevToolsWidget`, `MainMenu`, `PauseMenu`, `PauseButton`, plus Level 2's `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay`, `GraphicsSettings`).
+  - A level lists the controls its controls card shows by overriding `get controls()` on `BaseLevel` (action names, not key strings: keys come from `InputManager` bindings).
   - `src/ui/ui.css`: Consolidated stylesheet for all UI components.
 
 #### Concrete UI Examples from Battleship & Ship Components:
@@ -327,6 +329,9 @@ npm run dev
 
 # Build production bundle (MANDATORY verification step)
 npm run build
+
+# Run the regression tests (MANDATORY before committing)
+npm test
 ```
 
 > **Note on Verification:** Always run `npm run build` after making changes to verify that Vite bundle transformations (GLSL shaders, WebAssembly, top-level await) compile with zero errors.

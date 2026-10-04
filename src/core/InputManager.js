@@ -1,3 +1,21 @@
+// How key codes read on the controls card
+const KEY_NAMES = {
+  Mouse0: 'Left click',
+  Mouse1: 'Middle click',
+  Mouse2: 'Right click',
+  WheelUp: 'Wheel',
+  WheelDown: 'Wheel',
+  ShiftLeft: 'Shift',
+  ShiftRight: 'Shift',
+  ControlLeft: 'Ctrl',
+  ControlRight: 'Ctrl',
+  Escape: 'Esc',
+  ArrowUp: '\u2191',
+  ArrowDown: '\u2193',
+  ArrowLeft: '\u2190',
+  ArrowRight: '\u2192'
+};
+
 /**
  * Standalone input abstraction layer mapping raw keyboard and mouse events
  * to semantic game actions (movement, flight axes, turret aiming, firing).
@@ -16,6 +34,7 @@ export class InputManager {
     // Mouse positions and deltas
     this.mousePosition = { x: 0, y: 0 };
     this.mouseDelta = { x: 0, y: 0 };
+    this.mouseNormalized = { x: 0, y: 0 };
     this._lastClientX = undefined;
     this._lastClientY = undefined;
 
@@ -32,14 +51,29 @@ export class InputManager {
 
       jump: ['Space'],
       sprint: ['ShiftLeft', 'ShiftRight'],
+      // Not Ctrl: Chrome reserves Ctrl+W (close tab), which players would hit while moving
+      crouch: ['KeyC'],
 
       firePrimary: ['Mouse0', 'KeyF'],
       specialAction: ['KeyE'],
 
+      // Infantry weapons (wheel "buttons" are single-frame presses)
+      reload: ['KeyR'],
+      weaponPrimary: ['Digit1'],
+      weaponMelee: ['Digit2'],
+      weaponNext: ['WheelDown'],
+      weaponPrev: ['WheelUp'],
+      quickMelee: ['KeyQ'],
+      aimDownSights: ['Mouse2'],
+
       mouseLook: ['Mouse0', 'Mouse2'],
 
-      toggleCamera: ['KeyV', 'KeyC', 'Tab'],
+      toggleCamera: ['KeyV', 'Tab'],
       toggleColliders: ['KeyB', 'F2'],
+      devCamera: ['F1'],
+      devSpawn: ['F3'],
+      devSquad: ['F4'],
+      skipCutscene: ['Space', 'Enter'],
       pause: ['Escape', 'KeyP']
     };
 
@@ -49,6 +83,7 @@ export class InputManager {
     this._onMouseDown = this._onMouseDown.bind(this);
     this._onMouseUp = this._onMouseUp.bind(this);
     this._onMouseMove = this._onMouseMove.bind(this);
+    this._onWheel = this._onWheel.bind(this);
     this._onPointerLockChange = this._onPointerLockChange.bind(this);
 
     this._attachListeners();
@@ -67,6 +102,7 @@ export class InputManager {
     window.addEventListener('mousedown', this._onMouseDown);
     window.addEventListener('mouseup', this._onMouseUp);
     window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('wheel', this._onWheel, { passive: true });
     document.addEventListener('pointerlockchange', this._onPointerLockChange);
     document.addEventListener('pointerlockerror', this._onPointerLockChange);
 
@@ -79,7 +115,7 @@ export class InputManager {
   }
 
   _onKeyDown(e) {
-    if (e.code === 'Tab' || e.code === 'F2' || e.code === 'F1') {
+    if (e.code === 'Tab' || e.code === 'F1' || e.code === 'F2' || e.code === 'F3' || e.code === 'F4') {
       e.preventDefault(); // Prevent browser from triggering default hotkeys/search
     }
     if (!this.keysDown.has(e.code)) {
@@ -134,6 +170,14 @@ export class InputManager {
     this.mouseNormalized.y = -(e.clientY / window.innerHeight) * 2 + 1;
   }
 
+  /**
+   * Mouse wheel notches become single-frame 'WheelUp' / 'WheelDown' button presses.
+   */
+  _onWheel(e) {
+    if (e.deltaY > 0) this.mouseButtonsJustPressed.add('WheelDown');
+    else if (e.deltaY < 0) this.mouseButtonsJustPressed.add('WheelUp');
+  }
+
   _onPointerLockChange() {
     this._lastClientX = undefined;
     this._lastClientY = undefined;
@@ -178,6 +222,21 @@ export class InputManager {
   /**
    * Check semantic actions
    */
+  /**
+   * The keys for `actions` as players read them, e.g. 'C', 'V / Tab', or for several actions the
+   * first key of each, e.g. 'W A S D'. Lets a controls card follow the real bindings.
+   * @param {string[]} actions
+   * @returns {string}
+   */
+  describeActions(actions) {
+    const name = (code) => KEY_NAMES[code] || code.replace(/^Key/, '').replace(/^Digit/, '');
+    const unique = (names) => [...new Set(names)];
+    if (actions.length === 1) {
+      return unique((this.actionBindings[actions[0]] || []).map(name)).join(' / ');
+    }
+    return unique(actions.map((action) => (this.actionBindings[action] || [])[0]).filter(Boolean).map(name)).join(' ');
+  }
+
   isActionDown(actionName) {
     const keys = this.actionBindings[actionName];
     if (!keys) return false;
@@ -251,6 +310,7 @@ export class InputManager {
     window.removeEventListener('mousedown', this._onMouseDown);
     window.removeEventListener('mouseup', this._onMouseUp);
     window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('wheel', this._onWheel);
     document.removeEventListener('pointerlockchange', this._onPointerLockChange);
     window.removeEventListener('contextmenu', this._onContextMenu);
 

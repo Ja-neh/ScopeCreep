@@ -3,6 +3,8 @@ import { Level01 } from './levels/Level01.js';
 import { Level01TestLevel } from './levels/Level01ShipTestLevel.js';
 import { Level01JetTestLevel } from './levels/Level01JetTestLevel.js';
 import { TestLevel } from './levels/TestLevel.js';
+import { Level02 } from './levels/Level02.js';
+import { Level02TestLevel } from './levels/Level02TestLevel.js';
 
 /**
  * Level Registry defining all available stages in ScopeCreep
@@ -24,6 +26,16 @@ const AVAILABLE_LEVELS = [
     create: (gw) => new Level01JetTestLevel(gw)
   },
   {
+    id: 'level02',
+    title: 'Level 2: The Beach',
+    create: (gw) => new Level02(gw)
+  },
+  {
+    id: 'level02_test',
+    title: 'Level 2: Beach Test Level',
+    create: (gw) => new Level02TestLevel(gw)
+  },
+  {
     id: 'testlevel',
     title: 'Sandbox: Test Level for anything',
     create: (gw) => new TestLevel(gw)
@@ -35,6 +47,11 @@ async function bootstrap() {
   const canvas = document.querySelector('#game-canvas');
   const gameWorld = new GameWorld(canvas);
   await gameWorld.init(); // Initialize Rapier Physics WASM
+
+  // Dev server only (never in the production build): inspect the game from the browser console
+  if (import.meta.env.DEV) {
+    window.gameWorld = gameWorld;
+  }
 
   // 2. Start the main game loop
   gameWorld.start();

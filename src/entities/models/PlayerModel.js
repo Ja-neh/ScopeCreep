@@ -129,6 +129,19 @@ export class PlayerModel {
   }
 
   /**
+   * Squashes the avatar towards the ground for crouching, keeping its feet in place.
+   * The collider debug capsule is left at full size.
+   * @param {number} amount - 0 standing, 1 fully crouched
+   */
+  setCrouchAmount(amount) {
+    const squash = 1 - 0.35 * amount;
+    this.bodyMesh.scale.y = squash;
+    this.bodyMesh.position.y = this.capsuleCenter * squash;
+    this.visorMesh.position.y = 1.6 * squash;
+    this.packMesh.position.y = 1.15 * squash;
+  }
+
+  /**
    * Toggles whole avatar mesh visibility (e.g. when mounting a vehicle/turret)
    */
   setVisible(visible) {

@@ -3,6 +3,13 @@ import { StationHUD } from './components/StationHUD.js';
 import { Crosshair } from './components/Crosshair.js';
 import { HealthBar } from './components/HealthBar.js';
 import { ToastNotification } from './components/ToastNotification.js';
+import { StatusIndicator } from './components/StatusIndicator.js';
+import { WeaponHUD } from './components/WeaponHUD.js';
+import { PlayerHealthBar } from './components/PlayerHealthBar.js';
+import { DamageFlash } from './components/DamageFlash.js';
+import { ObjectivePanel } from './components/ObjectivePanel.js';
+import { MissionResult } from './components/MissionResult.js';
+import { CinematicOverlay } from './components/CinematicOverlay.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
@@ -28,6 +35,13 @@ export class UIManager {
     this.crosshair = new Crosshair(this.container);
     this.healthBar = new HealthBar(this.container);
     this.toast = new ToastNotification(this.container);
+    this.statusIndicator = new StatusIndicator(this.container);
+    this.weaponHUD = new WeaponHUD(this.container);
+    this.playerHealth = new PlayerHealthBar(this.container);
+    this.damageFlash = new DamageFlash(this.container);
+    this.objectivePanel = new ObjectivePanel(this.container);
+    this.missionResult = new MissionResult(this.container);
+    this.cinematic = new CinematicOverlay(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
     this.controlsHelper.hide(); // Hidden until level loads
@@ -121,6 +135,170 @@ export class UIManager {
     }
   }
 
+  /**
+   * Rifle crosshair: spread the ticks to the weapon's current accuracy cone
+   * @param {number} spreadRadians
+   * @param {number} fovDegrees
+   */
+  setCrosshairSpread(spreadRadians, fovDegrees) {
+    if (this.crosshair) {
+      this.crosshair.setSpread(spreadRadians, fovDegrees);
+    }
+  }
+
+  /**
+   * Flash the crosshair to confirm a hit (or a kill)
+   * @param {boolean} [kill=false]
+   */
+  flashCrosshairHit(kill = false) {
+    if (this.crosshair) {
+      this.crosshair.flashHit(kill);
+    }
+  }
+
+  // =========================================================================
+  // Player Health & Damage Feedback
+  // =========================================================================
+
+  /**
+   * Show the player's health bar
+   */
+  showPlayerHealth() {
+    if (this.playerHealth) {
+      this.playerHealth.show();
+    }
+  }
+
+  /**
+   * @param {number} current
+   * @param {number} max
+   */
+  updatePlayerHealth(current, max) {
+    if (this.playerHealth) {
+      this.playerHealth.update(current, max);
+    }
+  }
+
+  /**
+   * Hide the player's health bar
+   */
+  hidePlayerHealth() {
+    if (this.playerHealth) {
+      this.playerHealth.hide();
+    }
+  }
+
+  /**
+   * Red flash around the screen edges (the player was hurt)
+   */
+  flashDamage() {
+    if (this.damageFlash) {
+      this.damageFlash.flash();
+    }
+  }
+
+  // =========================================================================
+  // Mission Objective & Result
+  // =========================================================================
+
+  /**
+   * Show or update the current objective (top centre)
+   * @param {string} title
+   * @param {string} [detail]
+   */
+  showObjective(title, detail = '') {
+    if (this.objectivePanel) {
+      this.objectivePanel.show(title, detail);
+    }
+  }
+
+  /**
+   * Hide the objective panel
+   */
+  hideObjective() {
+    if (this.objectivePanel) {
+      this.objectivePanel.hide();
+    }
+  }
+
+  /**
+   * Show the end-of-mission screen
+   * @param {{outcome: 'victory'|'defeat', title: string, message?: string,
+   *          stats?: Array<{label: string, value: string}>, actions?: Array<{label: string, onClick: Function}>}} result
+   */
+  showMissionResult(result) {
+    if (this.missionResult) {
+      this.missionResult.show(result);
+    }
+  }
+
+  /**
+   * Hide the end-of-mission screen
+   */
+  hideMissionResult() {
+    if (this.missionResult) {
+      this.missionResult.hide();
+    }
+  }
+
+  // =========================================================================
+  // Cinematic (camera sequences)
+  // =========================================================================
+
+  /**
+   * Letterbox bars and a title card; hides the gameplay HUD until hideCinematic()
+   * @param {string} title
+   * @param {string} [subtitle]
+   * @param {string} [hint] - e.g. '[Space] Skip'
+   */
+  showCinematic(title, subtitle = '', hint = '') {
+    if (this.cinematic) {
+      this.cinematic.show(title, subtitle, hint);
+      this.container.classList.add('ui-cinematic-active');
+    }
+  }
+
+  /**
+   * Remove the letterbox and bring the HUD back
+   */
+  hideCinematic() {
+    if (this.cinematic) {
+      this.cinematic.hide();
+      this.container.classList.remove('ui-cinematic-active');
+    }
+  }
+
+  // =========================================================================
+  // Infantry Weapon HUD
+  // =========================================================================
+
+  /**
+   * Show the weapon and ammo panel
+   */
+  showWeaponHUD() {
+    if (this.weaponHUD) {
+      this.weaponHUD.show();
+    }
+  }
+
+  /**
+   * @param {{name: string, ammo: number|null, reserve: number, reloadProgress: number|null}} state
+   */
+  updateWeaponHUD(state) {
+    if (this.weaponHUD) {
+      this.weaponHUD.update(state);
+    }
+  }
+
+  /**
+   * Hide the weapon and ammo panel
+   */
+  hideWeaponHUD() {
+    if (this.weaponHUD) {
+      this.weaponHUD.hide();
+    }
+  }
+
   // =========================================================================
   // Warship Health Bar
   // =========================================================================
@@ -173,6 +351,30 @@ export class UIManager {
   }
 
   // =========================================================================
+  // Status Indicator
+  // =========================================================================
+
+  /**
+   * Show a persistent status badge (e.g. "HIDDEN") until hideStatusIndicator is called
+   * @param {string} text
+   * @param {'success'|'info'|'warning'|'danger'} [variant='info']
+   */
+  showStatusIndicator(text, variant = 'info') {
+    if (this.statusIndicator) {
+      this.statusIndicator.show(text, variant);
+    }
+  }
+
+  /**
+   * Hide the status badge
+   */
+  hideStatusIndicator() {
+    if (this.statusIndicator) {
+      this.statusIndicator.hide();
+    }
+  }
+
+  // =========================================================================
   // Performance & FPS Display
   // =========================================================================
 
@@ -181,9 +383,9 @@ export class UIManager {
    * @param {number} fps
    * @param {number} frameTime
    */
-  updateFPS(fps, frameTime) {
+  updateFPS(fps, frameTime, renderScale = 1) {
     if (this.fpsDisplay) {
-      this.fpsDisplay.update(fps, frameTime);
+      this.fpsDisplay.update(fps, frameTime, renderScale);
     }
   }
 
@@ -194,8 +396,9 @@ export class UIManager {
   /**
    * Show controls helper card
    */
-  showControlsHelper() {
+  showControlsHelper(lines = null) {
     if (this.controlsHelper) {
+      this.controlsHelper.setLines(lines);
       this.controlsHelper.show();
     }
   }
@@ -322,6 +525,13 @@ export class UIManager {
     this.hideStationHUD();
     this.hideCrosshair();
     this.hideHealthBar();
+    this.hideStatusIndicator();
+    this.hideWeaponHUD();
+    this.hidePlayerHealth();
+    this.hideObjective();
+    this.hideMissionResult();
+    this.hideCinematic();
+    if (this.damageFlash) this.damageFlash.clear();
     this.hidePauseMenu();
     this.hidePauseButton();
     this.hideDevTools();
@@ -368,6 +578,34 @@ export class UIManager {
     if (this.toast && typeof this.toast.dispose === 'function') {
       this.toast.dispose();
       this.toast = null;
+    }
+    if (this.statusIndicator) {
+      this.statusIndicator.dispose();
+      this.statusIndicator = null;
+    }
+    if (this.weaponHUD) {
+      this.weaponHUD.dispose();
+      this.weaponHUD = null;
+    }
+    if (this.playerHealth) {
+      this.playerHealth.dispose();
+      this.playerHealth = null;
+    }
+    if (this.damageFlash) {
+      this.damageFlash.dispose();
+      this.damageFlash = null;
+    }
+    if (this.objectivePanel) {
+      this.objectivePanel.dispose();
+      this.objectivePanel = null;
+    }
+    if (this.cinematic) {
+      this.cinematic.dispose();
+      this.cinematic = null;
+    }
+    if (this.missionResult) {
+      this.missionResult.dispose();
+      this.missionResult = null;
     }
     if (this.fpsDisplay && typeof this.fpsDisplay.dispose === 'function') {
       this.fpsDisplay.dispose();

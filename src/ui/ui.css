@@ -598,3 +598,480 @@
   background: rgba(255, 255, 255, 0.16);
 }
 
+
+/* =========================================================================
+   Status Indicator (Centered, above the interaction prompt)
+   ========================================================================= */
+.ui-status-indicator {
+  position: fixed;
+  bottom: 170px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 6px;
+  padding: 6px 16px;
+  color: var(--text-main);
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-status-indicator.status-success {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.ui-status-indicator.status-warning {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.ui-status-indicator.status-danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+/* =========================================================================
+   Rifle Crosshair (ticks spread with accuracy via --spread; flashes on hits)
+   ========================================================================= */
+.ui-crosshair-rifle {
+  position: relative;
+  width: 0;
+  height: 0;
+  --tick-color: rgba(248, 250, 252, 0.9);
+}
+
+.ui-crosshair-rifle .ui-crosshair-dot {
+  background: var(--tick-color);
+  width: 3px;
+  height: 3px;
+}
+
+.ui-crosshair-tick {
+  position: absolute;
+  background: var(--tick-color);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.8);
+  transition: transform 0.05s linear;
+}
+
+.ui-crosshair-tick.tick-top,
+.ui-crosshair-tick.tick-bottom {
+  width: 2px;
+  height: 9px;
+  left: -1px;
+}
+
+.ui-crosshair-tick.tick-left,
+.ui-crosshair-tick.tick-right {
+  width: 9px;
+  height: 2px;
+  top: -1px;
+}
+
+.ui-crosshair-tick.tick-top { bottom: var(--spread, 8px); }
+.ui-crosshair-tick.tick-bottom { top: var(--spread, 8px); }
+.ui-crosshair-tick.tick-left { right: var(--spread, 8px); }
+.ui-crosshair-tick.tick-right { left: var(--spread, 8px); }
+
+.ui-crosshair.hit .ui-crosshair-rifle { --tick-color: #ffffff; }
+.ui-crosshair.hit .ui-crosshair-tick { transform: scale(1.4); }
+.ui-crosshair.kill .ui-crosshair-rifle { --tick-color: var(--color-danger); }
+.ui-crosshair.kill .ui-crosshair-tick { transform: scale(1.6); }
+
+/* =========================================================================
+   Infantry Weapon HUD (Bottom Right)
+   ========================================================================= */
+.ui-weapon-hud {
+  position: fixed;
+  right: 24px;
+  bottom: 84px;
+  min-width: 220px;
+  padding: 10px 16px 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  text-align: right;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-weapon-hud-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-muted);
+}
+
+.ui-weapon-hud-ammo {
+  font-family: var(--font-family-mono);
+  line-height: 1.1;
+}
+
+.ui-weapon-hud-mag {
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.ui-weapon-hud-mag.empty {
+  color: var(--color-danger);
+}
+
+.ui-weapon-hud-reserve {
+  font-size: 16px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.ui-weapon-hud-reload {
+  height: 4px;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ui-weapon-hud-reload-fill {
+  height: 100%;
+  width: 0;
+  background: var(--color-warning);
+}
+
+.ui-weapon-hud-keys {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* =========================================================================
+   Player Health (Bottom Centre) & Damage Flash
+   ========================================================================= */
+.ui-player-health {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 280px;
+  padding: 8px 12px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-player-health-track {
+  height: 8px;
+  margin-top: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ui-player-health-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--color-success);
+  transition: width 0.15s ease-out;
+}
+
+.ui-player-health.low .ui-player-health-fill {
+  background: var(--color-danger);
+}
+
+.ui-player-health.low {
+  color: var(--color-danger);
+}
+
+.ui-damage-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 900;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(230, 57, 70, 0) 55%, rgba(230, 57, 70, 0.55) 100%);
+  transition: opacity 0.45s ease-out;
+}
+
+.ui-damage-flash.active {
+  opacity: 1;
+  transition: opacity 0.04s ease-in;
+}
+
+/* =========================================================================
+   Mission Objective (Top Centre)
+   ========================================================================= */
+.ui-objective {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 300px;
+  padding: 8px 18px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-left: 3px solid var(--color-success);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-objective-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--color-success);
+}
+
+.ui-objective-detail {
+  margin-top: 2px;
+  font-size: 14px;
+}
+
+/* =========================================================================
+   Mission Result (Full Screen)
+   ========================================================================= */
+.ui-mission-result {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 10, 20, 0.6);
+  pointer-events: auto;
+  z-index: 9000;
+}
+
+.ui-mission-result-panel {
+  min-width: 360px;
+  max-width: 480px;
+  padding: 28px 32px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 10px;
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  text-align: center;
+}
+
+.ui-mission-result-title {
+  margin: 0 0 8px;
+  font-size: 30px;
+  letter-spacing: 3px;
+}
+
+.ui-mission-result.victory .ui-mission-result-title { color: var(--color-success); }
+.ui-mission-result.defeat .ui-mission-result-title { color: var(--color-danger); }
+
+.ui-mission-result-message {
+  margin: 0 0 18px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.ui-mission-result-stats {
+  margin-bottom: 20px;
+  font-family: var(--font-family-mono);
+  font-size: 14px;
+}
+
+.ui-mission-result-stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-panel);
+}
+
+/* =========================================================================
+   Cinematic: letterbox bars, title card and skip hint over camera sequences
+   ========================================================================= */
+.ui-cinematic {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  z-index: 8000;
+  font-family: var(--font-family-ui);
+  color: var(--text-main);
+}
+
+.ui-cinematic-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 11vh;
+  background: #000;
+}
+
+.ui-cinematic-bar-top { top: 0; }
+.ui-cinematic-bar-bottom { bottom: 0; }
+
+.ui-cinematic-caption {
+  position: absolute;
+  left: 6vw;
+  bottom: calc(11vh + 28px);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  animation: ui-cinematic-fade-in 1.2s ease-out both;
+}
+
+.ui-cinematic-title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 6px;
+}
+
+.ui-cinematic-subtitle {
+  margin-top: 6px;
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: var(--color-success);
+}
+
+.ui-cinematic-hint {
+  position: absolute;
+  right: 4vw;
+  bottom: 4vh;
+  font-family: var(--font-family-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+@keyframes ui-cinematic-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* The gameplay HUD steps aside while a cinematic plays */
+.ui-cinematic-active > :is(.ui-crosshair, .ui-weapon-hud, .ui-player-health, .ui-objective,
+  .ui-health-container, .ui-controls-helper, .ui-status-indicator, .ui-prompt) {
+  visibility: hidden;
+}
+
+/* Shown in the FPS display while the game renders below full resolution to keep the frame rate up */
+.ui-fps-res {
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* =========================================================================
+   Graphics settings (in the Options menu)
+   ========================================================================= */
+.ui-pause-overlay .ui-minimal-menu {
+  max-width: 460px;
+}
+
+.ui-graphics {
+  width: 100%;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: var(--font-family-ui);
+  color: #e6edf3;
+}
+
+.ui-graphics-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.ui-graphics-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ui-graphics-label {
+  width: 78px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.ui-graphics-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ui-graphics-option {
+  position: relative;
+  min-width: 46px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  color: #e6edf3;
+  font-family: var(--font-family-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ui-graphics-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ui-graphics-option.selected {
+  background: rgba(46, 196, 182, 0.2);
+  border-color: var(--color-success);
+  color: #ffffff;
+}
+
+/* A small dot marks what is recommended for this computer */
+.ui-graphics-option.recommended::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-warning);
+}
+
+.ui-graphics-recommend {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 183, 3, 0.08);
+  border: 1px solid rgba(255, 183, 3, 0.3);
+  border-radius: 6px;
+}
+
+.ui-graphics-recommend-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.ui-graphics-reason {
+  margin: 4px 0 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.ui-graphics-use:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

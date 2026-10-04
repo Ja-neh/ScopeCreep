@@ -41,6 +41,9 @@ html, body {
   pointer-events: none;
 }
 
-#ui-overlay > * {
+/* Overlay children are clickable by default. :where() gives this rule zero specificity, so a
+   component's own `pointer-events: none` (HUDs, crosshair, damage flash) wins and clicks pass
+   through to the game canvas, which needs them to lock the mouse. */
+:where(#ui-overlay) > * {
   pointer-events: auto;
 }

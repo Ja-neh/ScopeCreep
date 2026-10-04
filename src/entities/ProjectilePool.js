@@ -18,6 +18,7 @@ export class ProjectilePool extends BaseEntity {
     const projConfig = config.projectiles;
     this.flakCapacity = options.flakCapacity || projConfig.flak.capacity;
     this.artilleryCapacity = options.artilleryCapacity || projConfig.artillery.capacity;
+    this.plasmaCapacity = options.plasmaCapacity || projConfig.plasma.capacity;
 
     // Root Three.js container
     this.mesh = new THREE.Group();
@@ -26,7 +27,9 @@ export class ProjectilePool extends BaseEntity {
     // Separate pools for different projectile types
     this.flakPool = [];
     this.artilleryPool = [];
+    this.plasmaPool = [];
     this.activeProjectiles = [];
+    this._poolsByType = { FLAK: this.flakPool, ARTILLERY: this.artilleryPool, PLASMA: this.plasmaPool };
 
     // Math scratchpads for spread calculation
     this._spreadDir = new THREE.Vector3();
@@ -120,7 +123,28 @@ export class ProjectilePool extends BaseEntity {
       this.artilleryPool.push(p);
     }
 
-    console.log(`ProjectilePool: Initialized with ${this.flakCapacity} Flak and ${this.artilleryCapacity} Artillery.`);
+    // -------------------------------------------------------------
+    // 3. PLASMA BOLTS (alien small arms: slow, glowing green, visible coming in)
+    // -------------------------------------------------------------
+    const plasmaGeo = new THREE.CapsuleGeometry(0.07, 0.5, 2, 6);
+    plasmaGeo.rotateX(Math.PI / 2);
+    const plasmaMat = new THREE.MeshBasicMaterial({
+      color: 0x6dff8f,
+      toneMapped: false
+    });
+
+    for (let i = 0; i < this.plasmaCapacity; i++) {
+      const mesh = new THREE.Mesh(plasmaGeo, plasmaMat);
+      mesh.name = `PlasmaBolt_${i}`;
+      mesh.visible = false;
+      mesh.position.set(0, -9999, 0);
+      this.mesh.add(mesh);
+
+      const p = new Projectile(mesh, 'PLASMA', RAPIER);
+      this.plasmaPool.push(p);
+    }
+
+    console.log(`ProjectilePool: Initialized with ${this.flakCapacity} Flak, ${this.artilleryCapacity} Artillery and ${this.plasmaCapacity} Plasma.`);
   }
 
   /**
@@ -226,6 +250,50 @@ export class ProjectilePool extends BaseEntity {
   }
 
   /**
+   * Fires an alien plasma bolt: slow enough to see coming, no drop.
+   */
+  firePlasma({
+    origin,
+    direction,
+    speed,
+    source = null,
+    excludeCollider = null
+  } = {}) {
+    const plasmaCfg = config.projectiles.plasma;
+    const finalSpeed = speed !== undefined ? speed : plasmaCfg.speed;
+
+    let p = this.plasmaPool.pop();
+
+    // If pool empty, recycle oldest active plasma bolt
+    if (!p) {
+      for (let i = 0; i < this.activeProjectiles.length; i++) {
+        if (this.activeProjectiles[i].type === 'PLASMA') {
+          p = this.activeProjectiles.splice(i, 1)[0];
+          break;
+        }
+      }
+    }
+
+    if (!p) return null;
+
+    p.spawn({
+      origin,
+      direction,
+      speed: finalSpeed,
+      gravity: plasmaCfg.gravity,
+      drag: plasmaCfg.drag,
+      maxLifeTime: plasmaCfg.maxLifeTime,
+      damage: plasmaCfg.damage,
+      damageType: DamageType.KINETIC,
+      source,
+      excludeCollider
+    });
+
+    this.activeProjectiles.push(p);
+    return p;
+  }
+
+  /**
    * Internal hit resolver: applies damage to target entity if it possesses a HealthComponent.
    */
   _onHit(hit) {
@@ -245,6 +313,12 @@ export class ProjectilePool extends BaseEntity {
             break;
           }
         }
+      }
+
+      // No friendly fire: shots from a side never hurt that side
+      const shooter = hit.damageInfo.source;
+      if (targetEntity && shooter && shooter.faction && targetEntity.faction === shooter.faction) {
+        return;
       }
 
       if (targetEntity && targetEntity.health && typeof targetEntity.health.takeDamage === 'function') {
@@ -267,11 +341,7 @@ export class ProjectilePool extends BaseEntity {
 
       if (!isAlive) {
         // Recycle back to appropriate pool
-        if (p.type === 'FLAK') {
-          this.flakPool.push(p);
-        } else {
-          this.artilleryPool.push(p);
-        }
+        this._poolsByType[p.type].push(p);
 
         // O(1) removal
         const lastIdx = this.activeProjectiles.length - 1;
@@ -299,8 +369,13 @@ export class ProjectilePool extends BaseEntity {
         });
       }
     }
+    for (const p of this.plasmaPool) {
+      if (p.mesh && p.mesh.geometry) p.mesh.geometry.dispose();
+      if (p.mesh && p.mesh.material) p.mesh.material.dispose();
+    }
     this.flakPool = [];
     this.artilleryPool = [];
+    this.plasmaPool = [];
     this.activeProjectiles = [];
 
     super.dispose();

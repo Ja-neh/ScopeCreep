@@ -18,12 +18,27 @@
       "maxLifeTime": 6.5,
       "damage": 350,
       "damageType": "EXPLOSIVE"
+    },
+    "plasma": {
+      "capacity": 60,
+      "speed": 70.0,
+      "gravity": 0.0,
+      "drag": 0.0,
+      "maxLifeTime": 3.0,
+      "damage": 8,
+      "damageType": "KINETIC"
     }
   },
   "player": {
+    "vitals": {
+      "maxHealth": 100,
+      "respawnSeconds": 3.0,
+      "lowHealthFraction": 0.3
+    },
     "locomotion": {
       "walkSpeed": 8.0,
       "sprintSpeed": 14.0,
+      "crouchSpeed": 3.5,
       "jumpForce": 10.0,
       "gravity": 25.0,
       "mouseSensitivity": 0.002
@@ -36,8 +51,10 @@
     },
     "camera": {
       "eyeHeight": 1.7,
+      "crouchEyeHeight": 1.05,
       "thirdPersonDistance": 4.5,
       "thirdPersonTargetHeight": 1.3,
+      "crouchTargetHeight": 0.85,
       "minCameraDistance": 0.6,
       "cameraCollisionMargin": 0.25,
       "shoulderOffset": 0.0
@@ -73,6 +90,126 @@
       "collisionMargin": 2.0,
       "minCameraY": 3.5,
       "pitch": 0.20
+    }
+  },
+  "weapons": {
+    "switchSeconds": 0.35,
+    "machineGun": {
+      "damage": 18,
+      "roundsPerSecond": 10,
+      "magazine": 30,
+      "reserveAmmo": 180,
+      "reloadSeconds": 2.0,
+      "range": 200,
+      "spread": 0.012,
+      "spreadPerShot": 0.004,
+      "maxSpread": 0.05,
+      "spreadRecoveryPerSecond": 0.08,
+      "movingSpreadPenalty": 0.01,
+      "adsSpreadMultiplier": 0.35,
+      "crouchSpreadMultiplier": 0.7,
+      "recoilPitch": 0,
+      "recoilYaw": 0
+    },
+    "knife": {
+      "damage": 75,
+      "range": 2.2,
+      "cooldown": 0.6,
+      "windup": 0.12,
+      "backstabMultiplier": 2.0
+    }
+  },
+  "enemies": {
+    "trooper": {
+      "maxHealth": 90,
+      "walkSpeed": 2.5,
+      "runSpeed": 5.5,
+      "sightRange": 60,
+      "concealedSightRange": 8,
+      "awarenessRadius": 6,
+      "fieldOfViewDegrees": 120,
+      "hearingRange": 40,
+      "alertRadius": 25,
+      "burstShots": 3,
+      "burstInterval": 0.18,
+      "burstPause": 1.2,
+      "aimError": 0.035,
+      "minRange": 12,
+      "maxRange": 30,
+      "flankAfterSeconds": 6,
+      "searchSeconds": 6,
+      "corpseSeconds": 4
+    },
+    "brute": {
+      "maxHealth": 400,
+      "walkSpeed": 2.8,
+      "runSpeed": 4.0,
+      "chargeSpeed": 7.5,
+      "sightRange": 50,
+      "concealedSightRange": 6,
+      "awarenessRadius": 8,
+      "fieldOfViewDegrees": 140,
+      "hearingRange": 45,
+      "chargeRange": 25,
+      "chargeSeconds": 3.0,
+      "slamRange": 2.8,
+      "slamDamage": 35,
+      "slamWindup": 0.5,
+      "slamRecovery": 1.2,
+      "weakSpotMultiplier": 2.0,
+      "searchSeconds": 6,
+      "corpseSeconds": 5
+    }
+  },
+  "revive": {
+    "bleedOutSeconds": 30,
+    "holdSeconds": 3,
+    "healthFraction": 0.5,
+    "radius": 2.5,
+    "searchRadius": 150
+  },
+  "allies": {
+    "crewSize": 5,
+    "squadMate": {
+      "maxHealth": 150,
+      "walkSpeed": 3.5,
+      "runSpeed": 6.0,
+      "sightRange": 55,
+      "concealedSightRange": 8,
+      "awarenessRadius": 8,
+      "fieldOfViewDegrees": 150,
+      "hearingRange": 40,
+      "damage": 12,
+      "burstShots": 4,
+      "burstInterval": 0.1,
+      "burstPause": 0.9,
+      "aimError": 0.03,
+      "minRange": 10,
+      "maxRange": 35,
+      "leashRadius": 18,
+      "regroupSeconds": 3,
+      "corpseSeconds": 20
+    }
+  },
+  "levels": {
+    "level02": {
+      "firstWaveTriggerSeconds": 30,
+      "betweenWavesSeconds": 8,
+      "spawnIntervalSeconds": 0.8,
+      "objectiveRadius": 10,
+      "supplyCrateRadius": 2.5,
+      "maxAliveAliens": 18,
+      "waves": [
+        { "trooper": 20, "brute": 0, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
+        { "trooper": 22, "brute": 2, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
+        { "trooper": 24, "brute": 4, "lanes": ["centre", "west", "east", "farWest", "farEast"] }
+      ]
+    }
+  },
+  "testing": {
+    "trainingDummy": {
+      "maxHealth": 100,
+      "respawnSeconds": 3.0
     }
   },
   "turrets": {

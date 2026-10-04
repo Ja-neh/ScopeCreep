@@ -51,6 +51,33 @@ export class PhysicsWorld {
   }
 
   /**
+   * Creates a static heightfield collider (terrain) centred on `position`.
+   * @param {number} rows - Cells along Z
+   * @param {number} cols - Cells along X; `heights` holds (rows + 1) * (cols + 1) samples
+   * @param {Float32Array} heights - Column-major samples: index = iz + ix * (rows + 1)
+   * @param {number} width - World extent along X, in meters
+   * @param {number} depth - World extent along Z, in meters
+   * @param {{x: number, y: number, z: number}} [position] - World position of the heightfield centre
+   * @returns {RAPIER.Collider|null} Collider with `rigidBody` set; remove it with removeRigidBody(collider.rigidBody)
+   */
+  createHeightfield(rows, cols, heights, width, depth, position = { x: 0, y: 0, z: 0 }) {
+    if (!this.world) return null;
+    const body = this.world.createRigidBody(
+      this.RAPIER.RigidBodyDesc.fixed().setTranslation(position.x, position.y, position.z)
+    );
+    const colliderDesc = this.RAPIER.ColliderDesc.heightfield(
+      rows,
+      cols,
+      heights,
+      { x: width, y: 1.0, z: depth },
+      this.RAPIER.HeightFieldFlags.FIX_INTERNAL_EDGES
+    );
+    const collider = this.world.createCollider(colliderDesc, body);
+    collider.rigidBody = body;
+    return collider;
+  }
+
+  /**
    * Creates a Kinematic Character Controller
    * Handles auto-stepping over ledges/curbs, loop cut seams, slope sliding, and collision movement.
    */
@@ -140,6 +167,66 @@ export class PhysicsWorld {
       .setTranslation(position.x, position.y, position.z)
       .setRotation(rotation);
     return this.world.createRigidBody(bodyDesc);
+  }
+
+  /**
+   * Creates a fixed (immovable) rigid body.
+   */
+  createFixedRigidBody({ position = { x: 0, y: 0, z: 0 }, rotation = { x: 0, y: 0, z: 0, w: 1 } } = {}) {
+    if (!this.world) return null;
+    const bodyDesc = this.RAPIER.RigidBodyDesc.fixed()
+      .setTranslation(position.x, position.y, position.z)
+      .setRotation(rotation);
+    return this.world.createRigidBody(bodyDesc);
+  }
+
+  /**
+   * Creates a static box collider on its own fixed body (steps, ramps, walls, cover props).
+   * @param {{x: number, y: number, z: number}} halfExtents - Half size along the box's local axes
+   * @param {{x: number, y: number, z: number}} position - World centre
+   * @param {{x: number, y: number, z: number, w: number}} [rotation] - World rotation quaternion
+   * @returns {RAPIER.Collider|null} Collider with `rigidBody` set; remove it with removeRigidBody(collider.rigidBody)
+   */
+  createStaticBox(halfExtents, position, rotation = { x: 0, y: 0, z: 0, w: 1 }) {
+    if (!this.world) return null;
+    const colliderDesc = this.RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z);
+    return this._createStaticCollider(colliderDesc, position, rotation);
+  }
+
+  /**
+   * Creates a static upright cylinder collider on its own fixed body (tree trunks, posts, pillars).
+   * @param {number} halfHeight - Half the cylinder's height along its local Y axis
+   * @param {number} radius
+   * @param {{x: number, y: number, z: number}} position - World centre
+   * @param {{x: number, y: number, z: number, w: number}} [rotation] - World rotation quaternion
+   * @returns {RAPIER.Collider|null} Collider with `rigidBody` set; remove it with removeRigidBody(collider.rigidBody)
+   */
+  createStaticCylinder(halfHeight, radius, position, rotation = { x: 0, y: 0, z: 0, w: 1 }) {
+    if (!this.world) return null;
+    const colliderDesc = this.RAPIER.ColliderDesc.cylinder(halfHeight, radius);
+    return this._createStaticCollider(colliderDesc, position, rotation);
+  }
+
+  /**
+   * Creates a static convex-hull collider on its own fixed body (rocks, boulders, debris).
+   * @param {Float32Array} points - Hull points in the body's local frame, as x, y, z triples
+   * @param {{x: number, y: number, z: number}} position - World position of the local origin
+   * @param {{x: number, y: number, z: number, w: number}} [rotation] - World rotation quaternion
+   * @returns {RAPIER.Collider|null} Collider with `rigidBody` set; remove it with removeRigidBody(collider.rigidBody)
+   */
+  createStaticConvexHull(points, position, rotation = { x: 0, y: 0, z: 0, w: 1 }) {
+    if (!this.world) return null;
+    const colliderDesc = this.RAPIER.ColliderDesc.convexHull(points);
+    if (!colliderDesc) return null;
+    return this._createStaticCollider(colliderDesc, position, rotation);
+  }
+
+  _createStaticCollider(colliderDesc, position, rotation) {
+    const body = this.createFixedRigidBody({ position, rotation });
+    if (!body) return null;
+    const collider = this.world.createCollider(colliderDesc, body);
+    collider.rigidBody = body;
+    return collider;
   }
 
   /**

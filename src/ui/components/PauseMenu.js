@@ -1,6 +1,8 @@
+import { GraphicsSettings } from './GraphicsSettings.js';
+
 /**
  * PauseMenu.js
- * Minimalist pause and options menu.
+ * Minimalist pause and options menu, with the Graphics settings when the game provides them.
  */
 export class PauseMenu {
   /**
@@ -16,6 +18,8 @@ export class PauseMenu {
     this._callbacks = {};
 
     this._build();
+    this.graphics = new GraphicsSettings(this.element.querySelector('.ui-minimal-menu'));
+    this.graphics.bind(null);
     this.parent.appendChild(this.element);
   }
 
@@ -61,9 +65,11 @@ export class PauseMenu {
    * @param {Function} callbacks.onRestart
    * @param {Function} callbacks.onReturnToMenu
    * @param {Function} callbacks.onToggleColliders
+   * @param {Object} [callbacks.graphics] - Graphics settings to show (see GraphicsSettings)
    */
   show(callbacks = {}) {
     this._callbacks = callbacks;
+    this.graphics.bind(callbacks.graphics || null);
     this.element.classList.remove('ui-hidden');
   }
 
@@ -78,6 +84,10 @@ export class PauseMenu {
    * Clean up DOM elements
    */
   dispose() {
+    if (this.graphics) {
+      this.graphics.dispose();
+      this.graphics = null;
+    }
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }

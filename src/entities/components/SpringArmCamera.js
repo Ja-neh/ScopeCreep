@@ -102,19 +102,21 @@ export class SpringArmCamera {
     }
 
     // 3rd-Person Spring Arm View
-    this._targetFocalPoint.set(
-      targetPos.x,
-      targetPos.y + this.thirdPersonTargetHeight,
-      targetPos.z
-    );
-
+    // Over-the-shoulder: the focal point moves sideways with the camera, so the camera looks
+    // parallel to the aim and the screen centre sits beside the character, not through it
     const rightX = Math.cos(yaw);
     const rightZ = -Math.sin(yaw);
 
+    this._targetFocalPoint.set(
+      targetPos.x + rightX * this.shoulderOffset,
+      targetPos.y + this.thirdPersonTargetHeight,
+      targetPos.z + rightZ * this.shoulderOffset
+    );
+
     this._desiredCamOffset.set(
-      -this._lookDir.x * this.thirdPersonDistance + rightX * this.shoulderOffset,
+      -this._lookDir.x * this.thirdPersonDistance,
       -this._lookDir.y * this.thirdPersonDistance,
-      -this._lookDir.z * this.thirdPersonDistance + rightZ * this.shoulderOffset
+      -this._lookDir.z * this.thirdPersonDistance
     );
 
     const maxRayDist = this._desiredCamOffset.length();

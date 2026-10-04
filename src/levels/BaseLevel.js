@@ -30,6 +30,15 @@ export class BaseLevel {
   }
 
   /**
+   * Controls shown on the controls card while this level runs: [{ actions: ['crouch'], label: 'Crouch' }].
+   * Keys are looked up from the InputManager bindings. null shows the default (Level 1) card.
+   * @returns {Array<{actions: string[], label: string}>|null}
+   */
+  get controls() {
+    return null;
+  }
+
+  /**
    * Optional callback invoked when collider debug visualization is toggled.
    * @param {boolean} visible
    */

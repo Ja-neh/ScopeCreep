@@ -4,9 +4,13 @@ import { SpringArmCamera, CameraMode } from './components/SpringArmCamera.js';
 import { PlayerModel } from './models/PlayerModel.js';
 import { GroundProbe } from './player-components/GroundProbe.js';
 import { PlatformTracker } from './player-components/PlatformTracker.js';
+import { HealthComponent } from './components/HealthComponent.js';
 import config from '../config.json';
 
 export { CameraMode };
+
+// How quickly the camera and body ease between standing and crouching (per second)
+const CROUCH_BLEND_RATE = 10;
 
 /**
  * Player
@@ -33,6 +37,21 @@ export class Player extends BaseEntity {
     this.gravity = options.gravity || locCfg.gravity;
     this.mouseSensitivity = options.mouseSensitivity || locCfg.mouseSensitivity;
 
+    // Crouching (opt-in): slower, with a lower camera and silhouette. A level's cover system
+    // reads isCrouching and sets isConcealed (e.g. crouched inside a bush).
+    this.canCrouch = options.canCrouch === true;
+    this.crouchSpeed = options.crouchSpeed || locCfg.crouchSpeed;
+    this.crouchEyeHeight = camCfg.crouchEyeHeight;
+    this.crouchTargetHeight = camCfg.crouchTargetHeight;
+    this.isCrouching = false;
+    this.isConcealed = false;
+    this._crouchBlend = 0;
+
+    // Side and health. Health is opt-in (levels with enemies pass maxHealth); weapons and
+    // projectiles find the player through its collider's userData.
+    this.faction = options.faction || 'humans';
+    this.health = options.maxHealth ? new HealthComponent(options.maxHealth) : null;
+
     // Capsule dimensions from config or options
     this.capsuleRadius = options.capsuleRadius !== undefined ? options.capsuleRadius : capCfg.radius;
     this.capsuleHalfHeight = options.capsuleHalfHeight !== undefined ? options.capsuleHalfHeight : capCfg.halfHeight;
@@ -40,6 +59,8 @@ export class Player extends BaseEntity {
     this.maxStepHeight = options.maxStepHeight !== undefined ? options.maxStepHeight : capCfg.maxStepHeight;
     // Controller offset: clearance margin (in meters) between collider and ground/obstacles
     this.controllerOffset = options.controllerOffset !== undefined ? options.controllerOffset : capCfg.controllerOffset;
+    // Keeps the character on the ground when walking down slopes and ramps (opt-in: off on the ship's trimesh decks)
+    this.snapToGround = options.snapToGround === true;
 
     // Position & Kinematics
     this.position = options.position ? options.position.clone() : new THREE.Vector3(0, 0, 0);
@@ -65,6 +86,8 @@ export class Player extends BaseEntity {
       cameraCollisionMargin: options.cameraCollisionMargin || camCfg.cameraCollisionMargin,
       shoulderOffset: options.shoulderOffset || camCfg.shoulderOffset
     });
+    this._standEyeHeight = this.springArm.eyeHeight;
+    this._standTargetHeight = this.springArm.thirdPersonTargetHeight;
 
     // Reusable math vectors for movement input (eliminating GC)
     this._camForward = new THREE.Vector3();
@@ -121,6 +144,7 @@ export class Player extends BaseEntity {
     // 1 Capsule Collider (halfHeight = 0.55, radius = 0.45 => Total Height = 2.0m)
     const colliderDesc = RAPIER.ColliderDesc.capsule(this.capsuleHalfHeight, this.capsuleRadius);
     this.collider = this.physicsWorld.createCollider(colliderDesc, this.rigidBody);
+    this.collider.userData = { entity: this };
 
     // Rapier Kinematic Character Controller (auto-step, slope slide, snap-to-ground)
     // offset: distance that keeps collider floating cleanly above deck loop cuts
@@ -128,7 +152,8 @@ export class Player extends BaseEntity {
       offset: this.controllerOffset,
       maxStepHeight: this.maxStepHeight,
       minStepWidth: 0.0,
-      maxSlope: (60 * Math.PI) / 180
+      maxSlope: (60 * Math.PI) / 180,
+      snapToGround: this.snapToGround
     });
 
     if (this.groundProbe) {
@@ -185,6 +210,13 @@ export class Player extends BaseEntity {
       this.velocity.set(0, 0, 0);
       this.verticalVelocity = 0;
     }
+  }
+
+  /**
+   * 0 standing to 1 fully crouched, eased (for posing held items).
+   */
+  get crouchAmount() {
+    return this._crouchBlend;
   }
 
   get cameraMode() {
@@ -263,9 +295,11 @@ export class Player extends BaseEntity {
       }
     }
 
-    // Sprint modifier
+    // Crouch (hold) and sprint modifiers
+    this.isCrouching = this.canCrouch && this.input.isActionDown('crouch');
     const isSprinting = this.input.isActionDown('sprint');
-    const speed = isSprinting ? this.sprintSpeed : this.walkSpeed;
+    let speed = isSprinting ? this.sprintSpeed : this.walkSpeed;
+    if (this.isCrouching) speed = this.crouchSpeed;
 
     this.velocity.x = this._moveDir.x * speed;
     this.velocity.z = this._moveDir.z * speed;
@@ -283,7 +317,7 @@ export class Player extends BaseEntity {
       // Jump, gravity & movement assembly
       let desiredMovement;
       if (this.isGrounded) {
-        if (this.input.isActionJustPressed('jump')) {
+        if (this.input.isActionJustPressed('jump') && !this.isCrouching) {
           this.verticalVelocity = this.jumpForce;
           this.isGrounded = false;
           desiredMovement = {
@@ -355,6 +389,10 @@ export class Player extends BaseEntity {
   lateUpdate(delta) {
     if (this.isMounted || this.isDevSuspended) return;
 
+    if (this.canCrouch) {
+      this._updateCrouchPose(delta);
+    }
+
     const { isTooClose, mode } = this.springArm.update(
       delta,
       this.position,
@@ -366,6 +404,19 @@ export class Player extends BaseEntity {
     const hideMesh = isTooClose || mode === CameraMode.FIRST_PERSON;
     if (this.model) {
       this.model.setFirstPerson(hideMesh);
+    }
+  }
+
+  /**
+   * Eases the camera height and body between standing and crouching.
+   */
+  _updateCrouchPose(delta) {
+    const target = this.isCrouching ? 1 : 0;
+    this._crouchBlend += (target - this._crouchBlend) * Math.min(1, CROUCH_BLEND_RATE * delta);
+    this.springArm.eyeHeight = THREE.MathUtils.lerp(this._standEyeHeight, this.crouchEyeHeight, this._crouchBlend);
+    this.springArm.thirdPersonTargetHeight = THREE.MathUtils.lerp(this._standTargetHeight, this.crouchTargetHeight, this._crouchBlend);
+    if (this.model) {
+      this.model.setCrouchAmount(this._crouchBlend);
     }
   }
 

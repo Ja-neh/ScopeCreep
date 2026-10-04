@@ -1,6 +1,18 @@
+// Shown when a level doesn't list its own controls (Level 1)
+const DEFAULT_LINES = [
+  { keys: 'Left Click', label: 'Lock Mouse' },
+  { keys: '[Esc] / [P]', label: 'Pause & Options Menu' },
+  { keys: 'W, A, S, D', label: 'Walk on Deck' },
+  { keys: 'Shift', label: 'Sprint  |  Space: Jump' },
+  { keys: '[E]', label: 'Mount / Dismount Station (when in ring)' },
+  { keys: '[V] / [Tab]', label: 'Toggle 1st / 3rd Person View' },
+  { keys: '[B] / [F2]', label: 'Toggle Battleship Colliders' }
+];
+
 /**
  * ControlsHelper.js
  * On-screen keyboard and mouse controls helper card (Bottom Left HUD).
+ * Shows the current level's controls (setLines), or Level 1's by default.
  */
 export class ControlsHelper {
   /**
@@ -12,18 +24,24 @@ export class ControlsHelper {
     this.element = document.createElement('div');
     this.element.className = 'ui-controls-helper';
     this.element.id = 'controls-helper';
-
-    this.element.innerHTML = `
-      • <strong>Left Click:</strong> Lock Mouse<br/>
-      • <strong>[Esc] / [P]:</strong> Pause & Options Menu<br/>
-      • <strong>W, A, S, D:</strong> Walk on Deck<br/>
-      • <strong>Shift:</strong> Sprint &nbsp;|&nbsp; <strong>Space:</strong> Jump<br/>
-      • <strong>[E]:</strong> Mount / Dismount Station (when in ring)<br/>
-      • <strong>[V] / [C]:</strong> Toggle 1st / 3rd Person View<br/>
-      • <strong>[B] / [F2]:</strong> Toggle Battleship Colliders<br/>
-    `;
+    this.setLines(null);
 
     this.parent.appendChild(this.element);
+  }
+
+  /**
+   * Replaces the card's contents.
+   * @param {Array<{keys: string, label: string}>|null} lines - null for the default card
+   */
+  setLines(lines) {
+    this.element.replaceChildren();
+    for (const { keys, label } of lines || DEFAULT_LINES) {
+      const row = document.createElement('div');
+      const key = document.createElement('strong');
+      key.textContent = `${keys}:`;
+      row.append('• ', key, ` ${label}`);
+      this.element.appendChild(row);
+    }
   }
 
   /**
