@@ -1,17 +1,29 @@
 import * as THREE from 'three';
 import { BaseEntity } from '../../entities/BaseEntity.js';
 
-const DURATION_SECONDS = 4;
-// Camera keyframes before the sweep settles behind the player (world positions)
-const WIDE_SHOT = { position: new THREE.Vector3(80, 36, 330), target: new THREE.Vector3(-5, 8, 150) };
-const BEACH_SHOT = { position: new THREE.Vector3(32, 15, 202), target: new THREE.Vector3(-12, 3, 184) };
-const FIELD_OF_VIEW = 55;
+const DURATION_SECONDS = 10;
+// The camera flies in from out at sea alongside the arriving helicopters (the setting sun ahead
+// and to the left), closes on the ship, passes its bow low on the beach side as they cross over
+// it, then comes round to settle behind the player (world positions; the player's view is added last)
+const FLIGHT_PATH = [
+  new THREE.Vector3(170, 30, 560),
+  new THREE.Vector3(85, 32, 300),
+  new THREE.Vector3(40, 12, 194)
+];
+const DEFAULT_FOCUS = new THREE.Vector3(0, 20, 230); // Looked at when there is nothing to follow
+// The camera aims this far from what it follows towards the landing beach, so the helicopters
+// share the frame with the ship and the island rather than filling it with sky
+const LANDING_POINT = new THREE.Vector3(-8, 4, 195);
+const AIM_TOWARDS_LANDING = 0.35;
+const HANDOVER = [0.6, 0.95]; // Share of the sweep over which the view turns from the helicopters to the player's
+const FIELD_OF_VIEW = 50;
 
 /**
  * LandingCinematic
- * Level 2's opening: a short camera sweep from out at sea, past the gangway and the arriving
- * helicopters, ending exactly on the player's own third-person view. The player is frozen
- * meanwhile, the HUD hides behind letterbox bars, and [Space]/[Enter] (skipCutscene) skips it.
+ * Level 2's opening: a 10-second camera sweep that flies in from the sea with the arriving
+ * helicopters, past the anchored ship, and ends exactly on the player's own third-person view.
+ * The player is frozen meanwhile, the HUD hides behind letterbox bars, and [Space]/[Enter]
+ * (skipCutscene) skips it.
  * Add it to the GameWorld and it starts on its first frame (after the first physics step, so
  * the camera's collision rays see the world).
  *
@@ -26,15 +38,18 @@ export class LandingCinematic extends BaseEntity {
    * @param {string} options.title
    * @param {string} [options.subtitle]
    * @param {number} [options.duration] - Seconds
+   * @param {(out: THREE.Vector3) => (THREE.Vector3|null)} [options.focus] - What the camera follows
+   *   until it turns to the player's view (e.g. the arriving helicopters); null when nothing to follow
    * @param {Function} [options.onFinished] - Called once, when it ends or is skipped
    */
-  constructor(gameWorld, { player, title, subtitle = '', duration = DURATION_SECONDS, onFinished = null }) {
+  constructor(gameWorld, { player, title, subtitle = '', duration = DURATION_SECONDS, focus = null, onFinished = null }) {
     super('LandingCinematic');
     this.gameWorld = gameWorld;
     this.player = player;
     this.title = title;
     this.subtitle = subtitle;
     this.duration = duration;
+    this.focus = focus;
     this.onFinished = onFinished;
 
     this.elapsed = 0;
@@ -46,8 +61,8 @@ export class LandingCinematic extends BaseEntity {
     this.camera = new THREE.PerspectiveCamera(FIELD_OF_VIEW, window.innerWidth / window.innerHeight, 0.1, 3000);
     this.camera.name = 'LandingCinematicCamera';
     this.path = null;
-    this._wideQuat = new THREE.Quaternion();
-    this._beachQuat = new THREE.Quaternion();
+    this._lookQuat = new THREE.Quaternion();
+    this._focusPoint = new THREE.Vector3();
     this._endQuat = new THREE.Quaternion();
     this._endPosition = new THREE.Vector3();
     this._endFov = FIELD_OF_VIEW;
@@ -70,9 +85,7 @@ export class LandingCinematic extends BaseEntity {
     this._endQuat.copy(gameWorld.camera.quaternion);
     this._endFov = gameWorld.camera.fov;
 
-    this.path = new THREE.CatmullRomCurve3([WIDE_SHOT.position, BEACH_SHOT.position, this._endPosition], false, 'centripetal');
-    this._lookRotation(WIDE_SHOT, this._wideQuat);
-    this._lookRotation(BEACH_SHOT, this._beachQuat);
+    this.path = new THREE.CatmullRomCurve3([...FLIGHT_PATH, this._endPosition], false, 'centripetal');
 
     player.isDevSuspended = true;
     this.isPlaying = true;
@@ -82,11 +95,12 @@ export class LandingCinematic extends BaseEntity {
     if (gameWorld.ui) gameWorld.ui.showCinematic(this.title, this.subtitle, '[Space] Skip');
   }
 
-  _lookRotation(shot, out) {
-    this._aim.position.copy(shot.position);
-    this._aim.lookAt(shot.target);
+  /** Camera rotation looking from `from` at `target`. */
+  _lookRotation(from, target, out) {
+    this._aim.position.copy(from);
+    this._aim.lookAt(target);
     // Object3D.lookAt points +Z at the target; cameras look down -Z, so turn around
-    out.copy(this._aim.quaternion).multiply(TURN_AROUND);
+    return out.copy(this._aim.quaternion).multiply(TURN_AROUND);
   }
 
   /**
@@ -112,14 +126,17 @@ export class LandingCinematic extends BaseEntity {
   }
 
   _pose(t) {
-    const s = t * t * t * (t * (t * 6 - 15) + 10); // Smootherstep: ease in and out
-    this.path.getPoint(s, this.camera.position);
-    if (s < 0.5) {
-      this.camera.quaternion.slerpQuaternions(this._wideQuat, this._beachQuat, smooth(s / 0.5));
-    } else {
-      this.camera.quaternion.slerpQuaternions(this._beachQuat, this._endQuat, smooth((s - 0.5) / 0.5));
-    }
-    this.camera.fov = THREE.MathUtils.lerp(FIELD_OF_VIEW, this._endFov, s);
+    // Ease out: already flying with the helicopters at the start, settling gently at the end
+    const s = 1 - (1 - t) * (1 - t);
+    this.path.getPointAt(s, this.camera.position);
+
+    // Follow the helicopters (with the landing beach in shot), then turn to the player's own view
+    const focus = (this.focus && this.focus(this._focusPoint)) || this._focusPoint.copy(DEFAULT_FOCUS);
+    focus.lerp(LANDING_POINT, AIM_TOWARDS_LANDING);
+    this._lookRotation(this.camera.position, focus, this._lookQuat);
+    const handover = smooth(THREE.MathUtils.clamp((t - HANDOVER[0]) / (HANDOVER[1] - HANDOVER[0]), 0, 1));
+    this.camera.quaternion.slerpQuaternions(this._lookQuat, this._endQuat, handover);
+    this.camera.fov = THREE.MathUtils.lerp(FIELD_OF_VIEW, this._endFov, handover);
     this.camera.updateProjectionMatrix();
   }
 

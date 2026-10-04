@@ -6,6 +6,7 @@
  *
  * A wave is { trooper: 6, brute: 1, lanes: ['centre', 'west'] } (any unit type names work):
  * units are dealt round-robin across the lanes, heavier units (listed later) arriving last.
+ * With `maxAlive`, spawning pauses while that many are already on the field.
  */
 export class WaveDirector {
   /**
@@ -16,9 +17,11 @@ export class WaveDirector {
    * @param {(type: string, lane: string) => Object|null} options.spawn - Creates one unit
    * @param {() => number} options.aliveCount - Units of the waves still alive
    * @param {string[]} [options.unitTypes] - Unit keys in arrival order
+   * @param {number} [options.maxAlive] - Most units alive at once; the rest wait their turn
    */
-  constructor({ waves, betweenWavesSeconds, spawnIntervalSeconds, spawn, aliveCount, unitTypes = ['trooper', 'brute'] }) {
+  constructor({ waves, betweenWavesSeconds, spawnIntervalSeconds, spawn, aliveCount, unitTypes = ['trooper', 'brute'], maxAlive = Infinity }) {
     this.waves = waves;
+    this.maxAlive = maxAlive;
     this.betweenWavesSeconds = betweenWavesSeconds;
     this.spawnIntervalSeconds = spawnIntervalSeconds;
     this.spawn = spawn;
@@ -58,6 +61,10 @@ export class WaveDirector {
       case 'spawning':
         this._timer -= delta;
         while (this._timer <= 0 && this.queue.length > 0) {
+          if (this.aliveCount() >= this.maxAlive) {
+            this._timer = 0; // Field is full: the next one comes as soon as one falls
+            break;
+          }
           const unit = this.queue.shift();
           this.spawn(unit.type, unit.lane);
           this._timer += this.spawnIntervalSeconds;

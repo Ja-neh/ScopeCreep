@@ -19,13 +19,17 @@ import { WeaponController } from '../weapons/WeaponController.js';
 import config from '../config.json';
 
 // Where each attack lane comes out of the jungle (on the way down from the village) and what it
-// pushes to (the beach). Spawns are 60-100 m from the beach so the fight starts soon.
+// pushes to (the beach). Five lanes spread along the treeline, 60-100 m from the beach, so a
+// wave comes at the squad from everywhere at once.
 const LANES = {
-  centre: { name: 'the jungle path', spawn: { x: 16, z: 92 }, assault: { x: 0, z: 168 } },
-  west: { name: 'the west', spawn: { x: -75, z: 100 }, assault: { x: -35, z: 165 } },
-  east: { name: 'the east', spawn: { x: 75, z: 95 }, assault: { x: 35, z: 165 } }
+  farWest: { name: 'the far west', spawn: { x: -130, z: 100 }, assault: { x: -70, z: 160 } },
+  west: { name: 'the west', spawn: { x: -70, z: 92 }, assault: { x: -35, z: 165 } },
+  centre: { name: 'the jungle path', spawn: { x: 16, z: 88 }, assault: { x: 0, z: 168 } },
+  east: { name: 'the east', spawn: { x: 75, z: 90 }, assault: { x: 35, z: 165 } },
+  farEast: { name: 'the far east', spawn: { x: 130, z: 100 }, assault: { x: 70, z: 160 } }
 };
-const SPAWN_JITTER = 8;           // Meters of random spread around a lane's spawn point
+const SPAWN_SPREAD_X = 22;        // Meters of random scatter around a lane's spawn point, across...
+const SPAWN_SPREAD_Z = 10;        // ...and along the island
 const ASSAULT_JITTER = 20;
 const OBJECTIVE_Z = 80;           // Where the jungle path enters the trees
 const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
@@ -34,8 +38,10 @@ const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
 const CREW_NAMES = ['Okafor', 'Reyes', 'Novak', 'Chen'];
 const PILOT_NAMES = ['Hawk', 'Viper'];
 const PILOT_COLOURS = { suitColor: 0x6b705c, helmetColor: 0xd8d8d0, visorColor: 0x2b2f33 };
-// At the start the crew are already filing down the gangway (0 = top, 1 = foot), lead first
+// At the start the crew stand on the gangway (0 = top, 1 = foot), lead first, and set off
+// down it partway through the opening so the sweep ends with them filing onto the sand
 const CREW_GANGWAY_PLACES = [0.88, 0.66, 0.44, 0.22];
+const CREW_DEPART_SECONDS = 5;
 // Where the crew gather on the sand until the player is ashore (world x, z, facing)
 const RALLY_POSTS = [
   { x: -13.5, z: 180.5, facing: 0.6 },
@@ -82,6 +88,7 @@ export class Level02 extends BaseLevel {
     this.elapsed = 0;
     this._wasConcealed = false;
     this._crewFollowing = false;
+    this._crewRoutes = [];    // Crew waiting on the gangway: { mate, route, rally, facing }
     this._squadmatesLost = 0;
     this._objectivePoint = new THREE.Vector3();
   }
@@ -193,7 +200,8 @@ export class Level02 extends BaseLevel {
       betweenWavesSeconds: this.cfg.betweenWavesSeconds,
       spawnIntervalSeconds: this.cfg.spawnIntervalSeconds,
       spawn: (type, lane) => this.spawnAlien(type, lane),
-      aliveCount: () => this.squad.aliveCount
+      aliveCount: () => this.squad.aliveCount,
+      maxAlive: this.cfg.maxAliveAliens
     });
 
     this._showObjective('OBJECTIVE', 'Get off the ship and hold the beach');
@@ -241,9 +249,13 @@ export class Level02 extends BaseLevel {
     const ui = this.gameWorld.ui;
     if (!ui) return;
     const wave = this.cfg.waves[this.waves.waveIndex];
-    const from = (wave.lanes || ['centre']).map((lane) => (LANES[lane] || LANES.centre).name).join(', ');
+    const lanes = wave.lanes || ['centre'];
+    const from = lanes.length >= 4
+      ? 'all along the treeline'
+      : `from ${lanes.map((lane) => (LANES[lane] || LANES.centre).name).join(', ')}`;
+    const count = (wave.trooper || 0) + (wave.brute || 0);
     const brutes = wave.brute ? ` — ${wave.brute} brute${wave.brute > 1 ? 's' : ''} among them` : '';
-    ui.showToast(`Wave ${this.waves.waveNumber}: aliens coming from ${from}${brutes}!`, 'warning', 4000);
+    ui.showToast(`Wave ${this.waves.waveNumber}: ${count} aliens coming ${from}${brutes}!`, 'warning', 4000);
   }
 
   /**
@@ -256,7 +268,8 @@ export class Level02 extends BaseLevel {
     this.cinematic = new LandingCinematic(this.gameWorld, {
       player: this.player,
       title: 'THE BEACH',
-      subtitle: 'Land the squad and take back the coast'
+      subtitle: 'Land the squad and take back the coast',
+      focus: (out) => this.landingZone.helicopterFocus(out)
     });
     this.gameWorld.addEntity(this.cinematic);
   }
@@ -284,14 +297,33 @@ export class Level02 extends BaseLevel {
       start.y += onGangway ? 0.15 : 0.1;
 
       const mate = this.spawnSquadMate(CREW_NAMES[i % CREW_NAMES.length], start);
-      mate.hold(rally, post.facing);
       if (onGangway) {
+        // Wait on the gangway until the opening sends them down (see _sendCrewAshore)
         mate.yaw = downYaw;
-        mate.walkRoute([zone.spawnPoints.gangwayFoot, rally]);
+        mate.hold(start, downYaw);
+        this._crewRoutes.push({ mate, route: [zone.spawnPoints.gangwayFoot, rally], rally, facing: post.facing });
       } else {
         mate.yaw = post.facing;
+        mate.hold(rally, post.facing);
       }
     }
+    if (this._crewFollowing) this.allies.followLeader();
+  }
+
+  /**
+   * The waiting crew walk down the gangway to their rally posts, once the opening is far enough
+   * along (or over).
+   */
+  _sendCrewAshore() {
+    if (this._crewRoutes.length === 0) return;
+    const cinematic = this.cinematic;
+    if (cinematic && !cinematic.isFinished && cinematic.elapsed < CREW_DEPART_SECONDS) return;
+    for (const { mate, route, rally, facing } of this._crewRoutes) {
+      if (mate.isDead) continue;
+      mate.hold(rally, facing);
+      mate.walkRoute(route);
+    }
+    this._crewRoutes = [];
     if (this._crewFollowing) this.allies.followLeader();
   }
 
@@ -374,8 +406,8 @@ export class Level02 extends BaseLevel {
    */
   _findSpawnSpot(centre) {
     for (let attempt = 0; attempt < 12; attempt++) {
-      const x = centre.x + (Math.random() - 0.5) * 2 * SPAWN_JITTER;
-      const z = centre.z + (Math.random() - 0.5) * 2 * SPAWN_JITTER;
+      const x = centre.x + (Math.random() - 0.5) * 2 * SPAWN_SPREAD_X;
+      const z = centre.z + (Math.random() - 0.5) * 2 * SPAWN_SPREAD_Z;
       if (this.environment.heightAt(x, z) > 0.6 && this.cover.isClearOfSolids(x, z, 1.2)) return { x, z };
     }
     return null;
@@ -393,6 +425,7 @@ export class Level02 extends BaseLevel {
     this.landingZone.update(delta);
     this.squad.update();
     this.allies.update(delta);
+    this._sendCrewAshore();
 
     // The crew wait on the sand until the player is ashore, then fall in behind them
     if (!this._crewFollowing && this._isPlayerAshore()) {

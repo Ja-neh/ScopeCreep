@@ -36,8 +36,9 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
   // Kill every alien the moment it appears; check where it appeared
   const seen = new Set();
   const badSpawns = [];
+  const spawnXsByWave = [];
   let brutes = 0;
-  stepWorld(world, 150, {
+  stepWorld(world, 200, {
     level,
     onFrame: () => {
       for (const alien of level.squad.members) {
@@ -45,6 +46,7 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
         seen.add(alien);
         if (alien.name === 'AlienBrute') brutes++;
         const { x, z } = alien.position;
+        (spawnXsByWave[level.waves.waveIndex] ||= []).push(x);
         if (z > 120 || level.environment.heightAt(x, z) < 0.6 || !level.cover.isClearOfSolids(x, z, 1.0)) badSpawns.push([x, z]);
         alien.health.takeDamage({ amount: 99999, source: level.player });
       }
@@ -57,6 +59,11 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
   assert.equal(brutes, totalUnits('brute'));
   assert.equal(level.squad.killCount, seen.size);
   assert.deepEqual(badSpawns, [], 'aliens spawn on dry, clear ground north of the beach');
+  spawnXsByWave.forEach((xs, i) => {
+    assert.ok(xs.length >= 20, `wave ${i + 1} brought ${xs.length} aliens`);
+    const spread = Math.max(...xs) - Math.min(...xs);
+    assert.ok(spread > 200, `wave ${i + 1} only spread over ${spread.toFixed(0)} m`);
+  });
   assert.equal(level.beacon.mesh.visible, true, 'objective beacon shown');
   assert.ok(world.ui.callsTo('showObjective').some((call) => call.args[0].startsWith('HOLD THE BEACH')));
 
@@ -83,6 +90,17 @@ test('Level 2: the first wave also starts if the player stays aboard', async () 
   stepWorld(world, cfg.firstWaveTriggerSeconds + 1, { level });
   assert.equal(level.state, 'waves');
   assert.ok(level.squad.members.length > 0);
+
+  // A big wave pours in, but never more than the cap on the field at once
+  let mostAlive = 0;
+  stepWorld(world, 25, {
+    level,
+    onFrame: () => {
+      mostAlive = Math.max(mostAlive, level.squad.aliveCount);
+      assert.ok(level.squad.aliveCount <= cfg.maxAliveAliens, `${level.squad.aliveCount} alive`);
+    }
+  });
+  assert.ok(mostAlive >= 12, `only ${mostAlive} on the field at once`);
   assert.equal(teardown(world, level), 0);
 });
 

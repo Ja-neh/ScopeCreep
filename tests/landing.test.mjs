@@ -121,6 +121,49 @@ test('the player starts at the top of the gangway, with room behind for the came
   assert.equal(teardown(world, level), 0);
 });
 
+test('opening: a 10-second sweep that follows the helicopters in past the ship, without flying through it', async () => {
+  const { world, level } = await loadLevel();
+  const cinematic = level.cinematic;
+  const camera = cinematic.camera;
+  const crew = level.allies.mates.slice();
+  const ship = new THREE.Vector3(0, 10, 225);
+
+  // On screen, inside the letterbox bars
+  const onScreen = (point) => {
+    camera.updateMatrixWorld();
+    const p = point.clone().project(camera);
+    return p.z < 1 && Math.abs(p.x) < 1 && Math.abs(p.y) < 0.75;
+  };
+  const helicoptersOnScreen = () => level.landingZone.arrivals.filter((a) => onScreen(a.model.mesh.position)).length;
+
+  stepWorld(world, 0.2, { level });
+  assert.ok(helicoptersOnScreen() >= 1 && onScreen(ship), 'opens on the helicopters with the ship ahead');
+  stepWorld(world, 2.8, { level });
+  assert.ok(world.activeCamera === camera);
+  assert.ok(helicoptersOnScreen() >= 1, 'a helicopter in shot at 3 s');
+  assert.ok(onScreen(ship), 'the ship in shot at 3 s');
+  assert.ok(crew.every((mate) => !mate.isWalkingRoute), 'crew wait on the gangway at first');
+  stepWorld(world, 3, { level });
+  assert.ok(helicoptersOnScreen() >= 1, 'a helicopter in shot at 6 s');
+  assert.ok(crew.some((mate) => mate.isWalkingRoute), 'crew set off down the gangway');
+  stepWorld(world, 3.5, { level });
+  assert.equal(cinematic.isFinished, false, 'still playing at 9.5 s');
+  stepWorld(world, 0.7, { level });
+  assert.equal(cinematic.isFinished, true, 'over by 10.2 s');
+  assert.ok(world.activeCamera === null);
+
+  // The path never enters the anchored ship (x -50..51, z 213..236, up to 35 m) until it settles
+  // over the deck edge behind the player at the very end
+  const end = cinematic.path.getPointAt(1);
+  for (let s = 0; s <= 1; s += 0.005) {
+    const p = cinematic.path.getPointAt(s);
+    if (p.distanceTo(end) < 12) break;
+    const insideShip = p.x > -50 && p.x < 51 && p.z > 213 && p.z < 236 && p.y < 36;
+    assert.ok(!insideShip, `camera inside the ship at (${p.x.toFixed(0)}, ${p.y.toFixed(0)}, ${p.z.toFixed(0)})`);
+  }
+  assert.equal(teardown(world, level), 0);
+});
+
 test('opening: [Space] skips the camera sweep', async () => {
   const { world, level } = await loadLevel();
   stepWorld(world, 0.5, { level });

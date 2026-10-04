@@ -72,6 +72,40 @@ test('jungle path runs north from the beach', () => {
   }
 });
 
+test('sunset: the sun sits low in the west, and the light, sky and sea all agree on where', () => {
+  const sun = env.sunDirection;
+  const elevation = Math.asin(sun.y) * 180 / Math.PI;
+  assert.ok(elevation > 5 && elevation < 20, `sun ${elevation.toFixed(1)} degrees up`);
+  assert.ok(sun.x < -0.8, 'in the west (to the left looking inland)');
+
+  const light = env.lights.find((l) => l.isDirectionalLight);
+  const fromLight = light.position.clone().sub(light.target.position).normalize();
+  assert.ok(fromLight.distanceTo(sun) < 1e-6, 'sunlight comes from the sun');
+  assert.ok(env.sky.uniforms.uSunDirection.value.distanceTo(sun) < 1e-6, 'sun disc in the sky');
+  assert.ok(env.ocean.uniforms.uSunDirection.value.clone().normalize().distanceTo(sun) < 1e-6, 'glint on the sea');
+
+  // The sky's horizon haze is the fog colour, so distant land and sea melt into it
+  assert.equal(env.sky.uniforms.uHorizonColor.value.getHex(), world.scene.fog.color.getHex());
+  assert.ok(env.sky.mesh.parent === world.environmentGroup && env.sky.mesh.frustumCulled === false);
+});
+
+test('clouds: a ring of low-poly clouds high in the sky that stays around the camera', () => {
+  const clouds = env.clouds;
+  assert.ok(clouds.mesh.parent === world.environmentGroup);
+  assert.ok(clouds.puffCount >= 100, `${clouds.puffCount} puffs`);
+  assert.equal(clouds.instances.castShadow, false, 'clouds do not shadow the island');
+  assert.equal(clouds.material.fog, false, 'fog would hide them');
+  const sphere = clouds.instances.boundingSphere;
+  assert.ok(sphere.radius > 400 && sphere.radius < 1800, 'far away, but inside the camera range');
+
+  world.camera.position.set(120, 10, -80);
+  const yaw = clouds.mesh.rotation.y;
+  env.update(1);
+  assert.equal(clouds.mesh.position.x, 120);
+  assert.equal(clouds.mesh.position.z, -80);
+  assert.ok(clouds.mesh.rotation.y > yaw, 'they drift');
+});
+
 test('dispose restores the sky and frees the terrain', async () => {
   const w = await createTestWorld();
   const previousBackground = w.scene.background;

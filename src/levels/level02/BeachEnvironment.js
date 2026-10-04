@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { Ocean } from '../../rendering/Ocean.js';
 import { Terrain } from '../../rendering/Terrain.js';
+import { SkyDome } from '../../rendering/SkyDome.js';
+import { Clouds } from '../../rendering/Clouds.js';
 import { valueNoise2D, fbm2D, smoothstep } from '../../rendering/Noise.js';
 
 // Island layout (meters). A long oval running north from the landing beach: Level 2 is fought
@@ -23,11 +25,16 @@ const VILLAGE = { x: 0, z: -340, radius: 90, height: 12 }; // Flat ground for Le
 const VILLAGE_BLEND = 45;        // The hills ease down to the village flat over this width
 const SEED = 7;
 
-// Dusk look
-const SKY_COLOR = 0xeaa57e;
+// Sunset look: the sun low in the west (to the left looking inland, and in view from the sea
+// in the opening), a warm glow along that side of the sky, dusky blue overhead
+const SKY_COLOR = 0xeaa57e;        // Also the haze at the horizon and the fog
 const FOG_DENSITY = 0.0026;
-const SUN_COLOR = 0xffa766;
-const SUN_DIRECTION = new THREE.Vector3(-0.8, 0.35, 0.45).normalize();
+const SUN_COLOR = 0xff9a5a;
+const SUN_DIRECTION = new THREE.Vector3(-0.96, 0.24, -0.12).normalize(); // About 14 degrees up
+const SKY_GLOW_COLOR = 0xff9a5c;
+const SKY_UPPER_COLOR = 0xc58aa0;
+const SKY_ZENITH_COLOR = 0x4a4f86;
+const SUN_DISC_COLOR = 0xffe3b0;
 const SHADOW_CENTRE = new THREE.Vector3(0, 0, 140); // Covers the beach and the jungle edge
 const SHADOW_HALF_EXTENT = 170;
 
@@ -45,7 +52,7 @@ const ROCK = new THREE.Color(0x7b7266);
 /**
  * BeachEnvironment
  * The island: procedural terrain with the landing beach in the south, jungle hills, a path
- * winding north to the village plateau at the far end, a calm sea, and dusk lighting.
+ * winding north to the village plateau at the far end, a calm sea, and a sunset sky with clouds.
  * Shared by Level02 and Level02TestLevel; `village` tells Level 3 where its houses go.
  */
 export class BeachEnvironment {
@@ -53,6 +60,8 @@ export class BeachEnvironment {
     this.gameWorld = gameWorld;
     this.terrain = null;
     this.ocean = null;
+    this.sky = null;
+    this.clouds = null;
     this.lights = [];
     this.spawnPoints = {};
     this.village = { ...VILLAGE }; // Where Level 3's houses go
@@ -69,11 +78,22 @@ export class BeachEnvironment {
     const scene = this.gameWorld.scene;
     const group = this.gameWorld.environmentGroup;
 
-    // 1. Dusk sky and fog
+    // 1. Sunset sky, clouds and fog
     this._previousBackground = scene.background;
     this._previousFog = scene.fog;
     scene.background = new THREE.Color(SKY_COLOR);
     scene.fog = new THREE.FogExp2(SKY_COLOR, FOG_DENSITY);
+    this.sky = new SkyDome({
+      sunDirection: SUN_DIRECTION,
+      horizonColor: SKY_COLOR,
+      glowColor: SKY_GLOW_COLOR,
+      upperColor: SKY_UPPER_COLOR,
+      zenithColor: SKY_ZENITH_COLOR,
+      sunColor: SUN_DISC_COLOR
+    });
+    group.add(this.sky.mesh);
+    this.clouds = new Clouds();
+    group.add(this.clouds.mesh);
 
     // 2. Low warm sun and a warm-sky / dark-ground fill
     const hemi = new THREE.HemisphereLight(0xffc59a, 0x3a4a3a, 0.6);
@@ -140,11 +160,20 @@ export class BeachEnvironment {
     return 1 - 1 / Math.sqrt(1 + dx * dx + dz * dz);
   }
 
+  /** Unit vector towards the sun (shared by the light, the sky and the sea's glint). */
+  get sunDirection() {
+    return SUN_DIRECTION;
+  }
+
   /**
-   * Advances the sea animation. Call once per frame in Phase 5.
+   * Advances the sea and drifts the clouds (keeping them around the camera). Call once per frame in Phase 5.
    */
   update(delta) {
     if (this.ocean) this.ocean.update(delta);
+    if (this.clouds) {
+      const camera = this.gameWorld.getActiveCamera ? this.gameWorld.getActiveCamera() : this.gameWorld.camera;
+      this.clouds.update(delta, camera ? camera.position : null);
+    }
   }
 
   _pointOnGround(x, z) {
@@ -237,6 +266,14 @@ export class BeachEnvironment {
     if (this.ocean) {
       this.ocean.dispose();
       this.ocean = null;
+    }
+    if (this.sky) {
+      this.sky.dispose();
+      this.sky = null;
+    }
+    if (this.clouds) {
+      this.clouds.dispose();
+      this.clouds = null;
     }
     if (this.terrain) {
       this.terrain.dispose();

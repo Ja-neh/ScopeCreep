@@ -135,6 +135,20 @@ export class LandingZone {
     });
   }
 
+  /**
+   * The middle of the helicopters still in the air (for a camera to follow), or null.
+   */
+  helicopterFocus(out) {
+    let count = 0;
+    out.set(0, 0, 0);
+    for (const arrival of this.arrivals) {
+      if (arrival.isLanded) continue;
+      out.add(arrival.model.mesh.position);
+      count++;
+    }
+    return count > 0 ? out.divideScalar(count) : null;
+  }
+
   /** True once every helicopter is on the ground. */
   get helicoptersLanded() {
     return this.arrivals.every((arrival) => arrival.isLanded);

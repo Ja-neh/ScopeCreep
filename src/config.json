@@ -190,10 +190,11 @@
       "spawnIntervalSeconds": 0.8,
       "objectiveRadius": 10,
       "supplyCrateRadius": 2.5,
+      "maxAliveAliens": 18,
       "waves": [
-        { "trooper": 6, "brute": 0, "lanes": ["centre"] },
-        { "trooper": 8, "brute": 1, "lanes": ["centre", "west"] },
-        { "trooper": 10, "brute": 2, "lanes": ["centre", "west", "east"] }
+        { "trooper": 20, "brute": 0, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
+        { "trooper": 22, "brute": 2, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
+        { "trooper": 24, "brute": 4, "lanes": ["centre", "west", "east", "farWest", "farEast"] }
       ]
     }
   },

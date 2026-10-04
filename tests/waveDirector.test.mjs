@@ -8,11 +8,12 @@ const WAVES = [
   { trooper: 3, brute: 1, lanes: ['centre', 'west'] }
 ];
 
-function createDirector() {
+function createDirector({ waves = WAVES, maxAlive } = {}) {
   const alive = [];
   const spawned = [];
   const director = new WaveDirector({
-    waves: WAVES,
+    waves,
+    maxAlive,
     betweenWavesSeconds: 5,
     spawnIntervalSeconds: 1,
     spawn: (type, lane) => {
@@ -80,4 +81,20 @@ test('clearing a wave pauses, then the next wave arrives; clearing the last fini
   alive.length = 0;
   run(0.2);
   assert.equal(director.isDone, true);
+});
+
+test('with maxAlive, the field never holds more than that; the rest come as others fall', () => {
+  const { director, alive, spawned, run } = createDirector({ waves: [{ trooper: 10, lanes: ['centre'] }], maxAlive: 4 });
+  director.start();
+  run(20);
+  assert.equal(alive.length, 4, 'capped');
+  assert.equal(director.state, 'spawning', 'the rest are still waiting');
+  assert.equal(director.remaining, 10);
+
+  alive.splice(0, 2);
+  run(0.15);
+  assert.equal(spawned.length, 5, 'one at a time, not a burst');
+  run(3);
+  assert.equal(alive.length, 4);
+  assert.equal(spawned.length, 6);
 });
