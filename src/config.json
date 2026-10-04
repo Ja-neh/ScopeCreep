@@ -159,6 +159,37 @@
       "weakSpotMultiplier": 2.0,
       "searchSeconds": 6,
       "corpseSeconds": 5
+    },
+    "warden": {
+      "maxHealth": 2400,
+      "walkSpeed": 2.2,
+      "runSpeed": 3.2,
+      "sightRange": 70,
+      "concealedSightRange": 30,
+      "awarenessRadius": 30,
+      "fieldOfViewDegrees": 360,
+      "hearingRange": 70,
+      "leashRadius": 7,
+      "keepDistance": 6,
+      "volleySeconds": 3.0,
+      "volleyBolts": 7,
+      "volleySpreadDegrees": 40,
+      "volleySpeed": 40,
+      "volleyDamage": 7,
+      "slamSeconds": 9,
+      "slamWindup": 1.3,
+      "slamRecovery": 1.0,
+      "slamTriggerRange": 9,
+      "shockwaveSpeed": 12,
+      "shockwaveRadius": 22,
+      "shockwaveDamage": 25,
+      "shockwaveClearHeight": 0.45,
+      "enrageFraction": 0.5,
+      "enragedCadence": 0.65,
+      "enrageAdds": 4,
+      "crystalHealth": 150,
+      "searchSeconds": 6,
+      "corpseSeconds": 60
     }
   },
   "revive": {
@@ -208,7 +239,8 @@
       ]
     },
     "level03": {
-      "squareReachRadius": 20
+      "squareReachRadius": 20,
+      "victoryDelaySeconds": 3
     }
   },
   "testing": {

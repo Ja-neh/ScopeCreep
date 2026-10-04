@@ -32,12 +32,13 @@ export class HealthComponent {
     this.maxHealth = Math.max(1, maxHealth);
     this.currentHealth = this.maxHealth;
     this.isDead = false;
+    this.invulnerable = false; // Shielded: damage does nothing while set
     this.onDamage = null;
     this.onDeath = null;
   }
 
   takeDamage(damage) {
-    if (this.isDead) return 0;
+    if (this.isDead || this.invulnerable) return 0;
 
     const info = (damage instanceof DamageInfo)
       ? damage

@@ -845,6 +845,66 @@
   font-size: 14px;
 }
 
+/* A boss's health, under the objective; blue while it is shielded */
+.ui-boss-health {
+  position: fixed;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, 80vw);
+  padding: 6px 14px 9px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-panel);
+  border-radius: 8px;
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  pointer-events: none;
+  user-select: none;
+  z-index: 1000;
+}
+
+.ui-boss-health-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+}
+
+.ui-boss-health-name {
+  color: var(--color-danger);
+}
+
+.ui-boss-health-status {
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+}
+
+.ui-boss-health-track {
+  height: 10px;
+  margin-top: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.ui-boss-health-fill {
+  height: 100%;
+  width: 100%;
+  background: var(--color-danger);
+  transition: width 0.2s ease-out, background-color 0.3s;
+}
+
+.ui-boss-health.shielded .ui-boss-health-fill {
+  background: #66e8ff;
+}
+
+.ui-boss-health.shielded .ui-boss-health-status {
+  color: #66e8ff;
+}
+
 /* =========================================================================
    Mission Result (Full Screen)
    ========================================================================= */
@@ -959,7 +1019,7 @@
 }
 
 /* The gameplay HUD steps aside while a cinematic plays */
-.ui-cinematic-active > :is(.ui-crosshair, .ui-weapon-hud, .ui-player-health, .ui-objective,
+.ui-cinematic-active > :is(.ui-crosshair, .ui-weapon-hud, .ui-player-health, .ui-boss-health, .ui-objective,
   .ui-health-container, .ui-controls-helper, .ui-status-indicator, .ui-prompt) {
   visibility: hidden;
 }

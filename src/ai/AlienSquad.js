@@ -30,6 +30,14 @@ export class AlienSquad {
     return member;
   }
 
+  /** Takes a member out of the squad and the world (alive or not). */
+  remove(member) {
+    const index = this.members.indexOf(member);
+    if (index < 0) return;
+    this.members.splice(index, 1);
+    this.gameWorld.removeEntity(member);
+  }
+
   get aliveCount() {
     let count = 0;
     for (const member of this.members) if (!member.isDead) count++;

@@ -48,7 +48,9 @@ export class VillageHall {
     this.entrance = new THREE.Vector3();   // Just outside the doorway
     this.doorway = new THREE.Vector3();    // In the doorway
     this.dais = new THREE.Vector3();       // Top centre of the dais
-    this.pillars = [];                     // Base centre of each pillar
+    this.pillars = [];                     // Base centre of each pillar: left row back to front, then the right row
+    this.supplyPoint = new THREE.Vector3(); // Just inside the door, to one side (a supply crate)
+    this.forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)); // From the dais towards the door
     this.light = null;
     this._frame = null;
   }
@@ -106,6 +108,8 @@ export class VillageHall {
     this.doorway.set(0, 0, halfD).applyMatrix4(frame);
     this.entrance.set(0, 0, halfD + 4).applyMatrix4(frame);
     this.dais.set(0, FLOOR + DAIS.height, daisZ).applyMatrix4(frame);
+    this.supplyPoint.set(halfW - WALL - 2.5, 0, halfD - WALL - 2.5).applyMatrix4(frame);
+    this._daisDepthZ = daisZ;
 
     // The aliens' green glow fills the hall
     this.light = new THREE.PointLight(0x7dffa0, 30, 32, 2);
@@ -129,8 +133,28 @@ export class VillageHall {
 
   /** True if (x, z) is inside the hall's walls. */
   contains(x, z) {
-    const local = new THREE.Vector3(x, 0, z).applyMatrix4(new THREE.Matrix4().copy(this._frame).invert());
+    const local = this._toLocal(x, z);
     return Math.abs(local.x) < WIDTH / 2 - WALL && Math.abs(local.z) < DEPTH / 2 - WALL;
+  }
+
+  /**
+   * True if someone can stand at (x, z) inside the hall: clear of the walls, the pillars and the
+   * dais by `margin`.
+   */
+  isOpenFloor(x, z, margin = 0.5) {
+    const local = this._toLocal(x, z);
+    if (Math.abs(local.x) > WIDTH / 2 - WALL - margin || Math.abs(local.z) > DEPTH / 2 - WALL - margin) return false;
+    for (const side of [-1, 1]) {
+      for (const pz of PILLAR_Z) {
+        if (Math.hypot(local.x - side * PILLAR_X, local.z - pz) < PILLAR_RADIUS + margin) return false;
+      }
+    }
+    return !(Math.abs(local.x) < DAIS.width / 2 + margin && Math.abs(local.z - this._daisDepthZ) < DAIS.depth / 2 + margin);
+  }
+
+  _toLocal(x, z) {
+    if (!this._inverse) this._inverse = new THREE.Matrix4().copy(this._frame).invert();
+    return new THREE.Vector3(x, 0, z).applyMatrix4(this._inverse);
   }
 
   dispose() {

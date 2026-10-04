@@ -73,6 +73,7 @@ export class InputManager {
       devCamera: ['F1'],
       devSpawn: ['F3'],
       devSquad: ['F4'],
+      devBoss: ['F6'],
       skipCutscene: ['Space', 'Enter'],
       pause: ['Escape', 'KeyP']
     };
@@ -115,7 +116,7 @@ export class InputManager {
   }
 
   _onKeyDown(e) {
-    if (e.code === 'Tab' || e.code === 'F1' || e.code === 'F2' || e.code === 'F3' || e.code === 'F4') {
+    if (e.code === 'Tab' || e.code === 'F1' || e.code === 'F2' || e.code === 'F3' || e.code === 'F4' || e.code === 'F6') {
       e.preventDefault(); // Prevent browser from triggering default hotkeys/search
     }
     if (!this.keysDown.has(e.code)) {

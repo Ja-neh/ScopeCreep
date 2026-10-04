@@ -117,6 +117,16 @@ export class GroundCombatant extends BaseEntity {
     this.hasMoveTarget = false;
   }
 
+  /** Puts it straight down with its feet at (x, y, z), standing still (dev tools, respawns). */
+  teleport(x, y, z) {
+    this.position.set(x, y, z);
+    if (this.rigidBody) this.rigidBody.setTranslation({ x, y: y + this.capsuleCenter, z }, true);
+    this.velocity.set(0, 0, 0);
+    this.verticalVelocity = 0;
+    this.hasMoveTarget = false;
+    if (this.mesh) this.mesh.position.copy(this.position);
+  }
+
   hasArrived() {
     return !this.hasMoveTarget ||
       Math.hypot(this.moveTarget.x - this.position.x, this.moveTarget.z - this.position.z) < ARRIVE_RADIUS;

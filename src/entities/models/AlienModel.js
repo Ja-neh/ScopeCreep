@@ -15,8 +15,9 @@ export class AlienModel {
    * @param {number} [options.armorColor]
    * @param {number} [options.scale] - Overall size (troopers 1, brutes larger)
    * @param {boolean} [options.backpack] - Glowing power pack on the back (the brute's weak spot)
+   * @param {boolean} [options.crest] - A crest of glowing spikes on the head and shoulders (the Warden)
    */
-  constructor({ armorColor = 0x5d5480, scale = 1, backpack = false } = {}) {
+  constructor({ armorColor = 0x5d5480, scale = 1, backpack = false, crest = false } = {}) {
     this.mesh = new THREE.Group();
     this.mesh.name = 'Alien';
     this.body = new THREE.Group(); // Leans and falls as one piece
@@ -81,6 +82,15 @@ export class AlienModel {
       this._add(this.body, new THREE.BoxGeometry(0.46, 0.5, 0.26), gun, 0, 1.42, 0.3);
       this._add(this.body, new THREE.CylinderGeometry(0.06, 0.06, 0.38, 8), this.materials.core, 0.12, 1.42, 0.45);
       this._add(this.body, new THREE.CylinderGeometry(0.06, 0.06, 0.38, 8), this.materials.core, -0.12, 1.42, 0.45);
+    }
+
+    if (crest) {
+      for (const [x, tilt] of [[0, 0], [0.09, -0.4], [-0.09, 0.4]]) {
+        this._add(this.body, new THREE.ConeGeometry(0.035, 0.24, 5), glow, x, 2.12, 0.02).rotation.z = tilt;
+      }
+      for (const side of [-1, 1]) {
+        this._add(this.body, new THREE.ConeGeometry(0.05, 0.28, 5), glow, side * 0.4, 1.72, 0).rotation.z = -side * 0.5;
+      }
     }
 
     this._walkPhase = 0;

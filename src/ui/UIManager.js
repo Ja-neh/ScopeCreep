@@ -6,6 +6,7 @@ import { ToastNotification } from './components/ToastNotification.js';
 import { StatusIndicator } from './components/StatusIndicator.js';
 import { WeaponHUD } from './components/WeaponHUD.js';
 import { PlayerHealthBar } from './components/PlayerHealthBar.js';
+import { BossHealthBar } from './components/BossHealthBar.js';
 import { DamageFlash } from './components/DamageFlash.js';
 import { ObjectivePanel } from './components/ObjectivePanel.js';
 import { MissionResult } from './components/MissionResult.js';
@@ -38,6 +39,7 @@ export class UIManager {
     this.statusIndicator = new StatusIndicator(this.container);
     this.weaponHUD = new WeaponHUD(this.container);
     this.playerHealth = new PlayerHealthBar(this.container);
+    this.bossHealth = new BossHealthBar(this.container);
     this.damageFlash = new DamageFlash(this.container);
     this.objectivePanel = new ObjectivePanel(this.container);
     this.missionResult = new MissionResult(this.container);
@@ -185,6 +187,36 @@ export class UIManager {
   hidePlayerHealth() {
     if (this.playerHealth) {
       this.playerHealth.hide();
+    }
+  }
+
+  /**
+   * Show a boss's health bar (top centre, under the objective)
+   * @param {string} name
+   */
+  showBossHealth(name) {
+    if (this.bossHealth) {
+      this.bossHealth.show(name);
+    }
+  }
+
+  /**
+   * @param {number} current
+   * @param {number} max
+   * @param {boolean} [shielded=false] - The boss cannot be hurt right now
+   */
+  updateBossHealth(current, max, shielded = false) {
+    if (this.bossHealth) {
+      this.bossHealth.update(current, max, shielded);
+    }
+  }
+
+  /**
+   * Hide the boss health bar
+   */
+  hideBossHealth() {
+    if (this.bossHealth) {
+      this.bossHealth.hide();
     }
   }
 
@@ -528,6 +560,7 @@ export class UIManager {
     this.hideStatusIndicator();
     this.hideWeaponHUD();
     this.hidePlayerHealth();
+    this.hideBossHealth();
     this.hideObjective();
     this.hideMissionResult();
     this.hideCinematic();
@@ -590,6 +623,10 @@ export class UIManager {
     if (this.playerHealth) {
       this.playerHealth.dispose();
       this.playerHealth = null;
+    }
+    if (this.bossHealth) {
+      this.bossHealth.dispose();
+      this.bossHealth = null;
     }
     if (this.damageFlash) {
       this.damageFlash.dispose();

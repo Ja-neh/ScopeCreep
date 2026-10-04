@@ -10,7 +10,7 @@ const PATROL_WAIT_SECONDS = 2.5;
  * AlienCombatant
  * What every alien ground unit shares: perception, squad call-outs, hearing, assault orders,
  * and the patrol, investigate and search states. Subclasses supply the `engage` state
- * (how they fight) and updateAttack(delta) (their weapon).
+ * (how they fight) and updateAttack(delta) (their weapon), and may add states of their own.
  */
 export class AlienCombatant extends GroundCombatant {
   /**
@@ -23,8 +23,10 @@ export class AlienCombatant extends GroundCombatant {
    * @param {Object} options.model
    * @param {Object} options.engageState - { enter?, update?, exit? } for the subclass's fighting style
    * @param {{radius: number, halfHeight: number}} [options.capsule]
+   * @param {Object} [options.states] - More states for the brain (e.g. a boss waiting to be woken)
+   * @param {string} [options.initialState='patrol']
    */
-  constructor(gameWorld, { name, position, squad, cfg, model, engageState, capsule }) {
+  constructor(gameWorld, { name, position, squad, cfg, model, engageState, capsule, states = {}, initialState = 'patrol' }) {
     super(gameWorld, { name, position, faction: 'aliens', maxHealth: cfg.maxHealth, model, capsule });
     this.cfg = cfg;
     this.squad = squad;
@@ -36,7 +38,7 @@ export class AlienCombatant extends GroundCombatant {
     this._searchTime = 0;
     this._point = new THREE.Vector3();
 
-    this.brain = new StateMachine(this, { ...SHARED_STATES, engage: engageState }, 'patrol');
+    this.brain = new StateMachine(this, { ...SHARED_STATES, engage: engageState, ...states }, initialState);
   }
 
   onDamaged(info) {

@@ -913,6 +913,7 @@ export class Village {
     for (const house of this.houses) {
       if (rectsOverlap(point, house.bounds, margin)) return false;
     }
+    if (this.hall.contains(x, z)) return this.hall.isOpenFloor(x, z, margin);
     const hall = this.hall.bounds;
     if (rectsOverlap(point, hall, margin)) return false;
     const g = GRAVEYARD;

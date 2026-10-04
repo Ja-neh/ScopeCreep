@@ -239,7 +239,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 **Combatants (`src/entities/`)**
 - `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model.
-- `enemies/AlienCombatant` (shared patrol, investigate and search states, hearing, squad call-outs, `assault(point)`), `AlienTrooper` (fights from the edges of cover, flanks a target that stays dug in, plasma bursts), `AlienBrute` (charge and overhead slam; its back pack takes double damage through `damageMultiplierAt`).
+- `enemies/AlienCombatant` (shared patrol, investigate and search states, hearing, squad call-outs, `assault(point)`; subclasses may add states and pick the first one), `AlienTrooper` (fights from the edges of cover, flanks a target that stays dug in, plasma bursts), `AlienBrute` (charge and overhead slam; its back pack takes double damage through `damageMultiplierAt`), and Level 3's boss `AlienWarden` (see 2.9).
 - `allies/SquadMate`: our AI soldier. Orders are `walkRoute(points)`, `follow()` (a place in formation) and `hold(point, facing)`. A follower with a wall in the way follows the leader's trail around it, and runs to catch up when far behind. It fights from cover near its post without straying beyond `leashRadius`, and turns on whoever shoots it.
 - Models: `AlienModel`, `SoldierModel`, `HelicopterModel`. Character models merge each rigid piece into one solid and one glow mesh (`rendering/MeshMerge.js`), about 6 to 8 draw calls per character.
 
@@ -253,11 +253,11 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 **Rendering additions (`src/rendering/`):** `Terrain`, `Vegetation` (instanced scatter), `Noise`, `SkyDome` (sunset gradient and sun disc, drawn at infinity around the camera; its horizon colour is the fog colour), `Clouds` (one instanced mesh following the camera) and `MeshMerge`.
 
-**UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class) and `GraphicsSettings` (the Graphics section of the Options menu). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
+**UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class), `GraphicsSettings` (the Graphics section of the Options menu) and, for Level 3, `BossHealthBar` (a boss's name and health under the objective, blue while shielded). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
 
 **Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, `maxAliveAliens`, timings, radii).
 
-**Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad.
+**Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad, and in the Level 3 sandbox [F6] starts the fight with the Warden.
 
 **Tests:** `npm test` covers all of the above (see `tests/README.md`).
 
@@ -265,7 +265,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 ### 2.9 Level 3: The Village (in progress)
 
-Level 3 is the finale, at night: the squad comes up the jungle path to the village on the plateau at the island's far end, fights through its streets to the square, brings down the force field over the hall, defeats the Warden inside and frees the hostages. It is being built in phases: night village (done), the Warden, generators and dome, the street fight, cages and the dawn ending, then polish.
+Level 3 is the finale, at night: the squad comes up the jungle path to the village on the plateau at the island's far end, fights through its streets to the square, brings down the force field over the hall, defeats the Warden inside and frees the hostages. It is being built in phases: night village (done), the Warden (done), generators and dome, the street fight, cages and the dawn ending, then polish.
 
 **Done so far:**
 - `Level03` (`IslandLevel`): night look (`BeachEnvironment` with `look: 'night'`: moon, stars, cool moonlight, dark haze) on the `'village'` island layout, the village, the player and crew arriving on the jungle path below the gate, a supply crate inside the gate, and the objective to go up the avenue to the square (about 400 m). The moon's shadow area (240 m across) follows the camera (`shadowFollowsCamera`). `Level03TestLevel` adds a respawning alien group in the first streets and the shared `SandboxTools`.
@@ -284,6 +284,24 @@ Level 3 is the finale, at night: the squad comes up the jungle path to the villa
 - Squadmates in streets: `HumanSquad` records the leader's path (the trail). A follower with a wall between it and its post (`PhysicsWorld.isLineClear`, which ignores characters) walks the trail around it (`routeTowards`), and runs at `catchUpSpeed` when more than `catchUpDistance` behind. Level 3 also keeps formation places out of the houses (`_isWalkable`).
 - `level03/VillageHall`: the hall on the north side of the square, with an entrance facing the square, glowing windows, 2 rows of pillars with alien conduits, a dais at the back for the Warden and a green interior light. It exposes `entrance`, `doorway`, `pillars`, `dais`, `bounds` and `contains()` for the later phases.
 - `level03/BuildingKit`: boxes (with yaw, pitch and roll), gable roofs (tilted for sagging), pillars, lathe shapes (saucer hulls, domes) and crystals, with matching static colliders. Everything is merged at the end (`finish(name, { tileSize })`).
+- The Warden (boss fight in the hall):
+  - **Flow (`Level03`):** after the square, walking into the hall wakes the Warden (`startBossFight()`, state `'boss'`). Bringing it down wins after `victoryDelaySeconds` (state `'victory'`), for now; the hostages come in a later phase. A second supply crate stands just inside the hall door (`VillageHall.supplyPoint`).
+  - **`level03/BossArena`:** runs the fight:
+    - It places the Warden in front of its dais, shielded, fed by two `ShieldCrystal`s on the back pillars.
+    - Once both crystals are destroyed, the shield drops.
+    - Below `enrageFraction` health it enrages the Warden, grows two crystals on the front pillars, and sends `enrageAdds` troopers in from the square.
+    - It drives the boss bar (`ui.showBossHealth` / `updateBossHealth(current, max, shielded)` / `hideBossHealth`, component `BossHealthBar`).
+  - **`enemies/AlienWarden`** (an `AlienCombatant` that starts `'dormant'` until `awaken()`):
+    - It holds the floor within `leashRadius` of its guard point.
+    - It fires fans of plasma (`volleyBolts` over `volleySpreadDegrees`).
+    - Every `slamSeconds` (sooner when someone is close) it raises its arms over a warning ring and slams the floor, sending out a `Shockwave`.
+    - `setShielded()` sets `HealthComponent.invulnerable` and shows a bubble.
+    - `enrage()` makes it attack faster (`enragedCadence`).
+  - **`enemies/Shockwave`:** a ring that rolls out across the floor and hurts each grounded target once as it passes; feet higher than `shockwaveClearHeight` (a jump) clear it.
+  - **`level03/ShieldCrystal`:** an alien-side entity with health and a static collider (so hitscan shots find it through `collider.userData.entity`), and a beam to the Warden. When shot it shatters and its collider goes.
+  - **Hall floor:** `VillageHall.isOpenFloor()` lets squadmates take formation places anywhere in the hall except the pillars and the dais.
+  - **Sandbox:** [F6] (`devBoss`) in `Level03TestLevel` takes the player and the squad to the hall door and starts a fresh fight; there is no mission result there. `GroundCombatant.teleport()` and `AlienSquad.remove()` support this.
+  - **Balance:** all fight values live in `config.enemies.warden`.
 
 **Budgets:** at most 8 point lights in Level 3: 3 lanterns, 1 under the ship by the square, 1 in the hall, and 3 kept for the generators. The village is about 100k triangles in about 40 merged meshes.
 
@@ -389,7 +407,7 @@ ScopeCreep/
 │   │   ├── SandboxTools.js # Dev tools shared by the island test levels (F1/F3/F4, respawn)
 │   │   ├── Level03.js      # The Village: the night finale (in progress)
 │   │   ├── Level03TestLevel.js # Level 3 sandbox
-│   │   ├── level03/        # Village, VillageHall, BuildingKit
+│   │   ├── level03/        # Village, VillageHall, BuildingKit, BossArena, ShieldCrystal
 │   │   └── TestLevel.js    # Ground testing sandbox: Flat terrain, isolated weapon testing
 │   ├── rendering/          # Visual WebGL components
 │   │   ├── Ocean.js        # Subdivided ocean plane driving custom GPU shaders
@@ -528,7 +546,7 @@ ScopeCreep/
 - Standalone health container focused strictly on basic damage mechanics.
 - `DamageType`: Strict enum constrained to `KINETIC` and `EXPLOSIVE`.
 - `DamageInfo`: Lightweight payload (`amount`, `type`, `source`).
-- `HealthComponent`: Manages `currentHealth`, `maxHealth`, `isDead`, `takeDamage(damage)`, `heal(amount)`, `reset()`, and `onDamage`/`onDeath` event callbacks.
+- `HealthComponent`: Manages `currentHealth`, `maxHealth`, `isDead`, `invulnerable` (a shield: `takeDamage` does nothing while set), `takeDamage(damage)`, `heal(amount)`, `reset()`, and `onDamage`/`onDeath` event callbacks.
 
 ### `Ocean` (`src/rendering/Ocean.js`)
 - `update(delta)`: Advances shader `uTime` uniform.
