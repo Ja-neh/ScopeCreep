@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { AnchoredShip } from './AnchoredShip.js';
 import { HelicopterModel } from '../../entities/models/HelicopterModel.js';
+import { HelicopterArrival } from './HelicopterArrival.js';
 
 // Ship placement: side-on to the landing beach with its starboard side facing the island
 const SHIP_POSITION = new THREE.Vector3(0, 0, 225);
@@ -31,6 +32,13 @@ const HELICOPTER_SPOTS = [
 const HELICOPTER_IDLE_ROTOR_SPEED = 3.0; // rad/s: engines ticking over after landing
 const HELICOPTER_COVER_CENTRE = new THREE.Vector3(0, 2.0, 0.2);
 const HELICOPTER_COVER_HALF = { x: 1.3, y: 1.2, z: 3.3 };
+const HELICOPTER_DOOR = new THREE.Vector3(1.9, 0, 0.6);      // Just outside the side door (x mirrored per side)
+const HELICOPTER_GUARD = new THREE.Vector3(2.0, 0, -0.8);    // Pilot's post: tucked against the cabin's outer side,
+                                                             // where the fuselage shields them from the jungle path
+const HELICOPTER_ARRIVAL_GAP = 2.2;                          // Seconds between the two arrivals
+
+// Ammo crate on the sand between the helicopters, left of the walk up the beach
+const SUPPLY_CRATE_SPOT = { x: -22, z: 184 };
 
 /**
  * LandingZone
@@ -50,8 +58,11 @@ export class LandingZone {
     this.ship = null;
     this.boarding = null;
     this.helicopters = [];
+    this.helicopterBays = []; // { model, collider, x, z, heading, groundY, side, doorPoint, guardPoint, guardFacing }
+    this.arrivals = [];
     this.colliders = [];
     this.spawnPoints = {};
+    this.gangway = { top: new THREE.Vector3(), foot: new THREE.Vector3() }; // World points on the walking surface
     this.clearings = []; // { x, z, radius } circles that scenery must leave open
 
     this.materials = {
@@ -85,6 +96,53 @@ export class LandingZone {
     for (const spot of HELICOPTER_SPOTS) {
       this._parkHelicopter(spot);
     }
+
+    // 4. Room for the ammo crate between them
+    const crate = SUPPLY_CRATE_SPOT;
+    this.spawnPoints.supplyCrate = new THREE.Vector3(crate.x, this.environment.heightAt(crate.x, crate.z), crate.z);
+    this.clearings.push({ x: crate.x, z: crate.z, radius: 3 });
+  }
+
+  /**
+   * A point on the gangway's walking surface, from its top (t = 0) to its foot (t = 1).
+   */
+  gangwayPoint(t, out = new THREE.Vector3()) {
+    return out.lerpVectors(this.gangway.top, this.gangway.foot, t);
+  }
+
+  /**
+   * Sends the parked helicopters back out to sea and flies them in to land, one after the other.
+   * Their cover only becomes solid once they are down.
+   * @param {Object} [options]
+   * @param {(bay: Object, index: number) => void} [options.onTouchdown]
+   */
+  flyInHelicopters({ onTouchdown = null } = {}) {
+    this.helicopterBays.forEach((bay, index) => {
+      if (bay.collider) bay.collider.setEnabled(false);
+      const arrival = new HelicopterArrival({
+        model: bay.model,
+        landing: bay,
+        groundHeightAt: (x, z) => this.environment.heightAt(x, z),
+        effectsParent: this.gameWorld.effectsGroup,
+        delay: index * HELICOPTER_ARRIVAL_GAP,
+        side: bay.side,
+        onTouchdown: () => {
+          if (bay.collider) bay.collider.setEnabled(true);
+          if (onTouchdown) onTouchdown(bay, index);
+        }
+      });
+      this.arrivals.push(arrival);
+    });
+  }
+
+  /** True once every helicopter is on the ground. */
+  get helicoptersLanded() {
+    return this.arrivals.every((arrival) => arrival.isLanded);
+  }
+
+  /** Puts any helicopters still in the air straight down on their spots. */
+  landHelicoptersNow() {
+    for (const arrival of this.arrivals) arrival.finishNow();
   }
 
   /**
@@ -113,9 +171,14 @@ export class LandingZone {
     const gangwayFoot = new THREE.Vector3(GANGWAY_FOOT_X, this.environment.heightAt(footWorld.x, footWorld.z), BOARDING_Z);
     this._buildWalkway(platformOuter, gangwayFoot, { rails: true });
 
+    this.gangway.top.copy(this.ship.localToWorld(PLATFORM_OUTER_X, PLATFORM_HEIGHT, BOARDING_Z));
+    this.gangway.foot.copy(this.ship.localToWorld(gangwayFoot.x, gangwayFoot.y, gangwayFoot.z));
+
     const rampT = (DECK_SPAWN_X - RAMP_START_X) / (PLATFORM_INNER_X - RAMP_START_X);
     const spawnY = DECK_HEIGHT + rampT * (PLATFORM_HEIGHT - DECK_HEIGHT) + 0.15;
     this.spawnPoints.deck = this.ship.localToWorld(DECK_SPAWN_X, spawnY, BOARDING_Z);
+    // Top of the gangway: open behind, so a third-person camera has room (on the deck it hits the gun platform)
+    this.spawnPoints.gangwayTop = this.ship.localToWorld(PLATFORM_OUTER_X - 0.6, PLATFORM_HEIGHT + 0.15, BOARDING_Z);
     this.spawnPoints.gangwayFoot = this.ship.localToWorld(gangwayFoot.x + 1.5, gangwayFoot.y + 0.3, gangwayFoot.z);
 
     // Keep the gangway's foot and the walk up the beach open
@@ -234,20 +297,37 @@ export class LandingZone {
     const collider = this.physicsWorld.createStaticBox(HELICOPTER_COVER_HALF, this._worldPos, model.mesh.quaternion);
     if (collider) this.colliders.push(collider);
 
+    // Pilots climb out of the door on the outer side and stand guard beside the cabin
+    const side = x < 0 ? -1 : 1;
+    const doorPoint = model.mesh.localToWorld(HELICOPTER_DOOR.clone().setX(HELICOPTER_DOOR.x * side));
+    const guardPoint = model.mesh.localToWorld(HELICOPTER_GUARD.clone().setX(HELICOPTER_GUARD.x * side));
+    doorPoint.y = this.environment.heightAt(doorPoint.x, doorPoint.z);
+    guardPoint.y = this.environment.heightAt(guardPoint.x, guardPoint.z);
+
     this.helicopters.push(model);
+    this.helicopterBays.push({ model, collider, x, z, heading, groundY, side, doorPoint, guardPoint, guardFacing: heading });
     this.clearings.push({ x, z, radius: 9 }); // Rotor disc
   }
 
   /**
-   * Spins the parked helicopters' rotors. Call once per frame in Phase 5.
+   * Flies any arriving helicopters and spins the rotors. Call once per frame in Phase 5.
    */
   update(delta) {
+    for (const arrival of this.arrivals) {
+      arrival.update(delta);
+    }
     for (const helicopter of this.helicopters) {
       helicopter.update(delta);
     }
   }
 
   dispose() {
+    for (const arrival of this.arrivals) {
+      arrival.dispose();
+    }
+    this.arrivals = [];
+    this.helicopterBays = [];
+
     for (const collider of this.colliders) {
       this.physicsWorld.removeRigidBody(collider.rigidBody);
     }

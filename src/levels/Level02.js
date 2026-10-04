@@ -4,11 +4,16 @@ import { BeachEnvironment } from './level02/BeachEnvironment.js';
 import { LandingZone } from './level02/LandingZone.js';
 import { BeachCover } from './level02/BeachCover.js';
 import { ObjectiveBeacon } from './level02/ObjectiveBeacon.js';
+import { SupplyCrate } from './level02/SupplyCrate.js';
+import { LandingCinematic } from './level02/LandingCinematic.js';
 import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
 import { AlienBrute } from '../entities/enemies/AlienBrute.js';
+import { SquadMate } from '../entities/allies/SquadMate.js';
+import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
+import { HumanSquad } from '../ai/HumanSquad.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
 import { WeaponController } from '../weapons/WeaponController.js';
 import config from '../config.json';
@@ -25,14 +30,33 @@ const ASSAULT_JITTER = 20;
 const OBJECTIVE_Z = 80;           // Where the jungle path enters the trees
 const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
 
+// The ship's crew besides the player, and the helicopter pilots (call signs for messages)
+const CREW_NAMES = ['Okafor', 'Reyes', 'Novak', 'Chen'];
+const PILOT_NAMES = ['Hawk', 'Viper'];
+const PILOT_COLOURS = { suitColor: 0x6b705c, helmetColor: 0xd8d8d0, visorColor: 0x2b2f33 };
+// At the start the crew are already filing down the gangway (0 = top, 1 = foot), lead first
+const CREW_GANGWAY_PLACES = [0.88, 0.66, 0.44, 0.22];
+// Where the crew gather on the sand until the player is ashore (world x, z, facing)
+const RALLY_POSTS = [
+  { x: -13.5, z: 180.5, facing: 0.6 },
+  { x: -6.5, z: 180.5, facing: -0.6 },
+  { x: -16, z: 184, facing: 1.4 },
+  { x: -4, z: 184, facing: -1.4 }
+];
+
 /**
  * Level02
  * Level 2: The Beach. The squad lands from the anchored warship and holds the island's south
  * beach against three waves of aliens pushing down from the village, then pushes inland to the
  * jungle path. Introduces on-foot combat: machine gun and knife, cover, and hiding in bushes.
  *
+ * Opening: a camera sweep while the AI crew file down the gangway and the two helicopters fly
+ * in and land; their pilots climb out and guard them. In a solo game the player leads 4 AI
+ * squadmates (the ship's crew is always 5), who wait on the sand, then follow the player in
+ * formation and fight alongside them. An ammo crate stands between the helicopters.
+ *
  * Flow: landing (until the player is ashore or the timer runs out) -> waves -> objective -> won.
- * Losing: the player is killed (until squadmates and revives arrive).
+ * Losing: the player is killed (downed and revive come later).
  *
  * Level02TestLevel extends this with dummies, a respawning trio instead of waves, and dev tools.
  */
@@ -47,13 +71,18 @@ export class Level02 extends BaseLevel {
     this.player = null;
     this.weapons = null;
     this.projectilePool = null;
-    this.squad = null;
+    this.allies = null;       // HumanSquad: the player and AI squadmates
+    this.squad = null;        // AlienSquad
     this.waves = null;
     this.beacon = null;
+    this.supplyCrate = null;
+    this.cinematic = null;
 
     this.state = 'landing'; // landing -> waves -> objective -> won | lost
     this.elapsed = 0;
     this._wasConcealed = false;
+    this._crewFollowing = false;
+    this._squadmatesLost = 0;
     this._objectivePoint = new THREE.Vector3();
   }
 
@@ -73,7 +102,7 @@ export class Level02 extends BaseLevel {
     this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, clearings));
     this.cover.build();
 
-    // 4. Player on deck at the foot of the boarding ramp, facing the beach
+    // 4. Player at the top of the gangway behind the crew, facing the beach
     this._createPlayer();
 
     // 5. Machine gun and knife (after the player, so its camera work runs after the player's).
@@ -88,21 +117,40 @@ export class Level02 extends BaseLevel {
     this.gameWorld.addEntity(this.projectilePool);
     this.gameWorld.projectilePool = this.projectilePool;
 
-    // 7. The aliens
+    // 7. Our side: the player leads, AI squadmates fill the crew's empty places
+    this.allies = this.trackDisposable(new HumanSquad(this.gameWorld, {
+      leader: this.player,
+      cover: this.cover,
+      isWalkable: (x, z) => this.environment.heightAt(x, z) > 0.3 && this.cover.isClearOfSolids(x, z, 0.8),
+      corpseSeconds: config.allies.squadMate.corpseSeconds,
+      onGunshot: (position) => this.squad.reportNoise(position),
+      onMateKilled: (mate) => this._onSquadmateKilled(mate)
+    }));
+
+    // 8. The aliens, who hunt all of us
     const trooperCfg = config.enemies.trooper;
     this.squad = this.trackDisposable(new AlienSquad(this.gameWorld, {
-      targets: [this.player],
+      targets: this.allies.members,
       cover: this.cover,
       alertRadius: trooperCfg.alertRadius,
       corpseSeconds: trooperCfg.corpseSeconds
     }));
+    this.allies.enemySquad = this.squad;
+
+    // 9. Ammo crate between the helicopters
+    this.supplyCrate = new SupplyCrate(this.gameWorld, {
+      position: this.landingZone.spawnPoints.supplyCrate,
+      player: this.player,
+      weapons: this.weapons
+    });
+    this.gameWorld.addEntity(this.supplyCrate);
 
     await this._startScenario();
     console.log(`${this.name} initialized.`);
   }
 
   _createPlayer() {
-    const spawn = this.landingZone.spawnPoints.deck;
+    const spawn = this.landingZone.spawnPoints.gangwayTop;
     // Snap-to-ground keeps the player on the gangway and the hills; crouch hides them in bushes
     this.player = new Player(this.gameWorld, {
       snapToGround: true,
@@ -130,8 +178,10 @@ export class Level02 extends BaseLevel {
     return Object.values(LANES).map((lane) => ({ x: lane.spawn.x, z: lane.spawn.z, radius: 4 }));
   }
 
-  /** Sets up the waves and the objective. */
+  /** The landing, the waves and the objective. */
   async _startScenario() {
+    this._beginLanding();
+
     const z = OBJECTIVE_Z;
     const x = this.environment.pathCentreX(z);
     this._objectivePoint.set(x, this.environment.heightAt(x, z), z);
@@ -194,6 +244,89 @@ export class Level02 extends BaseLevel {
     const from = (wave.lanes || ['centre']).map((lane) => (LANES[lane] || LANES.centre).name).join(', ');
     const brutes = wave.brute ? ` — ${wave.brute} brute${wave.brute > 1 ? 's' : ''} among them` : '';
     ui.showToast(`Wave ${this.waves.waveNumber}: aliens coming from ${from}${brutes}!`, 'warning', 4000);
+  }
+
+  /**
+   * The opening: crew on the gangway, helicopters flying in, and the camera sweep.
+   */
+  _beginLanding() {
+    this.spawnCrew({ onGangway: true });
+    this.landingZone.flyInHelicopters({ onTouchdown: (bay, index) => this._pilotClimbsOut(bay, index) });
+
+    this.cinematic = new LandingCinematic(this.gameWorld, {
+      player: this.player,
+      title: 'THE BEACH',
+      subtitle: 'Land the squad and take back the coast'
+    });
+    this.gameWorld.addEntity(this.cinematic);
+  }
+
+  /** How many AI squadmates make up the crew: everyone but the human players. */
+  get aiCrewCount() {
+    return Math.max(0, config.allies.crewSize - 1);
+  }
+
+  /**
+   * The AI crew: walking down the gangway to their rally posts on the sand, or already there.
+   * They follow the player once the player is ashore.
+   * @param {Object} [options]
+   * @param {boolean} [options.onGangway=false]
+   */
+  spawnCrew({ onGangway = false } = {}) {
+    const zone = this.landingZone;
+    const down = new THREE.Vector3().subVectors(zone.gangway.foot, zone.gangway.top);
+    const downYaw = Math.atan2(-down.x, -down.z);
+
+    for (let i = 0; i < this.aiCrewCount; i++) {
+      const post = RALLY_POSTS[i % RALLY_POSTS.length];
+      const rally = new THREE.Vector3(post.x, this.environment.heightAt(post.x, post.z), post.z);
+      const start = onGangway ? zone.gangwayPoint(CREW_GANGWAY_PLACES[i % CREW_GANGWAY_PLACES.length]) : rally.clone();
+      start.y += onGangway ? 0.15 : 0.1;
+
+      const mate = this.spawnSquadMate(CREW_NAMES[i % CREW_NAMES.length], start);
+      mate.hold(rally, post.facing);
+      if (onGangway) {
+        mate.yaw = downYaw;
+        mate.walkRoute([zone.spawnPoints.gangwayFoot, rally]);
+      } else {
+        mate.yaw = post.facing;
+      }
+    }
+    if (this._crewFollowing) this.allies.followLeader();
+  }
+
+  /**
+   * A pilot climbs out of a landed helicopter (or starts at `from`) and stands guard by its nose.
+   */
+  _pilotClimbsOut(bay, index, from = bay.doorPoint) {
+    const start = from.clone();
+    start.y += 0.1;
+    const pilot = this.spawnSquadMate(PILOT_NAMES[index % PILOT_NAMES.length], start, {
+      model: new SoldierModel(PILOT_COLOURS),
+      formation: false
+    });
+    pilot.yaw = bay.heading;
+    pilot.hold(bay.guardPoint, bay.guardFacing);
+    return pilot;
+  }
+
+  /**
+   * Adds an AI squadmate standing at `position` (following the player unless ordered otherwise).
+   * @param {string} name
+   * @param {THREE.Vector3} position - Feet
+   * @param {Object} [options]
+   * @param {Object} [options.model] - Defaults to crew colours
+   * @param {boolean} [options.formation=true] - Takes a place in the player's formation
+   * @returns {SquadMate}
+   */
+  spawnSquadMate(name, position, { model = null, formation = true } = {}) {
+    const mate = new SquadMate(this.gameWorld, { name, position, squad: this.allies, model });
+    return this.allies.add(mate, { formation });
+  }
+
+  _onSquadmateKilled(mate) {
+    this._squadmatesLost++;
+    if (this.gameWorld.ui) this.gameWorld.ui.showToast(`${mate.name} is down!`, 'danger', 2500);
   }
 
   /** What happens when the player's health reaches 0 (called every frame while they are down). */
@@ -259,6 +392,13 @@ export class Level02 extends BaseLevel {
     this.environment.update(delta);
     this.landingZone.update(delta);
     this.squad.update();
+    this.allies.update(delta);
+
+    // The crew wait on the sand until the player is ashore, then fall in behind them
+    if (!this._crewFollowing && this._isPlayerAshore()) {
+      this._crewFollowing = true;
+      this.allies.followLeader();
+    }
 
     if (this.player.health.isDead) {
       if (this.state !== 'won' && this.state !== 'lost') this._onPlayerKilled(delta);
@@ -301,6 +441,7 @@ export class Level02 extends BaseLevel {
    */
   _finish(victory) {
     this.state = victory ? 'won' : 'lost';
+    if (this.cinematic) this.cinematic.finish(); // First: ending, it unfreezes the player
     this.player.isDevSuspended = true; // Freeze the player behind the result screen
     this.gameWorld.input.exitPointerLock();
 
@@ -313,7 +454,8 @@ export class Level02 extends BaseLevel {
     const seconds = Math.floor(this.elapsed % 60).toString().padStart(2, '0');
     const stats = [
       { label: 'Time', value: `${minutes}:${seconds}` },
-      { label: 'Aliens killed', value: String(this.squad.killCount) }
+      { label: 'Aliens killed', value: String(this.squad.killCount) },
+      { label: 'Squadmates lost', value: String(this._squadmatesLost) }
     ];
     const toMenu = { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() };
 
@@ -349,8 +491,11 @@ export class Level02 extends BaseLevel {
     this.player = null;
     this.weapons = null;
     this.waves = null;
-    super.dispose(); // Disposes the squad (removing the aliens), cover, landing zone, environment, beacon
+    this.supplyCrate = null; // Entities: the GameWorld disposes them
+    this.cinematic = null;
+    super.dispose(); // Disposes both squads (removing their members), cover, landing zone, environment, beacon
     this.squad = null;
+    this.allies = null;
     this.beacon = null;
     if (this.gameWorld.projectilePool === this.projectilePool) {
       this.gameWorld.projectilePool = null;

@@ -30,6 +30,8 @@ const DEV_SPAWN_DISTANCE = 30;   // F3 drops an alien this far ahead of the play
  * aliens) without the waves, plus things for trying features out:
  * - Training dummies on the beach (one faces away for backstabs)
  * - Three troopers and a brute behind the dummies that come back after they all die
+ * - The AI squad waiting on the sand (they follow once you're ashore), pilots by the parked
+ *   helicopters; [F4] sends the squad away or brings it back
  * - [F3] spawns a trooper 30 m ahead of the player, [Shift]+[F3] a brute
  * - The player respawns on the beach instead of failing the mission
  * - Aerial orbit camera ([F1] or the dev tools panel) and a terrain/collider self-check
@@ -65,13 +67,14 @@ export class Level02TestLevel extends Level02 {
       this.dummies.push(dummy);
     }
     this._spawnAliens();
+    this.spawnSquad();
 
     if (this.gameWorld.renderer) {
       this._initAerialCamera();
       this._initDevTools();
     }
     if (this.gameWorld.ui) {
-      this.gameWorld.ui.showToast('Sandbox: [F1] aerial camera · [F3] spawn trooper · [Shift]+[F3] spawn brute', 'info', 6000);
+      this.gameWorld.ui.showToast('Sandbox: [F1] aerial camera · [F3] spawn trooper · [Shift]+[F3] spawn brute · [F4] squad on/off', 'info', 6000);
     }
   }
 
@@ -93,6 +96,23 @@ export class Level02TestLevel extends Level02 {
     return null;
   }
 
+  /** The crew on the sand and the pilots by their (already parked) helicopters. */
+  spawnSquad() {
+    this.spawnCrew();
+    this.landingZone.helicopterBays.forEach((bay, index) => this._pilotClimbsOut(bay, index, bay.guardPoint));
+  }
+
+  /** [F4]: sends the AI squad away, or brings it back. */
+  toggleSquad() {
+    if (this.allies.mates.length > 0) {
+      this.allies.removeAllMates();
+      if (this.gameWorld.ui) this.gameWorld.ui.showToast('Squad dismissed', 'info', 1500);
+    } else {
+      this.spawnSquad();
+      if (this.gameWorld.ui) this.gameWorld.ui.showToast('Squad back on the beach', 'info', 1500);
+    }
+  }
+
   _spawnAliens() {
     for (const spot of ALIEN_SPOTS) {
       this.createAlien(spot.type, spot.x, spot.z);
@@ -108,6 +128,9 @@ export class Level02TestLevel extends Level02 {
     const input = this.gameWorld.input;
     if (input.isActionJustPressed('devSpawn')) {
       this.spawnAlienAhead(input.isActionDown('sprint') ? 'brute' : 'trooper');
+    }
+    if (input.isActionJustPressed('devSquad')) {
+      this.toggleSquad();
     }
 
     if (this.orbitControls) {

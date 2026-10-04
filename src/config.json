@@ -160,12 +160,36 @@
       "corpseSeconds": 5
     }
   },
+  "allies": {
+    "crewSize": 5,
+    "squadMate": {
+      "maxHealth": 150,
+      "walkSpeed": 3.5,
+      "runSpeed": 6.0,
+      "sightRange": 55,
+      "concealedSightRange": 8,
+      "awarenessRadius": 8,
+      "fieldOfViewDegrees": 150,
+      "hearingRange": 40,
+      "damage": 12,
+      "burstShots": 4,
+      "burstInterval": 0.1,
+      "burstPause": 0.9,
+      "aimError": 0.03,
+      "minRange": 10,
+      "maxRange": 35,
+      "leashRadius": 18,
+      "regroupSeconds": 3,
+      "corpseSeconds": 20
+    }
+  },
   "levels": {
     "level02": {
       "firstWaveTriggerSeconds": 30,
       "betweenWavesSeconds": 8,
       "spawnIntervalSeconds": 0.8,
       "objectiveRadius": 10,
+      "supplyCrateRadius": 2.5,
       "waves": [
         { "trooper": 6, "brute": 0, "lanes": ["centre"] },
         { "trooper": 8, "brute": 1, "lanes": ["centre", "west"] },

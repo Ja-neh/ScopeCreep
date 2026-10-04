@@ -132,5 +132,17 @@ test('Level 2 test level: dummies, a respawning alien group including a brute, a
     const distance = Math.hypot(alien.position.x - foot.x, alien.position.z - foot.z);
     assert.ok(distance > 20 && distance < 40, `dropped ${distance.toFixed(0)} m away`);
   }
+
+  // The AI squad waits on the sand; F4 sends it away and brings it back
+  const squadSize = config.allies.crewSize - 1 + level.landingZone.helicopterBays.length;
+  assert.equal(level.allies.mates.length, squadSize);
+  world.input.press('devSquad');
+  stepWorld(world, 0.1, { level });
+  assert.equal(level.allies.mates.length, 0);
+  assert.ok(level.allies.members.length === 1 && level.allies.members[0] === level.player, 'only the player left');
+  world.input.press('devSquad');
+  stepWorld(world, 0.1, { level });
+  assert.equal(level.allies.mates.length, squadSize);
+  assert.ok(level.allies.mates.filter((mate) => mate.inFormation).every((mate) => mate.order === 'follow'), 'player is ashore: the new crew follow at once');
   assert.equal(teardown(world, level), 0);
 });

@@ -1,6 +1,6 @@
 # Tests
 
-`npm test` runs every `tests/**/*.test.mjs` file with Node's built-in test runner (`node:test`, no extra packages). The tests use the real game code, real Three.js objects and real Rapier physics, without a browser or WebGL. The full suite takes about 15 seconds.
+`npm test` runs every `tests/**/*.test.mjs` file with Node's built-in test runner (`node:test`, no extra packages). The tests use the real game code, real Three.js objects and real Rapier physics, without a browser or WebGL. The full suite takes about 30 seconds.
 
 Run it before every commit. If a test fails, either your change broke something that used to work, or you changed behaviour on purpose and must update that test in the same commit.
 
@@ -16,7 +16,9 @@ Run it before every commit. If a test fails, either your change broke something 
 | `aliens.test.mjs` | Trooper sight, damage, concealment, hearing, call-outs, no friendly fire, death |
 | `brute.test.mjs` | Brute charge and slam, outrunning it, double damage to its back |
 | `waveDirector.test.mjs` | Wave order, lanes, spawn pacing, pauses between waves, completion |
-| `level02.test.mjs` | Level 2 end to end: landing, three waves, objective and victory, defeat and retry, the sandbox level, clean teardown |
+| `squad.test.mjs` | AI squadmates: formation around the player, shooting aliens, no friendly fire, being hunted and fighting back, falling |
+| `landing.test.mjs` | Level 2 opening: camera sweep and skip, crew walking off, helicopters clearing the ship and landing, pilots, starting view, ammo crate |
+| `level02.test.mjs` | Level 2 end to end: landing, three waves, objective and victory, defeat and retry, the sandbox level (including the F4 squad toggle), clean teardown |
 | `uiOverlay.test.mjs` | HUD layers never swallow the clicks the game needs to lock the mouse |
 | `level1Compat.test.mjs` | Shared code still behaves as Level 1 expects (player, camera, ocean, input, projectiles, deck walking) |
 

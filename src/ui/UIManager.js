@@ -9,6 +9,7 @@ import { PlayerHealthBar } from './components/PlayerHealthBar.js';
 import { DamageFlash } from './components/DamageFlash.js';
 import { ObjectivePanel } from './components/ObjectivePanel.js';
 import { MissionResult } from './components/MissionResult.js';
+import { CinematicOverlay } from './components/CinematicOverlay.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
@@ -40,6 +41,7 @@ export class UIManager {
     this.damageFlash = new DamageFlash(this.container);
     this.objectivePanel = new ObjectivePanel(this.container);
     this.missionResult = new MissionResult(this.container);
+    this.cinematic = new CinematicOverlay(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
     this.controlsHelper.hide(); // Hidden until level loads
@@ -236,6 +238,33 @@ export class UIManager {
   hideMissionResult() {
     if (this.missionResult) {
       this.missionResult.hide();
+    }
+  }
+
+  // =========================================================================
+  // Cinematic (camera sequences)
+  // =========================================================================
+
+  /**
+   * Letterbox bars and a title card; hides the gameplay HUD until hideCinematic()
+   * @param {string} title
+   * @param {string} [subtitle]
+   * @param {string} [hint] - e.g. '[Space] Skip'
+   */
+  showCinematic(title, subtitle = '', hint = '') {
+    if (this.cinematic) {
+      this.cinematic.show(title, subtitle, hint);
+      this.container.classList.add('ui-cinematic-active');
+    }
+  }
+
+  /**
+   * Remove the letterbox and bring the HUD back
+   */
+  hideCinematic() {
+    if (this.cinematic) {
+      this.cinematic.hide();
+      this.container.classList.remove('ui-cinematic-active');
     }
   }
 
@@ -500,6 +529,7 @@ export class UIManager {
     this.hidePlayerHealth();
     this.hideObjective();
     this.hideMissionResult();
+    this.hideCinematic();
     if (this.damageFlash) this.damageFlash.clear();
     this.hidePauseMenu();
     this.hidePauseButton();
@@ -567,6 +597,10 @@ export class UIManager {
     if (this.objectivePanel) {
       this.objectivePanel.dispose();
       this.objectivePanel = null;
+    }
+    if (this.cinematic) {
+      this.cinematic.dispose();
+      this.cinematic = null;
     }
     if (this.missionResult) {
       this.missionResult.dispose();

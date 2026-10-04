@@ -160,7 +160,9 @@ export class HitscanWeapon {
     result.normal.set(hit.normal.x, hit.normal.y, hit.normal.z);
 
     const entity = hit.collider.userData ? hit.collider.userData.entity : null;
-    if (entity && entity !== source && entity.health && typeof entity.health.takeDamage === 'function') {
+    // No friendly fire: a shot stops on a teammate but does not hurt them
+    const friendly = entity && source && source.faction && entity.faction === source.faction;
+    if (entity && entity !== source && !friendly && entity.health && typeof entity.health.takeDamage === 'function') {
       // Targets may have weak spots (e.g. a brute's backpack)
       const multiplier = typeof entity.damageMultiplierAt === 'function' ? entity.damageMultiplierAt(result.point) : 1;
       this._damageInfo.amount = this.damage * multiplier;

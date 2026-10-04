@@ -22,8 +22,11 @@ const IMPACT_COLORS = {
 export class WeaponEffects {
   /**
    * @param {THREE.Object3D} parent - Usually gameWorld.effectsGroup
+   * @param {Object} [options]
+   * @param {boolean} [options.flashLight=true] - Light the scene on muzzle flashes (the player's gun);
+   *   off for AI squads, so many shooters don't each add a point light to every lit material
    */
-  constructor(parent) {
+  constructor(parent, { flashLight = true } = {}) {
     this.parent = parent;
     this.group = new THREE.Group();
     this.group.name = 'WeaponEffects';
@@ -66,8 +69,11 @@ export class WeaponEffects {
     this.flash.scale.set(1, 1, 2.2);
     this.flash.visible = false;
     this.group.add(this.flash);
-    this.flashLight = new THREE.PointLight(0xffc070, 0, 10, 2);
-    this.group.add(this.flashLight);
+    this.flashLight = null;
+    if (flashLight) {
+      this.flashLight = new THREE.PointLight(0xffc070, 0, 10, 2);
+      this.group.add(this.flashLight);
+    }
     this._flashLife = 0;
   }
 
@@ -106,8 +112,10 @@ export class WeaponEffects {
     this.flash.lookAt(target);
     this.flash.rotation.z = Math.random() * Math.PI;
     this.flash.visible = true;
-    this.flashLight.position.copy(position);
-    this.flashLight.intensity = FLASH_LIGHT_INTENSITY;
+    if (this.flashLight) {
+      this.flashLight.position.copy(position);
+      this.flashLight.intensity = FLASH_LIGHT_INTENSITY;
+    }
     this._flashLife = FLASH_SECONDS;
   }
 
@@ -134,7 +142,7 @@ export class WeaponEffects {
       this._flashLife -= delta;
       if (this._flashLife <= 0) {
         this.flash.visible = false;
-        this.flashLight.intensity = 0;
+        if (this.flashLight) this.flashLight.intensity = 0;
       }
     }
   }
@@ -146,7 +154,7 @@ export class WeaponEffects {
     for (const impact of this.impacts) impact.mesh.material.dispose();
     this.flash.geometry.dispose();
     this.flashMaterial.dispose();
-    this.flashLight.dispose();
+    if (this.flashLight) this.flashLight.dispose();
     if (this.group.parent) this.group.parent.remove(this.group);
   }
 }
