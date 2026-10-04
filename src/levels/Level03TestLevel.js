@@ -61,7 +61,7 @@ export class Level03TestLevel extends Level03 {
     this.tools.update(delta);
     if (this.gameWorld.input.isActionJustPressed('devBoss')) this.fightWarden();
     if (this.arena) this.arena.update(delta);
-    if (this.state === 'guards') this._updateHallWave(); // Wave 2, after shutting the generators down by hand
+    if (this.state === 'guards') this._updateHallWave(delta); // Wave 2, after shutting the generators down by hand
 
     // A fresh group once all aliens are down
     if (this.squad.aliveCount === 0) {

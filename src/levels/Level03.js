@@ -44,8 +44,9 @@ const CREDITS_SKIP_AFTER = 0.5; // The key that skipped the ending must not skip
  *   the landed ships) feed the force field over the hall (ForceFieldDome); each has guards, and
  *   while it runs and the player is near, more aliens keep coming to defend it. Hold [E] to shut
  *   each one down.
- * - 'guards' (wave 2): the dome falls, but the hall's door is sealed (ForceFieldWall) and a wave of
- *   aliens takes up posts round it. Clear them all and the seal breaks.
+ * - 'guards' (wave 2): the dome falls, but the hall's door is sealed (ForceFieldWall) and its
+ *   guards take up posts round it, while more keep appearing beside the hall on both sides.
+ *   Kill `hallWave.killsToOpen` of them and the seal breaks (and no more come).
  * - 'hall' -> 'boss': into the hall, where the Warden wakes (BossArena).
  * - 'victory' -> 'hostages': with the Warden down every alien falls, and the islanders' cages
  *   (HostageCage) along the hall walls unlock: hold [E] at each to free them.
@@ -75,7 +76,9 @@ export class Level03 extends IslandLevel {
     this.lastRevivePoint = null;
     this.streetAliens = null;       // AlienSpawner round the player
     this.generatorDefenses = [];    // AlienSpawner round each generator
-    this.hallGuards = [];           // Wave 2
+    this.hallGuards = [];           // Wave 2: the guards it starts with
+    this.hallSpawners = [];         // Wave 2: aliens appearing beside the hall, both sides
+    this._waveStartKills = 0;
     this.cages = [];
     this.reviveCrates = [];
     this.shield = null;
@@ -463,6 +466,7 @@ export class Level03 extends IslandLevel {
   _stopDefenses() {
     for (const defense of this.generatorDefenses) defense.stop();
     if (this.streetAliens) this.streetAliens.stop();
+    for (const spawner of this.hallSpawners) spawner.stop();
   }
 
   _updateScenario(delta) {
@@ -475,7 +479,7 @@ export class Level03 extends IslandLevel {
         this._showGeneratorObjective();
         break;
       case 'guards':
-        this._updateHallWave();
+        this._updateHallWave(delta);
         break;
       case 'hall': {
         const distance = Math.hypot(p.x - hall.doorway.x, p.z - hall.doorway.z);
@@ -553,12 +557,31 @@ export class Level03 extends IslandLevel {
   /**
    * Wave 2: the hall's door is sealed, and its guards take up posts round the door and the
    * square. The aliens still about fall back to guard it too; fresh ones (the brutes first) make
-   * the wave up to its full size.
+   * up the starting guard. From then on more keep appearing beside the hall, on both sides, until
+   * enough have been killed to break the seal.
    */
   _startHallWave() {
     this.state = 'guards';
     this.doorSeal.raise();
+    this._waveStartKills = this.squad.killCount;
     const wave = this.cfg.hallWave;
+    const hall = this.village.hall;
+    const across = new THREE.Vector3(hall.forward.z, 0, -hall.forward.x);
+    const cap = () => this._respiteTimer <= 0 && this.squad.aliveCount < this.cfg.maxAliveAliens;
+    this.hallSpawners = [-1, 1].map((side) => {
+      const centre = hall.centre.clone().addScaledVector(across, side * (hall.width / 2 + wave.sideDistance));
+      return new AlienSpawner(this, {
+        centre: () => centre,
+        target: () => hall.entrance,
+        maxAlive: wave.sideMaxAlive,
+        interval: wave.reinforceSeconds,
+        minDistance: 0,
+        maxDistance: wave.spawnSpread,
+        minPlayerDistance: wave.minPlayerDistance,
+        bruteChance: wave.bruteChance,
+        canSpawn: cap
+      });
+    });
     this.hallGuards = this.squad.members.filter((alien) => !alien.isDead && !alien.isBoss);
     for (const alien of this.hallGuards) {
       const post = this._hallGuardPost();
@@ -587,11 +610,22 @@ export class Level03 extends IslandLevel {
     return null;
   }
 
-  /** Counts the hall's guards down; the seal on the door breaks when they are all dead. */
-  _updateHallWave() {
-    const left = this.hallGuards.filter((alien) => !alien.isDead).length;
-    this._showObjective('WAVE 2', `The hall is sealed. Clear the aliens guarding it — ${left} left`);
-    if (left > 0) return;
+  /** Wave 2 kills so far. */
+  get hallWaveKills() {
+    return this.squad.killCount - this._waveStartKills;
+  }
+
+  /**
+   * More aliens beside the hall; the seal on the door breaks once `killsToOpen` have been killed
+   * since wave 2 began (and then no more come).
+   */
+  _updateHallWave(delta = 0) {
+    for (const spawner of this.hallSpawners) spawner.update(delta);
+    const target = this.cfg.hallWave.killsToOpen;
+    const kills = Math.min(target, this.hallWaveKills);
+    this._showObjective('WAVE 2', `The hall is sealed and its guards keep coming. Kill them to break the seal — ${kills}/${target}`);
+    if (kills < target) return;
+    for (const spawner of this.hallSpawners) spawner.stop();
     this.doorSeal.collapse();
     this.state = 'hall';
     if (this.gameWorld.ui) this.gameWorld.ui.showToast('The seal on the hall door is breaking. The Warden is waiting inside.', 'success', 4000);
@@ -701,6 +735,7 @@ export class Level03 extends IslandLevel {
     this.generatorDefenses = [];
     this.streetAliens = null;
     this.hallGuards = [];    // Aliens: the alien squad removes them
+    this.hallSpawners = [];
     this.cages = [];         // Entities: the GameWorld disposes them
     this.reviveCrates = [];
     this.shieldPickups = [];

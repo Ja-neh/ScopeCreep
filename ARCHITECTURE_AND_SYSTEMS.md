@@ -295,8 +295,9 @@ Level 3 is the finale, at night: the squad comes up the jungle path to the villa
   - **Cap:** all spawners stop at wave 2, and none spawn while the level has `maxAliveAliens` alive.
 - Wave 2 (`'guards'`):
   - The hall's door is sealed by a `ForceFieldWall` (the force-field shader, flat, with a box collider).
-  - The aliens still about fall back to guard it. Fresh ones (`hallWave`: brutes first) make the wave up to its full size, at posts round the door and the square.
-  - When they are all dead the seal collapses (`'hall'`).
+  - The aliens still about fall back to guard it. Fresh ones (`hallWave`: brutes first) make up the starting guard, at posts round the door and the square.
+  - Then more keep appearing beside the hall on both sides (two `AlienSpawner`s just outside its side walls, `sideMaxAlive` each, every `reinforceSeconds`) and push round to the door.
+  - When `killsToOpen` aliens have been killed since wave 2 began (`hallWaveKills`), the spawners stop and the seal collapses (`'hall'`).
 - Opening and ending:
   - **Opening:** `LandingCinematic`, now configurable with `flightPath`, `defaultFocus`, `aimPoint`, `aimTowards`, `endOnPlayer`, `easing` and `holdSeconds`. It holds inside the hall on the Warden among its caged prisoners, backs out of the door, climbs about 200 m over the village (the whole street grid, the ships, the beams), and comes down over the rooftops to the gate, ending on the player's view ("THE VILLAGE"). The Warden stands in the hall, dormant, from the start (`BossArena.place()`; `start()` wakes it). It is marked `isBoss`, so it is left out of wave 2, of the respawn confusion, and of `clearAliens()`.
   - **Hostages (`level03/HostageCage`):** four islanders (unarmed `SoldierModel`s in plain clothes) in cages of glowing bars at `VillageHall.cageSpots`, between the pillars and the side walls. A cage is locked until the Warden falls; then hold [E] (`hostages.holdSeconds`) to free its islander. Freed, the bars sink, the collider goes and the islander cheers.

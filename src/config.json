@@ -263,10 +263,17 @@
       "spawnMinPlayerDistance": 40,
       "maxAliveAliens": 22,
       "hallWave": {
-        "troopers": 14,
-        "brutes": 4,
+        "troopers": 7,
+        "brutes": 3,
         "postMinDistance": 6,
-        "postMaxDistance": 30
+        "postMaxDistance": 30,
+        "killsToOpen": 30,
+        "sideMaxAlive": 6,
+        "reinforceSeconds": 2.5,
+        "sideDistance": 10,
+        "spawnSpread": 6,
+        "minPlayerDistance": 12,
+        "bruteChance": 0.15
       },
       "revivePointRadius": 6,
       "respawn": {
