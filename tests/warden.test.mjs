@@ -18,6 +18,7 @@ async function loadLevel(LevelClass = Level03, seed = 3) {
   const world = await createTestWorld({ seed });
   const level = new LevelClass(world);
   await level.init();
+  if (level.cinematic) level.cinematic.finish(); // Skip the opening (ending.test.mjs covers it)
   return { world, level };
 }
 
@@ -33,7 +34,7 @@ function teardown(world, level) {
  */
 function enterHall(world, level) {
   const hall = level.village.hall;
-  for (const alien of [...level.squad.members]) level.squad.remove(alien);
+  level.clearAliens(); // All but the Warden
   level.shutDownGenerators({ instant: true });
   stepWorld(world, 0.2, { level });
   assert.equal(level.state, 'hall');
@@ -56,7 +57,7 @@ function shoot(world, level, point) {
 
 test('the Warden waits until the player walks into the hall, then wakes shielded, fed by two crystals on the back pillars', async () => {
   const { world, level } = await loadLevel();
-  assert.equal(level.arena, null, 'nobody in the hall yet');
+  assert.ok(level.arena.warden.brain.is('dormant') && !level.arena.started, 'it waits, dormant, until someone comes in');
   const arena = enterHall(world, level);
   const warden = arena.warden;
   const hall = level.village.hall;
@@ -220,7 +221,7 @@ test('enraged at half health: the shield comes back from two crystals by the doo
   assert.equal(teardown(world, level), 0);
 });
 
-test('bringing the Warden down wins the mission after a moment; teardown leaves nothing behind', async () => {
+test('bringing the Warden down: every alien falls with it, and after a moment the islanders are next; teardown leaves nothing behind', async () => {
   const { world, level } = await loadLevel();
   const arena = enterHall(world, level);
   const warden = arena.warden;
@@ -236,11 +237,13 @@ test('bringing the Warden down wins the mission after a moment; teardown leaves 
   assert.equal(world.ui.callsTo('hideBossHealth').length >= 1, true);
   assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'not straight away');
 
+  assert.equal(level.squad.aliveCount, 0, 'the aliens fall with it');
+  assert.ok(level.cages.every((cage) => !cage.locked), 'the cages unlock');
+
   stepWorld(world, config.levels.level03.victoryDelaySeconds + 0.2, { level });
-  assert.equal(level.state, 'won');
-  const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
-  assert.equal(result.outcome, 'victory');
-  assert.equal(result.title, 'THE ISLAND IS OURS AGAIN');
+  assert.equal(level.state, 'hostages');
+  assert.match(world.ui.callsTo('showObjective').at(-1).args[1], /Free the islanders .* 0\/4/);
+  assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'not won yet: our people first');
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
   assert.equal(world.effectsGroup.children.filter((c) => c.name === 'Shockwave').length, 0, 'shockwave meshes gone');
 });

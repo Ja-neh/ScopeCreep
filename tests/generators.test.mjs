@@ -18,6 +18,7 @@ async function loadLevel(seed = 4) {
   const world = await createTestWorld({ seed });
   const level = new Level03(world);
   await level.init();
+  if (level.cinematic) level.cinematic.finish(); // Skip the opening (ending.test.mjs covers it)
   return { world, level };
 }
 
@@ -30,7 +31,7 @@ function teardown(world, level) {
 /** The player alone (no aliens, none coming, no squad) standing at (x, z). */
 function alone(world, level, x, z) {
   level._stopDefenses();
-  for (const alien of [...level.squad.members]) level.squad.remove(alien);
+  level.clearAliens(); // All but the Warden
   level.allies.removeAllMates();
   level.player.teleport(x, level.environment.heightAt(x, z) + 0.4, z);
   stepWorld(world, 0.2, { level });
@@ -265,7 +266,7 @@ test('revive points: no more than five along the way; lost, the player comes bac
 
   // Walk past the first one
   level._stopDefenses();
-  for (const alien of [...level.squad.members]) level.squad.remove(alien);
+  level.clearAliens(); // All but the Warden
   level.player.teleport(gate.position.x + 3, gate.position.y + 0.4, gate.position.z);
   stepWorld(world, 0.2, { level });
   assert.ok(gate.reached && level.lastRevivePoint === gate);
@@ -293,4 +294,79 @@ test('revive points: no more than five along the way; lost, the player comes bac
   }
   assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'no mission failed');
   assert.equal(teardown(world, level), 0);
+});
+
+test('back from a revive point the aliens have lost the player: the nearby ones wander off, and none come for a while', async () => {
+  const { world, level } = await loadLevel();
+  const respawn = levelCfg.respawn;
+  const point = level.revivePoints[1];
+  point.reach();
+  level.allies.removeAllMates();
+  // Aliens close to the revive point, all hunting the player
+  const near = [];
+  for (let i = 0; i < 4; i++) {
+    const x = point.position.x + 20 + i * 3;
+    const z = point.position.z + 8;
+    if (!level._isWalkable(x, z)) continue;
+    const alien = level.createAlien('trooper', x, z);
+    alien.perception.share(level.player.position);
+    alien.brain.change('investigate');
+    near.push(alien);
+  }
+  assert.ok(near.length >= 2);
+  level.player.health.takeDamage({ amount: 9999 });
+  level._playerLost = true;
+  const spawnedBefore = level.streetAliens.spawned + level.generatorDefenses.reduce((n, d) => n + d.spawned, 0);
+  stepWorld(world, config.player.vitals.respawnSeconds + 0.3, { level });
+  assert.ok(flat(level.player.position, point.position) < 3, 'back at the revive point');
+  for (const alien of near) {
+    assert.ok(alien.brain.is('patrol') && !alien.perception.target, 'lost the player and wandering');
+    assert.ok(flat(alien.home, point.position) > flat(alien.position, point.position) + respawn.wanderDistance * 0.8, 'off away from the spot');
+  }
+  const before = near.map((alien) => flat(alien.position, point.position));
+  stepWorld(world, respawn.respiteSeconds - 2, { level });
+  near.forEach((alien, i) => {
+    if (!alien.perception.target) assert.ok(flat(alien.position, point.position) > before[i], 'moving away');
+  });
+  const spawnedAfter = level.streetAliens.spawned + level.generatorDefenses.reduce((n, d) => n + d.spawned, 0);
+  assert.equal(spawnedAfter, spawnedBefore, 'no new aliens during the respite');
+  assert.equal(teardown(world, level), 0);
+});
+
+test('every revive point has a supply crate by it; shield pickups lie in the streets and the shield takes hits until it breaks', async () => {
+  const { world, level } = await loadLevel();
+  const crates = [level.supplyCrate, level.hallCrate, ...level.reviveCrates];
+  for (const point of level.revivePoints) {
+    assert.ok(crates.some((crate) => flat(crate.position, point.position) < 15), `a crate by ${point.name}`);
+  }
+
+  const shieldCfg = levelCfg.shield;
+  assert.equal(level.shieldPickups.length, shieldCfg.pickups);
+  for (const pickup of level.shieldPickups) assert.ok(level.village.isOpenGround(pickup.position.x, pickup.position.z), 'in the open');
+  assert.equal(level.shield.health, 0, 'no shield to begin with');
+
+  const pickup = level.shieldPickups[0];
+  level.clearAliens();
+  level.player.teleport(pickup.position.x, pickup.position.y + 0.4, pickup.position.z);
+  stepWorld(world, 0.2, { level });
+  assert.ok(pickup.taken && level.shield.health === shieldCfg.health, 'picked up: a full shield');
+  assert.equal(world.ui.callsTo('updatePlayerShield').at(-1).args[0], shieldCfg.health, 'its bar shows');
+
+  const player = level.player;
+  player.health.takeDamage({ amount: 40 });
+  assert.equal(player.health.currentHealth, player.health.maxHealth, 'the shield took it');
+  assert.equal(level.shield.health, shieldCfg.health - 40);
+  player.health.takeDamage({ amount: shieldCfg.health });
+  assert.equal(level.shield.health, 0, 'broken');
+  assert.equal(player.health.currentHealth, player.health.maxHealth - 40, 'what got through hurt');
+  stepWorld(world, 0.1, { level });
+  assert.equal(level.shield.mesh.visible, false, 'the bubble is gone');
+
+  // Another pickup charges it again
+  const second = level.shieldPickups[1];
+  player.teleport(second.position.x, second.position.y + 0.4, second.position.z);
+  stepWorld(world, 0.2, { level });
+  assert.equal(level.shield.health, shieldCfg.health);
+  assert.equal(teardown(world, level), 0);
+  assert.equal(player.health.absorb, null, 'the shield lets go of the player on teardown');
 });

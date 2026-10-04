@@ -788,6 +788,18 @@
   transition: width 0.15s ease-out;
 }
 
+.ui-player-shield {
+  margin-bottom: 6px;
+  color: #66e8ff;
+}
+
+.ui-player-shield-fill {
+  height: 100%;
+  width: 100%;
+  background: #66e8ff;
+  transition: width 0.15s ease-out;
+}
+
 .ui-player-health.low .ui-player-health-fill {
   background: var(--color-danger);
 }
@@ -905,6 +917,70 @@
   color: #66e8ff;
 }
 
+/* End credits: a veil with the credits rolling up the middle of the screen */
+.ui-credits {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(rgba(5, 10, 20, 0.85), rgba(5, 10, 20, 0.55) 40%, rgba(5, 10, 20, 0.85));
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  z-index: 8500;
+}
+
+.ui-credits-roll {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+}
+
+.ui-credits-roll.rolling {
+  animation-name: ui-credits-roll;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+@keyframes ui-credits-roll {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-100% - 100vh)); }
+}
+
+.ui-credits-section {
+  margin: 0 auto 56px;
+}
+
+.ui-credits-heading {
+  margin-bottom: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--color-success);
+}
+
+.ui-credits-line {
+  font-size: 20px;
+  line-height: 1.6;
+}
+
+.ui-credits-section:first-child .ui-credits-line {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: 8px;
+}
+
+.ui-credits-hint {
+  position: absolute;
+  right: 24px;
+  bottom: 18px;
+  font-family: var(--font-family-mono);
+  font-size: 12px;
+  opacity: 0.7;
+}
+
 /* =========================================================================
    Mission Result (Full Screen)
    ========================================================================= */
@@ -1019,6 +1095,8 @@
 }
 
 /* The gameplay HUD steps aside while a cinematic plays */
+.ui-credits-active > :is(.ui-crosshair, .ui-weapon-hud, .ui-player-health, .ui-boss-health, .ui-objective,
+  .ui-health-container, .ui-controls-helper, .ui-status-indicator, .ui-prompt, .ui-fps-display),
 .ui-cinematic-active > :is(.ui-crosshair, .ui-weapon-hud, .ui-player-health, .ui-boss-health, .ui-objective,
   .ui-health-container, .ui-controls-helper, .ui-status-indicator, .ui-prompt) {
   visibility: hidden;

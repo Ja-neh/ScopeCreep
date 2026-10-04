@@ -7,6 +7,7 @@ import { StatusIndicator } from './components/StatusIndicator.js';
 import { WeaponHUD } from './components/WeaponHUD.js';
 import { PlayerHealthBar } from './components/PlayerHealthBar.js';
 import { BossHealthBar } from './components/BossHealthBar.js';
+import { Credits } from './components/Credits.js';
 import { DamageFlash } from './components/DamageFlash.js';
 import { ObjectivePanel } from './components/ObjectivePanel.js';
 import { MissionResult } from './components/MissionResult.js';
@@ -40,6 +41,7 @@ export class UIManager {
     this.weaponHUD = new WeaponHUD(this.container);
     this.playerHealth = new PlayerHealthBar(this.container);
     this.bossHealth = new BossHealthBar(this.container);
+    this.credits = new Credits(this.container);
     this.damageFlash = new DamageFlash(this.container);
     this.objectivePanel = new ObjectivePanel(this.container);
     this.missionResult = new MissionResult(this.container);
@@ -182,6 +184,17 @@ export class UIManager {
   }
 
   /**
+   * The player's shield (a bar over their health; hidden at 0)
+   * @param {number} current
+   * @param {number} max
+   */
+  updatePlayerShield(current, max) {
+    if (this.playerHealth) {
+      this.playerHealth.updateShield(current, max);
+    }
+  }
+
+  /**
    * Hide the player's health bar
    */
   hidePlayerHealth() {
@@ -217,6 +230,29 @@ export class UIManager {
   hideBossHealth() {
     if (this.bossHealth) {
       this.bossHealth.hide();
+    }
+  }
+
+  /**
+   * Roll the end credits
+   * @param {Array<{heading?: string, lines: string[]}>} sections
+   * @param {number} seconds - How long the roll takes
+   * @param {string} [hint] - e.g. '[Space] Skip'
+   */
+  showCredits(sections, seconds, hint = '') {
+    if (this.credits) {
+      this.credits.show(sections, seconds, hint);
+      this.container.classList.add('ui-credits-active'); // The gameplay HUD steps aside
+    }
+  }
+
+  /**
+   * Hide the end credits
+   */
+  hideCredits() {
+    if (this.credits) {
+      this.credits.hide();
+      this.container.classList.remove('ui-credits-active');
     }
   }
 
@@ -561,6 +597,7 @@ export class UIManager {
     this.hideWeaponHUD();
     this.hidePlayerHealth();
     this.hideBossHealth();
+    this.hideCredits();
     this.hideObjective();
     this.hideMissionResult();
     this.hideCinematic();
@@ -627,6 +664,10 @@ export class UIManager {
     if (this.bossHealth) {
       this.bossHealth.dispose();
       this.bossHealth = null;
+    }
+    if (this.credits) {
+      this.credits.dispose();
+      this.credits = null;
     }
     if (this.damageFlash) {
       this.damageFlash.dispose();

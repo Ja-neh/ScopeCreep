@@ -6,12 +6,31 @@ import { ForceFieldDome, ForceFieldWall } from './level03/ForceFieldDome.js';
 import { ShieldGenerator } from './level03/ShieldGenerator.js';
 import { AlienSpawner } from './level03/AlienSpawner.js';
 import { RevivePoint } from './level03/RevivePoint.js';
+import { HostageCage } from './level03/HostageCage.js';
+import { ShieldPickup } from './level03/ShieldPickup.js';
+import { PlayerShield } from '../entities/player-components/PlayerShield.js';
+import { createRandom } from '../rendering/Noise.js';
+import { CREDITS } from './level03/credits.js';
+import { LandingCinematic } from './level02/LandingCinematic.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
 import config from '../config.json';
+
+const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 const DOME_RADIUS = 22;      // The force field covers the hall and a little of the ground round it
 const GUARD_DISTANCE = 6;    // Generator guards start this far from their generator
 const GUARD_POST_TRIES = 30; // Attempts to find each hall guard a post
+const HOSTAGE_NAMES = ['Ama', 'Tomas', 'Lena', 'Kofi'];
+const OPENING_SECONDS = 16;
+const OPENING_HOLD = 4;        // Seconds on the Warden and its prisoners before the camera leaves the hall
+const CRATE_NEAR = 15;         // A revive point gets its own supply crate unless one is this close
+const CRATE_OFFSET = 2.5;      // ...standing this far from the post
+const PICKUP_SEED = 77;        // Shield pickups lie in the same places every time
+const PICKUP_SPACING = 40;     // ...at least this far apart
+const PICKUP_START_CLEAR = 30; // ...and not right at the start
+const ENDING_SECONDS = 12;
+const CREDITS_SECONDS = 24;
+const CREDITS_SKIP_AFTER = 0.5; // The key that skipped the ending must not skip the credits too
 
 /**
  * Level03
@@ -27,11 +46,18 @@ const GUARD_POST_TRIES = 30; // Attempts to find each hall guard a post
  *   each one down.
  * - 'guards' (wave 2): the dome falls, but the hall's door is sealed (ForceFieldWall) and a wave of
  *   aliens takes up posts round it. Clear them all and the seal breaks.
- * - 'hall' -> 'boss': into the hall, where the Warden wakes (BossArena). Bringing it down wins, for
- *   now (the hostages come in a later phase).
- * Up to five revive points (RevivePoint) along the way: lost, the player comes back at the last
- * one reached (with the squad), rather than failing. On-foot combat, downed and revive come from
- * IslandLevel.
+ * - 'hall' -> 'boss': into the hall, where the Warden wakes (BossArena).
+ * - 'victory' -> 'hostages': with the Warden down every alien falls, and the islanders' cages
+ *   (HostageCage) along the hall walls unlock: hold [E] at each to free them.
+ * - 'ending' -> 'credits' -> won: the camera sweeps out of the hall and up over the village while
+ *   night turns to dawn (BeachEnvironment.blendLook), the credits roll, then the mission result.
+ * It opens with a camera sweep over the village (LandingCinematic) that ends behind the player.
+ * Up to five revive points (RevivePoint) along the way, each with a supply crate: lost, the player
+ * comes back at the last one reached (with the squad), rather than failing, and the aliens lose
+ * track of them (they wander off, and none arrive for a while). Shield pickups (ShieldPickup)
+ * lie in the streets: each charges the player's PlayerShield, which takes hits until it breaks.
+ * The Warden stands in the hall, dormant among the caged islanders, from the start. On-foot
+ * combat, downed and revive come from IslandLevel.
  *
  * Level03TestLevel extends this with a respawning alien group and the sandbox dev tools.
  */
@@ -50,8 +76,14 @@ export class Level03 extends IslandLevel {
     this.streetAliens = null;       // AlienSpawner round the player
     this.generatorDefenses = [];    // AlienSpawner round each generator
     this.hallGuards = [];           // Wave 2
+    this.cages = [];
+    this.reviveCrates = [];
+    this.shield = null;
+    this.shieldPickups = [];
     this.arena = null;
-    this.state = 'generators'; // generators -> guards -> hall -> boss -> victory (-> won)
+    this._respiteTimer = 0;
+    this.state = 'generators'; // generators -> guards -> hall -> boss -> victory -> hostages -> ending -> credits (-> won)
+    this._creditsTimer = 0;
     this._victoryTimer = 0;
     this._skipHallWave = false;
   }
@@ -122,6 +154,20 @@ export class Level03 extends IslandLevel {
       return generator;
     });
 
+    // The islanders the aliens caged in the hall, facing its middle
+    const hall = this.village.hall;
+    this.cages = hall.cageSpots.map((position, i) => {
+      const cage = new HostageCage(this.gameWorld, {
+        name: HOSTAGE_NAMES[i % HOSTAGE_NAMES.length],
+        position,
+        yaw: Math.atan2(position.x - hall.centre.x, position.z - hall.centre.z),
+        player: this.player,
+        onFreed: (c) => this._onHostageFreed(c)
+      });
+      this.gameWorld.addEntity(cage);
+      return cage;
+    });
+
     this.revivePoints = this._revivePointSpots().map(({ name, position, canReach }) => {
       const point = new RevivePoint(this.gameWorld, {
         name,
@@ -134,6 +180,62 @@ export class Level03 extends IslandLevel {
       this.gameWorld.addEntity(point);
       return point;
     });
+
+    // A supply crate by every revive point (ammo runs out), unless there is one close already
+    const crates = [this.supplyCrate, this.hallCrate];
+    for (const point of this.revivePoints) {
+      if (crates.some((crate) => flat(crate.position, point.position) < CRATE_NEAR)) continue;
+      const spot = this._besidePoint(point.position);
+      if (!spot) continue;
+      const crate = new SupplyCrate(this.gameWorld, { position: spot, player: this.player, weapons: this.weapons });
+      this.gameWorld.addEntity(crate);
+      crates.push(crate);
+      this.reviveCrates.push(crate);
+    }
+
+    // The player's shield (none until they pick one up) and the pickups lying in the streets
+    this.shield = new PlayerShield(this.gameWorld, { player: this.player, maxHealth: this.cfg.shield.health });
+    this.gameWorld.addEntity(this.shield);
+    this.shieldPickups = this._shieldPickupSpots().map((position) => {
+      const pickup = new ShieldPickup(this.gameWorld, { position, player: this.player, shield: this.shield, radius: this.cfg.shield.pickupRadius });
+      this.gameWorld.addEntity(pickup);
+      return pickup;
+    });
+
+    // The Warden waits in the hall among its prisoners
+    this.arena = this.trackDisposable(new BossArena(this, hall, { onDefeated: () => this._onWardenDefeated() }));
+    this.arena.place();
+  }
+
+  /** Open ground a couple of meters from `point` (for a crate beside a revive point). */
+  _besidePoint(point) {
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const x = point.x + Math.cos(angle) * CRATE_OFFSET;
+      const z = point.z + Math.sin(angle) * CRATE_OFFSET;
+      if (this._isWalkable(x, z) && !this.village.hall.contains(x, z) === !this.village.hall.contains(point.x, point.z)) {
+        return new THREE.Vector3(x, this.environment.heightAt(x, z), z);
+      }
+    }
+    return null;
+  }
+
+  /** Spots along the streets, spread out, for the shield pickups (the same every time). */
+  _shieldPickupSpots() {
+    const random = createRandom(PICKUP_SEED);
+    const streets = this.village.streets;
+    const start = this.village.spawnPoints.start;
+    const spots = [];
+    for (let attempt = 0; attempt < 400 && spots.length < this.cfg.shield.pickups; attempt++) {
+      const street = streets[Math.floor(random() * streets.length)];
+      const t = random();
+      const x = street.from.x + (street.to.x - street.from.x) * t;
+      const z = street.from.z + (street.to.z - street.from.z) * t;
+      if (flat({ x, z }, start) < PICKUP_START_CLEAR || !this._isWalkable(x, z)) continue;
+      if (spots.some((s) => flat(s, { x, z }) < PICKUP_SPACING)) continue;
+      spots.push(new THREE.Vector3(x, this.environment.heightAt(x, z), z));
+    }
+    return spots;
   }
 
   /**
@@ -188,7 +290,8 @@ export class Level03 extends IslandLevel {
 
   /**
    * Lost (bled out, or nobody left to come): back on their feet at the last revive point reached
-   * (or the start, before the first), with the squad regrouping there.
+   * (or the start, before the first), with the squad regrouping there. The aliens lose track of
+   * them: those nearby wander off away from the spot, and none arrive for a while.
    */
   _onPlayerKilled(delta) {
     const point = this.lastRevivePoint;
@@ -203,7 +306,37 @@ export class Level03 extends IslandLevel {
       const z = p.z + Math.sin(angle) * 3;
       mate.teleport(x, this.environment.heightAt(x, z) + 0.1, z);
     });
-    if (this.gameWorld.ui) this.gameWorld.ui.showToast(`Back on your feet at ${point ? point.name : 'the start'}.`, 'info', 3000);
+    this.confuseAliens(p);
+    if (this.gameWorld.ui) this.gameWorld.ui.showToast(`Back on your feet at ${point ? point.name : 'the start'}. They have lost you: catch your breath.`, 'info', 3500);
+  }
+
+  /**
+   * The aliens lose the player: every one forgets them, and those within `confusionRadius` of
+   * `point` wander off away from it. No new aliens come for `respiteSeconds`.
+   */
+  confuseAliens(point) {
+    const respawn = this.cfg.respawn;
+    this._respiteTimer = respawn.respiteSeconds;
+    for (const alien of this.squad.members) {
+      if (alien.isDead || alien.isBoss) continue;
+      const dx = alien.position.x - point.x;
+      const dz = alien.position.z - point.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > respawn.confusionRadius) {
+        alien.perception.forget();
+        continue;
+      }
+      const away = distance > 0.1 ? respawn.wanderDistance / distance : 0;
+      const x = alien.position.x + dx * away;
+      const z = alien.position.z + dz * away;
+      alien.wanderOff(new THREE.Vector3(x, this.environment.heightAt(x, z), z));
+    }
+  }
+
+  /** Takes every alien but the Warden away, and stops more coming (dev tools, tests). */
+  clearAliens() {
+    this._stopDefenses();
+    for (const alien of [...this.squad.members]) if (!alien.isBoss) this.squad.remove(alien);
   }
 
   _onRevivePointReached(point) {
@@ -219,6 +352,48 @@ export class Level03 extends IslandLevel {
     this.spawnCrew();
     this.setUpDefenses();
     this._showGeneratorObjective();
+    this._beginOpening();
+  }
+
+  /**
+   * The opening: inside the hall, the Warden standing among its caged prisoners; then out of the
+   * door and up high over the village (the dome, the beams, the streets), and down over the
+   * rooftops to the gate, ending behind the player on the jungle path.
+   */
+  _beginOpening() {
+    const { hall, gate } = this.village;
+    const f = hall.forward;
+    const warden = this.arena.warden;
+    const wardenChest = new THREE.Vector3(warden.position.x, warden.position.y + 3, warden.position.z);
+    const village = this.environment.village;
+    const middle = new THREE.Vector3(village.x, village.height, village.z + 60);
+    const gatePoint = new THREE.Vector3(gate.x, this.environment.heightAt(gate.x, gate.z) + 2, gate.z);
+    const turn = (t) => t * t * (3 - 2 * t);
+    const stage = (t, from, to) => turn(Math.min(1, Math.max(0, (t - from) / (to - from))));
+    const focus = (out) => {
+      const t = (this.cinematic ? this.cinematic.elapsed : 0) / OPENING_SECONDS;
+      out.lerpVectors(wardenChest, middle, stage(t, 0.32, 0.55));
+      return out.lerp(gatePoint, stage(t, 0.68, 0.88));
+    };
+    this.cinematic = new LandingCinematic(this.gameWorld, {
+      player: this.player,
+      title: 'THE VILLAGE',
+      subtitle: 'The Warden holds our people in the hall. Bring down its force field and free them.',
+      duration: OPENING_SECONDS,
+      easing: 'inOut',
+      holdSeconds: OPENING_HOLD,
+      flightPath: [
+        new THREE.Vector3(hall.doorway.x - f.x * 3, hall.doorway.y + 3.2, hall.doorway.z - f.z * 3),
+        new THREE.Vector3(hall.doorway.x + f.x * 8, hall.doorway.y + 8, hall.doorway.z + f.z * 8),
+        new THREE.Vector3(hall.centre.x + 40 + f.x * 70, hall.centre.y + 200, hall.centre.z + f.z * 70),
+        new THREE.Vector3(25, 150, -300),
+        new THREE.Vector3(gate.x - 6, gatePoint.y + 6, gate.z + 12)
+      ],
+      defaultFocus: wardenChest,
+      aimTowards: 0,
+      focus
+    });
+    this.gameWorld.addEntity(this.cinematic);
   }
 
   /** The crew, just behind the player on the path, following at once. */
@@ -237,7 +412,7 @@ export class Level03 extends IslandLevel {
    * once they are in the village. None of them ever run out until the generators are down.
    */
   setUpDefenses() {
-    const cap = () => this.squad.aliveCount < this.cfg.maxAliveAliens;
+    const cap = () => this._respiteTimer <= 0 && this.squad.aliveCount < this.cfg.maxAliveAliens;
     const generatorCfg = this.cfg.generatorDefense;
     this.generatorDefenses = this.generators.map((generator) => {
       const defense = new AlienSpawner(this, {
@@ -293,6 +468,7 @@ export class Level03 extends IslandLevel {
   _updateScenario(delta) {
     const hall = this.village.hall;
     const p = this.player.position;
+    if (this._respiteTimer > 0) this._respiteTimer -= delta;
     switch (this.state) {
       case 'generators':
         this._updateDefenses(delta);
@@ -313,7 +489,21 @@ export class Level03 extends IslandLevel {
         break;
       case 'victory':
         this._victoryTimer -= delta;
-        if (this._victoryTimer <= 0) this._finish(true);
+        if (this._victoryTimer <= 0) this._startHostages();
+        break;
+      case 'hostages':
+        this._showHostageObjective();
+        break;
+      case 'ending':
+        this.environment.blendLook('night', 'dawn', this.cinematic ? this.cinematic.elapsed / ENDING_SECONDS : 1);
+        break;
+      case 'credits':
+        this._creditsTimer += delta;
+        if (this._creditsTimer >= CREDITS_SECONDS ||
+          (this._creditsTimer >= CREDITS_SKIP_AFTER && this.gameWorld.input.isActionJustPressed('skipCutscene'))) {
+          if (this.gameWorld.ui) this.gameWorld.ui.hideCredits();
+          this._finish(true);
+        }
         break;
     }
   }
@@ -369,7 +559,7 @@ export class Level03 extends IslandLevel {
     this.state = 'guards';
     this.doorSeal.raise();
     const wave = this.cfg.hallWave;
-    this.hallGuards = this.squad.members.filter((alien) => !alien.isDead);
+    this.hallGuards = this.squad.members.filter((alien) => !alien.isDead && !alien.isBoss);
     for (const alien of this.hallGuards) {
       const post = this._hallGuardPost();
       if (post) alien.assault(new THREE.Vector3(post.x, this.environment.heightAt(post.x, post.z), post.z));
@@ -410,7 +600,7 @@ export class Level03 extends IslandLevel {
   /** The Warden wakes: the fight in the hall begins. */
   startBossFight() {
     this.state = 'boss';
-    this.arena = this.trackDisposable(new BossArena(this, this.village.hall, { onDefeated: () => this._onWardenDefeated() }));
+    if (!this.arena) this.arena = this.trackDisposable(new BossArena(this, this.village.hall, { onDefeated: () => this._onWardenDefeated() }));
     this.arena.start();
     this._showBossObjective();
   }
@@ -425,11 +615,81 @@ export class Level03 extends IslandLevel {
     }
   }
 
-  /** The Warden has fallen: a moment to take it in, then the mission is won. */
+  /**
+   * The Warden has fallen: every alien falls with it, the cages unlock, and after a moment to
+   * take it in, the islanders are next.
+   */
   _onWardenDefeated() {
     this.state = 'victory';
     this._victoryTimer = this.cfg.victoryDelaySeconds;
-    this._showObjective('THE WARDEN IS DOWN', 'The village is ours');
+    for (const alien of this.squad.members) {
+      if (!alien.isDead) alien.health.takeDamage({ amount: alien.health.maxHealth * 10 });
+    }
+    for (const cage of this.cages) cage.unlock();
+    this._showObjective('THE WARDEN IS DOWN', 'Without it, the aliens fall where they stand');
+  }
+
+  _startHostages() {
+    this.state = 'hostages';
+    this._showHostageObjective();
+    if (this.gameWorld.ui) this.gameWorld.ui.showToast('The cages are open to us now. Free our people!', 'success', 3500);
+  }
+
+  _showHostageObjective() {
+    const freed = this.cages.filter((cage) => cage.freed).length;
+    this._showObjective('OUR PEOPLE', `Free the islanders from the cages along the hall walls [E] — ${freed}/${this.cages.length}`);
+  }
+
+  _onHostageFreed(cage) {
+    const left = this.cages.filter((c) => !c.freed).length;
+    const ui = this.gameWorld.ui;
+    if (left > 0) {
+      if (ui) ui.showToast(`${cage.name} is free! ${left} still caged.`, 'success', 2500);
+      return;
+    }
+    if (this.state === 'hostages') this._beginEnding();
+  }
+
+  /**
+   * Everyone is free: the camera leaves the hall through its door and climbs over the village as
+   * the sun comes up, then the credits roll.
+   */
+  _beginEnding() {
+    this.state = 'ending';
+    if (this.gameWorld.ui) this.gameWorld.ui.hideObjective();
+    const hall = this.village.hall;
+    const f = hall.forward;
+    const at = (point, ahead, up) => new THREE.Vector3(point.x + f.x * ahead, point.y + up, point.z + f.z * ahead);
+    // Looking out east, where the sun is coming up (the dawn look's sun direction)
+    const village = this.environment.village;
+    const sunrise = new THREE.Vector3(village.x, village.height + 30, village.z).addScaledVector(new THREE.Vector3(0.9, 0, -0.38).normalize(), 400);
+    const door = at(hall.doorway, 0, 3);
+    if (this.cinematic) this.cinematic.finish();
+    this.cinematic = new LandingCinematic(this.gameWorld, {
+      player: this.player,
+      title: 'DAWN',
+      subtitle: 'The island is ours again',
+      duration: ENDING_SECONDS,
+      endOnPlayer: false,
+      flightPath: [
+        at(hall.centre, 6, 3.2),
+        at(hall.doorway, 3, 3.6),
+        at(hall.entrance, 30, 24),
+        new THREE.Vector3(hall.entrance.x - 60 + f.x * 120, hall.entrance.y + 70, hall.entrance.z + f.z * 120)
+      ],
+      defaultFocus: door,
+      aimTowards: 0,
+      focus: (out) => out.lerpVectors(door, sunrise, Math.min(1, (this.cinematic ? this.cinematic.elapsed : 0) / (ENDING_SECONDS * 0.6))),
+      onFinished: () => this._rollCredits()
+    });
+    this.gameWorld.addEntity(this.cinematic);
+  }
+
+  _rollCredits() {
+    this.environment.blendLook('night', 'dawn', 1);
+    this.state = 'credits';
+    this._creditsTimer = 0;
+    if (this.gameWorld.ui) this.gameWorld.ui.showCredits(CREDITS, CREDITS_SECONDS, '[Space] Skip');
   }
 
   dispose() {
@@ -441,6 +701,11 @@ export class Level03 extends IslandLevel {
     this.generatorDefenses = [];
     this.streetAliens = null;
     this.hallGuards = [];    // Aliens: the alien squad removes them
+    this.cages = [];         // Entities: the GameWorld disposes them
+    this.reviveCrates = [];
+    this.shieldPickups = [];
+    this.shield = null;
+    if (this.gameWorld.ui) this.gameWorld.ui.hideCredits();
     super.dispose();         // Also the village, the force fields and the arena (tracked)
     this.village = null;
     this.dome = null;

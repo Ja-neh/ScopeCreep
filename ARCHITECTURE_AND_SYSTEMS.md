@@ -253,7 +253,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 **Rendering additions (`src/rendering/`):** `Terrain`, `Vegetation` (instanced scatter), `Noise`, `SkyDome` (sunset gradient and sun disc, drawn at infinity around the camera; its horizon colour is the fog colour), `Clouds` (one instanced mesh following the camera) and `MeshMerge`.
 
-**UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class), `GraphicsSettings` (the Graphics section of the Options menu) and, for Level 3, `BossHealthBar` (a boss's name and health under the objective, blue while shielded). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
+**UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class), `GraphicsSettings` (the Graphics section of the Options menu) and, for Level 3, `BossHealthBar` (a boss's name and health under the objective, blue while shielded) and `Credits` (the end credits rolling up the screen; the HUD hides through `ui-credits-active`). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
 
 **Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, `maxAliveAliens`, timings, radii).
 
@@ -265,10 +265,10 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 ### 2.9 Level 3: The Village (in progress)
 
-Level 3 is the finale, at night: the squad comes up the jungle path to the village on the plateau at the island's far end, fights through its streets to the square, brings down the force field over the hall, defeats the Warden inside and frees the hostages. It is being built in phases: night village (done), the Warden (done), generators and dome (done), the street fight, cages and the dawn ending, then polish.
+Level 3 is the finale, at night: the squad comes up the jungle path to the village on the plateau at the island's far end, fights through its streets to the square, brings down the force field over the hall, defeats the Warden inside and frees the hostages. It is being built in phases: night village, the Warden, generators and dome, the street fight and revive points, the opening, cages and the dawn ending (all done), then polish.
 
 **Done so far:**
-- `Level03` (`IslandLevel`): night look (`BeachEnvironment` with `look: 'night'`: moon, stars, cool moonlight, dark haze) on the `'village'` island layout, the village, the player and crew arriving on the jungle path below the gate, and a supply crate inside the gate. States: `'generators'` (shut down the three generators) -> `'guards'` (wave 2 at the sealed hall) -> `'hall'` (the way in is open: get inside) -> `'boss'` -> `'victory'` -> won. The mission does not fail: a lost player comes back at the last revive point. The moon's shadow area (240 m across) follows the camera (`shadowFollowsCamera`). `Level03TestLevel` adds a respawning alien group in the first streets and the shared `SandboxTools`.
+- `Level03` (`IslandLevel`): night look (`BeachEnvironment` with `look: 'night'`: moon, stars, cool moonlight, dark haze) on the `'village'` island layout, the village, the player and crew arriving on the jungle path below the gate, and a supply crate inside the gate. States: `'generators'` (shut down the three generators) -> `'guards'` (wave 2 at the sealed hall) -> `'hall'` (the way in is open: get inside) -> `'boss'` -> `'victory'` -> `'hostages'` -> `'ending'` -> `'credits'` -> won. The mission does not fail: a lost player comes back at the last revive point. The moon's shadow area (240 m across) follows the camera (`shadowFollowsCamera`). `Level03TestLevel` adds a respawning alien group in the first streets and the shared `SandboxTools`.
 - `BeachEnvironment` layouts: `'beach'` (Level 2, unchanged) and `'village'` (Level 3), where the island's northern half grows wider and longer to carry an oval village plateau 400 m across and 490 m long, about 6 times the old one. The south (beach, hills, jungle path) is identical. Helpers: `village` (`x`, `z`, `halfWidth`, `halfLength`, `height`), `isInVillage(x, z, margin)`, `distanceOutsideVillage`, `scatterBounds` (used by `BeachCover`).
 - `level03/Village`: a big old village laid out from a fixed seed:
   - Streets: an avenue from the gate to the square, 5 cross streets and 4 side streets.
@@ -297,9 +297,18 @@ Level 3 is the finale, at night: the squad comes up the jungle path to the villa
   - The hall's door is sealed by a `ForceFieldWall` (the force-field shader, flat, with a box collider).
   - The aliens still about fall back to guard it. Fresh ones (`hallWave`: brutes first) make the wave up to its full size, at posts round the door and the square.
   - When they are all dead the seal collapses (`'hall'`).
+- Opening and ending:
+  - **Opening:** `LandingCinematic`, now configurable with `flightPath`, `defaultFocus`, `aimPoint`, `aimTowards`, `endOnPlayer`, `easing` and `holdSeconds`. It holds inside the hall on the Warden among its caged prisoners, backs out of the door, climbs about 200 m over the village (the whole street grid, the ships, the beams), and comes down over the rooftops to the gate, ending on the player's view ("THE VILLAGE"). The Warden stands in the hall, dormant, from the start (`BossArena.place()`; `start()` wakes it). It is marked `isBoss`, so it is left out of wave 2, of the respawn confusion, and of `clearAliens()`.
+  - **Hostages (`level03/HostageCage`):** four islanders (unarmed `SoldierModel`s in plain clothes) in cages of glowing bars at `VillageHall.cageSpots`, between the pillars and the side walls. A cage is locked until the Warden falls; then hold [E] (`hostages.holdSeconds`) to free its islander. Freed, the bars sink, the collider goes and the islander cheers.
+  - **The Warden's death:** every alien left falls with it, and after `victoryDelaySeconds` the state moves to `'hostages'`.
+  - **Dawn:** with all four free, the `'ending'` camera (`endOnPlayer: false`) leaves the hall through its door and climbs over the village while `BeachEnvironment.blendLook('night', 'dawn', t)` moves the sky, stars, fog, sun, hemisphere light, clouds and sea from night to the new `'dawn'` look.
+  - **Credits:** `ui.showCredits(CREDITS, seconds, hint)` (component `Credits`, text in `level03/credits.js`) rolls them over the dawn with the gameplay HUD hidden; [Space] skips them (not with the press that skipped the ending). Then the mission result.
 - Revive points (`level03/RevivePoint`, 5): inside the gate, on the nearest street to the west and east generators, on the square, and just inside the hall door (counted only from inside).
   - Each is a post with a lamp and a light column: amber until reached, teal after, with no point light.
   - Lost (bled out, or nobody left to revive them), the player comes back at the last one reached (`_onPlayerKilled` -> `_respawnPlayer`), and the living squad regroups there.
+  - The aliens lose the player (`confuseAliens`): every one forgets them, and those within `respawn.confusionRadius` of the spot wander off `respawn.wanderDistance` away from it (`AlienCombatant.wanderOff`). No spawner brings anyone for `respawn.respiteSeconds`.
+  - Each revive point has a supply crate (ammo and health) beside it, unless the gate's or the hall's crate is already close.
+- Shields: `shield.pickups` `ShieldPickup`s lie along the streets (seeded, spread out). Walking into one charges the player's `PlayerShield` (`entities/player-components`) to `shield.health`. The shield is a faint bubble that takes hits before the player's health (`HealthComponent.absorb`), reddens as it wears down and breaks at zero, with a SHIELD bar over the health bar (`ui.updatePlayerShield`).
   - **Balance:** in `config.levels.level03.generator`.
 - The Warden (boss fight in the hall):
   - **Flow (`Level03`):** once the force field is down, walking into the hall wakes the Warden (`startBossFight()`, state `'boss'`). Bringing it down wins after `victoryDelaySeconds` (state `'victory'`), for now; the hostages come in a later phase. A second supply crate stands just inside the hall door (`VillageHall.supplyPoint`).
@@ -424,7 +433,7 @@ ScopeCreep/
 │   │   ├── SandboxTools.js # Dev tools shared by the island test levels (F1/F3/F4, respawn)
 │   │   ├── Level03.js      # The Village: the night finale (in progress)
 │   │   ├── Level03TestLevel.js # Level 3 sandbox
-│   │   ├── level03/        # Village, VillageHall, BuildingKit, ForceFieldDome (dome and door wall), ShieldGenerator, AlienSpawner, RevivePoint, BossArena, ShieldCrystal
+│   │   ├── level03/        # Village, VillageHall, BuildingKit, ForceFieldDome (dome and door wall), ShieldGenerator, AlienSpawner, RevivePoint, BossArena, ShieldCrystal, HostageCage, ShieldPickup, credits
 │   │   └── TestLevel.js    # Ground testing sandbox: Flat terrain, isolated weapon testing
 │   ├── rendering/          # Visual WebGL components
 │   │   ├── Ocean.js        # Subdivided ocean plane driving custom GPU shaders
@@ -563,7 +572,7 @@ ScopeCreep/
 - Standalone health container focused strictly on basic damage mechanics.
 - `DamageType`: Strict enum constrained to `KINETIC` and `EXPLOSIVE`.
 - `DamageInfo`: Lightweight payload (`amount`, `type`, `source`).
-- `HealthComponent`: Manages `currentHealth`, `maxHealth`, `isDead`, `invulnerable` (a shield: `takeDamage` does nothing while set), `takeDamage(damage)`, `heal(amount)`, `reset()`, and `onDamage`/`onDeath` event callbacks.
+- `HealthComponent`: Manages `currentHealth`, `maxHealth`, `isDead`, `invulnerable` (a shield: `takeDamage` does nothing while set), `absorb` (an optional `(amount) => left over` that takes hits first: the player's shield), `takeDamage(damage)`, `heal(amount)`, `reset()`, and `onDamage`/`onDeath` event callbacks.
 
 ### `Ocean` (`src/rendering/Ocean.js`)
 - `update(delta)`: Advances shader `uTime` uniform.

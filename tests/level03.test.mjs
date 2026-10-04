@@ -12,6 +12,7 @@ async function loadLevel(LevelClass, seed = 9) {
   const world = await createTestWorld({ seed });
   const level = new LevelClass(world);
   await level.init();
+  if (level.cinematic) level.cinematic.finish(); // Skip the opening (ending.test.mjs covers it)
   return { world, level };
 }
 
@@ -26,7 +27,7 @@ const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 /** Takes the aliens away (and stops more coming), so the crew only follow. */
 function clearAliens(level) {
   level._stopDefenses();
-  for (const alien of [...level.squad.members]) level.squad.remove(alien);
+  level.clearAliens(); // All but the Warden
 }
 
 test('Level 3 starts at night below the village gate, with the crew right behind the player', async () => {
@@ -44,7 +45,8 @@ test('Level 3 starts at night below the village gate, with the crew right behind
   assert.ok(level.supplyCrate && level.supplyCrate.collider, 'a supply crate by the gate');
   assert.match(world.ui.callsTo('showObjective').at(-1).args[1], /Shut down its generators .* 0\/3/);
   const guards = config.levels.level03.generatorDefense.guards * level.generators.length;
-  assert.equal(level.squad.aliveCount, guards, 'guards at every generator');
+  assert.equal(level.squad.aliveCount, guards + 1, 'guards at every generator, and the Warden');
+  assert.ok(level.arena.warden.brain.is('dormant'), 'the Warden waits in the hall');
   // The jungle grows right up to the village, but not into it
   let inVillage = 0;
   for (const set of level.cover.vegetation) {
@@ -121,7 +123,7 @@ test('Level 3: the crew follow the player round a street corner, past the houses
 
 test('Level 3 test level: aliens in the streets, F4 squad toggle, respawn instead of failing', async () => {
   const { world, level } = await loadLevel(Level03TestLevel);
-  assert.equal(level.squad.aliveCount, 4);
+  assert.equal(level.squad.members.filter((alien) => !alien.isBoss).length, 4); // Besides the Warden in the hall
   assert.equal(level.squad.members.filter((alien) => alien.name === 'AlienBrute').length, 1);
 
   world.input.press('devSquad');

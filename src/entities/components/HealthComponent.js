@@ -33,6 +33,7 @@ export class HealthComponent {
     this.currentHealth = this.maxHealth;
     this.isDead = false;
     this.invulnerable = false; // Shielded: damage does nothing while set
+    this.absorb = null;        // Optional (amount) => amount left over: a shield that takes hits first
     this.onDamage = null;
     this.onDeath = null;
   }
@@ -46,7 +47,8 @@ export class HealthComponent {
         ? new DamageInfo(damage)
         : new DamageInfo(damage?.amount, damage?.type, damage?.source));
 
-    const appliedDamage = Math.min(this.currentHealth, info.amount);
+    const incoming = this.absorb ? this.absorb(info.amount) : info.amount;
+    const appliedDamage = Math.min(this.currentHealth, incoming);
     this.currentHealth -= appliedDamage;
 
     if (this.onDamage && appliedDamage > 0) {

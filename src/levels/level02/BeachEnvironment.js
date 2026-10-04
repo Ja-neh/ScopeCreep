@@ -56,8 +56,19 @@ const LOOKS = {
     hemiSky: 0x4a5d88, hemiGround: 0x1a2018, hemiIntensity: 0.8,
     glow: 0x2c3d63, upper: 0x162139, zenith: 0x060a16, disc: 0xeef2ff, stars: 1,
     cloud: 0x55617d, cloudGlow: 0x0d1322
+  },
+  // Level 3's ending: the sun coming up in the east over the freed village, a rose and gold
+  // horizon, the last stars fading
+  dawn: {
+    sky: 0xe9b294, fogDensity: 0.0022,
+    light: 0xffc58a, lightIntensity: 1.7, direction: new THREE.Vector3(0.9, 0.2, -0.38).normalize(),
+    hemiSky: 0xffd8b8, hemiGround: 0x48503e, hemiIntensity: 0.75,
+    glow: 0xffa36e, upper: 0xa58fb8, zenith: 0x4f5f9c, disc: 0xfff0c8, stars: 0,
+    cloud: 0xf3d2c2, cloudGlow: 0x6f4e5c
   }
 };
+const _colorA = new THREE.Color();
+const _colorB = new THREE.Color();
 const DEFAULT_SHADOW_CENTRE = new THREE.Vector3(0, 0, 140); // Covers the beach and the jungle edge
 const DEFAULT_SHADOW_HALF_EXTENT = 170;
 const _forward = new THREE.Vector3();     // Scratchpads for the camera-following shadow
@@ -107,6 +118,8 @@ export class BeachEnvironment {
     this.shadowHalfExtent = shadowHalfExtent;
     this.shadowFollowsCamera = shadowFollowsCamera;
     this.sun = null;
+    this.hemi = null;
+    this._direction = this.look.direction.clone(); // Towards the sun or moon (moves in blendLook)
     this.terrain = null;
     this.ocean = null;
     this.sky = null;
@@ -152,6 +165,7 @@ export class BeachEnvironment {
     // 2. The sun (or moon) and a sky / ground fill
     const hemi = new THREE.HemisphereLight(look.hemiSky, look.hemiGround, look.hemiIntensity);
     this._addLight(hemi);
+    this.hemi = hemi;
 
     const sun = new THREE.DirectionalLight(look.light, look.lightIntensity);
     sun.position.copy(this.shadowCentre).addScaledVector(look.direction, 400);
@@ -171,7 +185,7 @@ export class BeachEnvironment {
     this.sun = sun;
 
     // 3. Calm sea around the island, lit to match the sky
-    this.ocean = new Ocean({ size: 2600, segments: 200, sunDirection: look.direction, waveScale: 0.3 });
+    this.ocean = new Ocean({ size: 2600, segments: 200, sunDirection: look.direction.clone(), waveScale: 0.3 });
     this.ocean.uniforms.uSkyColor.value.set(look.sky);
     this.ocean.uniforms.uSunColor.value.set(look.light);
     group.add(this.ocean.mesh);
@@ -240,7 +254,60 @@ export class BeachEnvironment {
 
   /** Unit vector towards the sun or moon (shared by the light, the sky and the sea's glint). */
   get sunDirection() {
-    return this.look.direction;
+    return this._direction;
+  }
+
+  /**
+   * Part of the way (t 0..1) from one time of day to another: sky, stars, fog, sun or moon,
+   * light, clouds and sea all move together (Level 3's dawn). Call as often as you like.
+   * @param {string} from - A look name ('night')
+   * @param {string} to - A look name ('dawn')
+   * @param {number} t
+   */
+  blendLook(from, to, t) {
+    const a = LOOKS[from];
+    const b = LOOKS[to];
+    if (!a || !b || !this.sky) return;
+    t = Math.min(1, Math.max(0, t));
+    const mix = (key, out) => out.copy(_colorA.setHex(a[key])).lerp(_colorB.setHex(b[key]), t);
+    const lerp = (key) => a[key] + (b[key] - a[key]) * t;
+
+    const scene = this.gameWorld.scene;
+    if (scene.background && scene.background.isColor) mix('sky', scene.background);
+    if (scene.fog) {
+      mix('sky', scene.fog.color);
+      scene.fog.density = lerp('fogDensity');
+    }
+    this._direction.copy(a.direction).lerp(b.direction, t).normalize();
+
+    const sky = this.sky.uniforms;
+    mix('sky', sky.uHorizonColor.value);
+    mix('glow', sky.uGlowColor.value);
+    mix('upper', sky.uUpperColor.value);
+    mix('zenith', sky.uZenithColor.value);
+    mix('disc', sky.uSunColor.value);
+    sky.uSunDirection.value.copy(this._direction);
+    sky.uStars.value = lerp('stars');
+
+    if (this.sun) {
+      mix('light', this.sun.color);
+      this.sun.intensity = lerp('lightIntensity');
+      this.sun.position.copy(this.sun.target.position).addScaledVector(this._direction, 400);
+    }
+    if (this.hemi) {
+      mix('hemiSky', this.hemi.color);
+      mix('hemiGround', this.hemi.groundColor);
+      this.hemi.intensity = lerp('hemiIntensity');
+    }
+    if (this.clouds && this.clouds.material) {
+      mix('cloud', this.clouds.material.color);
+      mix('cloudGlow', this.clouds.material.emissive);
+    }
+    if (this.ocean) {
+      mix('sky', this.ocean.uniforms.uSkyColor.value);
+      mix('light', this.ocean.uniforms.uSunColor.value);
+      this.ocean.uniforms.uSunDirection.value.copy(this._direction);
+    }
   }
 
   /**
@@ -265,7 +332,7 @@ export class BeachEnvironment {
     _centre.y = this.shadowCentre.y;
 
     // The shadow camera's own axes: it looks back down the light direction, with +y up
-    const toLight = this.look.direction;
+    const toLight = this._direction;
     _lightRight.crossVectors(_worldUp, toLight).normalize();
     _lightUp.crossVectors(toLight, _lightRight);
     const texel = (2 * this.shadowHalfExtent) / this.sun.shadow.mapSize.x;

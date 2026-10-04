@@ -46,6 +46,7 @@ export class AlienWarden extends AlienCombatant {
       initialState: 'dormant'
     });
     this.displayName = 'THE WARDEN';
+    this.isBoss = true; // Not part of waves, and never wanders off
     this.guardPoint = (guardPoint || position).clone();
     this.shielded = false;
     this.enraged = false;

@@ -269,6 +269,20 @@
         "postMaxDistance": 30
       },
       "revivePointRadius": 6,
+      "respawn": {
+        "respiteSeconds": 12,
+        "confusionRadius": 90,
+        "wanderDistance": 45
+      },
+      "shield": {
+        "health": 150,
+        "pickups": 8,
+        "pickupRadius": 2
+      },
+      "hostages": {
+        "holdSeconds": 2,
+        "radius": 2.6
+      },
       "victoryDelaySeconds": 3
     }
   },

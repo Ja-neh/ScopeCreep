@@ -61,6 +61,17 @@ export class AlienCombatant extends GroundCombatant {
   }
 
   /**
+   * Lost track of its enemies: forgets them and wanders off to patrol round `point`.
+   */
+  wanderOff(point) {
+    if (this.isDead) return;
+    this.perception.forget();
+    this.home.copy(point);
+    this.brain.change('investigate'); // Leave the current state cleanly...
+    this.brain.change('patrol');      // ...and amble off to the new patrol ground
+  }
+
+  /**
    * Order to push towards `point` (e.g. the beach) and hold there, fighting anything seen on the way.
    */
   assault(point) {

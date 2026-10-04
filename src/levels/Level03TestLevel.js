@@ -79,7 +79,10 @@ export class Level03TestLevel extends Level03 {
    * there was a fight already).
    */
   fightWarden() {
-    if (this.arena) this.arena.dispose();
+    if (this.arena && (this.arena.started || this.arena.defeated)) {
+      this.arena.dispose(); // A fresh Warden for another round
+      this.arena = null;
+    }
     if (this.dome.isUp) this.shutDownGenerators({ instant: true });
     if (this.doorSeal.isUp) this.doorSeal.collapse({ instant: true });
     const hall = this.village.hall;

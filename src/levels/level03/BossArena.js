@@ -16,8 +16,9 @@ const ADD_DISTANCE = 14;          // ...running in from the square, this far out
 /**
  * BossArena
  * The fight with the Warden in the village hall (Level 3).
- * - start(): the Warden wakes in front of its dais with its shield up, fed by two crystals on the
- *   back pillars. Shoot both crystals and the shield drops.
+ * - place(): the Warden stands, dormant, in front of its dais (from the start of the level).
+ * - start(): it wakes with its shield up, fed by two crystals on the back pillars. Shoot both
+ *   crystals and the shield drops.
  * - Below `enrageFraction` health it is enraged: the shield comes back, fed by two crystals on the
  *   front pillars, and `enrageAdds` troopers come in through the door.
  * - When it falls, `defeated` is set and onDefeated() is called.
@@ -46,17 +47,23 @@ export class BossArena {
     this.shieldDrops = 0; // Times the player has brought the shield down
   }
 
+  /** The Warden, dormant, in front of its dais, facing the door (once). */
+  place() {
+    if (this.warden) return this.warden;
+    const hall = this.hall;
+    const guard = new THREE.Vector3().copy(hall.dais).addScaledVector(hall.forward, GUARD_DISTANCE);
+    guard.y = hall.centre.y + 0.3;
+    this.warden = new AlienWarden(this.gameWorld, { position: guard, squad: this.level.squad, guardPoint: guard, cfg: this.cfg });
+    this.warden.yaw = Math.atan2(-hall.forward.x, -hall.forward.z); // Facing the door
+    this.level.squad.add(this.warden);
+    return this.warden;
+  }
+
   /** Wakes the Warden and starts the fight. */
   start() {
     if (this.started) return;
     this.started = true;
-    const hall = this.hall;
-    const guard = new THREE.Vector3().copy(hall.dais).addScaledVector(hall.forward, GUARD_DISTANCE);
-    guard.y = hall.centre.y + 0.3;
-
-    this.warden = new AlienWarden(this.gameWorld, { position: guard, squad: this.level.squad, guardPoint: guard, cfg: this.cfg });
-    this.warden.yaw = Math.atan2(-hall.forward.x, -hall.forward.z); // Facing the door
-    this.level.squad.add(this.warden);
+    this.place();
     this._raiseShield(FIRST_CRYSTALS);
     this.warden.awaken(this.level.player.position);
 

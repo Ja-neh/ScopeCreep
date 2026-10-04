@@ -14,6 +14,8 @@ const PILLAR_X = 5.5;
 const PILLAR_Z = [-8, 0, 8];
 const DAIS = { width: 10, height: 0.4, depth: 5 }; // Where the Warden waits, at the back
 const WINDOW_Z = [-9, 0, 9];
+const CAGE_X = 8.6;      // Hostage cages: between the pillars and the side walls...
+const CAGE_Z = [-4, 4];  // ...between the pillars along the hall
 
 const COLORS = {
   stone: 0x8f8778,
@@ -52,6 +54,7 @@ export class VillageHall {
     this.dais = new THREE.Vector3();       // Top centre of the dais
     this.pillars = [];                     // Base centre of each pillar: left row back to front, then the right row
     this.supplyPoint = new THREE.Vector3(); // Just inside the door, to one side (a supply crate)
+    this.cageSpots = [];                   // Floor points between the pillars and the side walls (hostage cages)
     this.forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)); // From the dais towards the door
     this.light = null;
     this._frame = null;
@@ -111,6 +114,9 @@ export class VillageHall {
     this.entrance.set(0, 0, halfD + 4).applyMatrix4(frame);
     this.dais.set(0, FLOOR + DAIS.height, daisZ).applyMatrix4(frame);
     this.supplyPoint.set(halfW - WALL - 2.5, 0, halfD - WALL - 2.5).applyMatrix4(frame);
+    for (const side of [-1, 1]) {
+      for (const z of CAGE_Z) this.cageSpots.push(new THREE.Vector3(side * CAGE_X, FLOOR, z).applyMatrix4(frame));
+    }
     this._daisDepthZ = daisZ;
 
     // The aliens' green glow fills the hall
