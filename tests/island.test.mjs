@@ -65,6 +65,31 @@ test('island is about 680 m long and 500 m wide', () => {
   assert.ok(2 * east >= 450, `width ${2 * east}`);
 });
 
+test('village layout (Level 3): the north grows to hold a village plateau six times the size; the beach is the same', () => {
+  const beach = new BeachEnvironment(world);
+  const big = new BeachEnvironment(world, { layout: 'village' });
+  assert.equal(big.layoutName, 'village');
+  const area = (v) => v.halfWidth * v.halfLength;
+  assert.ok(area(big.village) / area(beach.village) >= 6);
+  for (const [dx, dz] of [[0, 0], [0.9, 0], [-0.9, 0], [0, 0.9], [0, -0.9], [0.6, 0.6]]) {
+    const v = big.village;
+    assert.ok(Math.abs(big.heightAt(v.x + dx * v.halfWidth, v.z + dz * v.halfLength) - v.height) < 0.01, 'flat plateau');
+  }
+  assert.ok(big.inlandDistance(big.village.x, big.village.z - big.village.halfLength) > 60, 'land beyond the village');
+  assert.ok(big.inlandDistance(big.village.x + big.village.halfWidth, big.village.z) > 60, 'land beside the village');
+  // South of the island's middle nothing changes: same beach, hills and jungle path as Level 2
+  for (const z of [190, 120, 40, -40, -100]) {
+    for (const x of [-150, -60, 0, 60, 150]) {
+      assert.equal(big.heightAt(x, z), beach.heightAt(x, z), `ground at ${x}, ${z}`);
+    }
+  }
+  // The jungle path climbs up onto the village plateau at the gate
+  for (let z = -60; z > big.village.z + big.village.halfLength; z -= 10) {
+    const x = big.pathCentreX(z);
+    assert.ok(big.slopeAt(x, z) < 0.45, `the path is walkable at z ${z}`);
+  }
+});
+
 test('jungle path runs north from the beach', () => {
   for (const z of [160, 100, 40, -100]) {
     assert.ok(env.pathDistance(env.pathCentreX(z), z) < 1e-9);

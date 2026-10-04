@@ -102,6 +102,46 @@ test('squadmates keep their places around the player as the player walks inland'
   }
 });
 
+test('a squadmate cut off by a wall follows the player\'s trail through the gap, and runs to catch up when far behind', () => {
+  // A wall across the jungle path with a gap at its east end (the path is clear of trees)
+  const px = pathX(150);
+  const wallY = env.heightAt(px, 150);
+  const wall = world.physics.createStaticBox({ x: 6.5, y: 1.5, z: 0.3 }, { x: px - 5.5, y: wallY + 1.5, z: 150 });
+  try {
+    placePlayer(px - 1, 156);
+    const mate = addMate(px - 1, 160, 'Okafor');
+    run(0.5);
+    const end = at(px - 1, 143);
+    assert.equal(world.physics.isLineClear(mate.position, end), false, 'the wall stands between the squadmate and where the player is going');
+
+    // The player slips through the gap and stops on the far side
+    const route = [[px + 2.2, 156], [px + 2.2, 145], [end.x, end.z]];
+    let from = [px - 1, 156];
+    for (const to of route) {
+      const steps = Math.ceil(Math.hypot(to[0] - from[0], to[1] - from[1]));
+      for (let i = 1; i <= steps; i++) {
+        const x = from[0] + (to[0] - from[0]) * (i / steps);
+        const z = from[1] + (to[1] - from[1]) * (i / steps);
+        player.teleport(x, env.heightAt(x, z) + 0.05, z);
+        run(0.25);
+      }
+      from = to;
+    }
+    run(8);
+    assert.ok(mate.position.z < 149.5, `${mate.name} is still behind the wall (z ${mate.position.z.toFixed(1)})`);
+    assert.ok(flat(mate.position, player.position) < 8, `${mate.name} is ${flat(mate.position, player.position).toFixed(1)} m away`);
+  } finally {
+    world.physics.removeRigidBody(wall.rigidBody);
+  }
+
+  // Far behind (40 m): runs faster than a normal run to catch up
+  placePlayer(pathX(110), 110);
+  const straggler = addMate(pathX(150), 150, 'Reyes');
+  run(1.5);
+  const speed = Math.hypot(straggler.velocity.x, straggler.velocity.z);
+  assert.ok(speed > config.allies.squadMate.runSpeed + 1, `catching up at ${speed.toFixed(1)} m/s`);
+});
+
 test('a squadmate spots an alien in the open and shoots it dead', () => {
   placePlayer(pathX(185), 185);
   const mate = addMate(pathX(165), 165);

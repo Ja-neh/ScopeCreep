@@ -2,11 +2,10 @@ import { Vegetation } from '../../rendering/Vegetation.js';
 import { valueNoise2D, createRandom, smoothstep } from '../../rendering/Noise.js';
 
 const SEED = 4242;
-const SCATTER_BOUNDS = { minX: -290, maxX: 290, minZ: -530, maxZ: 230 }; // Covers the whole island
 const VILLAGE_MARGIN = 10;    // Extra open ground around Level 3's village plateau
 const BATTLEFIELD_MIN_Z = 30; // Full density south of here (Level 2's fight); thinner elsewhere
 const OUTSIDE_DENSITY = 0.35;
-const SHADOW_MIN_Z = 0;       // Props south of here cast shadows (the sun's shadow map covers z = -30..310)
+const SHADOW_MIN_Z = 0;       // By default props south of here cast shadows (Level 2's shadow map covers z = -30..310)
 // Scenery is drawn in map tiles: full detail nearby, low detail further out, nothing deep in the fog
 const SCENERY_TILE = 120;
 const SCENERY_LOD_DISTANCE = 170;
@@ -38,11 +37,15 @@ export class BeachCover {
    * @param {GameWorld} gameWorld
    * @param {BeachEnvironment} environment
    * @param {Array<{x: number, z: number, radius: number}>} [clearings] - Circles to leave open
+   * @param {Object} [options]
+   * @param {(x: number, z: number) => boolean} [options.castsShadow] - Which props cast shadows:
+   *   those inside the sun's shadow area (the battlefield). Defaults to Level 2's beach.
    */
-  constructor(gameWorld, environment, clearings = []) {
+  constructor(gameWorld, environment, clearings = [], { castsShadow = (x, z) => z >= SHADOW_MIN_Z } = {}) {
     this.gameWorld = gameWorld;
     this.environment = environment;
     this.clearings = clearings;
+    this.castsShadow = castsShadow;
 
     this.vegetation = [];
     this.bushes = [];
@@ -100,7 +103,7 @@ export class BeachCover {
     const far = { palms: [], trees: [], rocks: [], bushes: [] };
     for (const kind of Object.keys(placements)) {
       for (const placement of placements[kind]) {
-        (placement.z >= SHADOW_MIN_Z ? near : far)[kind].push(placement);
+        (this.castsShadow(placement.x, placement.z) ? near : far)[kind].push(placement);
       }
     }
     for (const [set, castShadows] of [[near, true], [far, false]]) {
@@ -203,7 +206,7 @@ export class BeachCover {
    * probability from the ground there, and `place` adds the prop (returning false to skip).
    */
   _scatter(spacing, random, chance, place) {
-    const { minX, maxX, minZ, maxZ } = SCATTER_BOUNDS;
+    const { minX, maxX, minZ, maxZ } = this.environment.scatterBounds; // The whole island
     for (let gx = minX; gx < maxX; gx += spacing) {
       for (let gz = minZ; gz < maxZ; gz += spacing) {
         const x = gx + random() * spacing;
@@ -224,8 +227,7 @@ export class BeachCover {
    * The ground at (x, z) as placement rules see it, or null where nothing may grow.
    */
   _describe(x, z) {
-    const village = this.environment.village;
-    if (Math.hypot(x - village.x, z - village.z) < village.radius + VILLAGE_MARGIN) return null;
+    if (this.environment.isInVillage(x, z, VILLAGE_MARGIN)) return null;
     for (const clearing of this.clearings) {
       if (Math.hypot(x - clearing.x, z - clearing.z) < clearing.radius) return null;
     }

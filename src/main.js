@@ -5,6 +5,8 @@ import { Level01JetTestLevel } from './levels/Level01JetTestLevel.js';
 import { TestLevel } from './levels/TestLevel.js';
 import { Level02 } from './levels/Level02.js';
 import { Level02TestLevel } from './levels/Level02TestLevel.js';
+import { Level03 } from './levels/Level03.js';
+import { Level03TestLevel } from './levels/Level03TestLevel.js';
 
 /**
  * Level Registry defining all available stages in ScopeCreep
@@ -34,6 +36,16 @@ const AVAILABLE_LEVELS = [
     id: 'level02_test',
     title: 'Level 2: Beach Test Level',
     create: (gw) => new Level02TestLevel(gw)
+  },
+  {
+    id: 'level03',
+    title: 'Level 3: The Village',
+    create: (gw) => new Level03(gw)
+  },
+  {
+    id: 'level03_test',
+    title: 'Level 3: Village Test Level',
+    create: (gw) => new Level03TestLevel(gw)
   },
   {
     id: 'testlevel',

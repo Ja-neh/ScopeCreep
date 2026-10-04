@@ -117,6 +117,31 @@ export class PhysicsWorld {
   }
 
   /**
+   * True if no fixed collider (walls, rocks, the ground) lies on the straight line from `from`
+   * to `to`, both raised by `height`. Characters and other moving bodies are ignored, so this
+   * answers "could I walk straight there?".
+   * @param {{x: number, y: number, z: number}} from - Feet position
+   * @param {{x: number, y: number, z: number}} to - Feet position
+   * @param {number} [height=0.9] - Height of the line above both points
+   */
+  isLineClear(from, to, height = 0.9) {
+    if (!this.world) return true;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dz = to.z - from.z;
+    const length = Math.hypot(dx, dy, dz);
+    if (length < 1e-3) return true;
+    const ray = this._lineRay || (this._lineRay = new this.RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }));
+    ray.origin.x = from.x;
+    ray.origin.y = from.y + height;
+    ray.origin.z = from.z;
+    ray.dir.x = dx / length;
+    ray.dir.y = dy / length;
+    ray.dir.z = dz / length;
+    return !this.world.castRay(ray, length, true, this.RAPIER.QueryFilterFlags.ONLY_FIXED);
+  }
+
+  /**
    * Casts a ray and returns the impact normal along with the hit info.
    */
   castRayAndGetNormal(ray, maxToi = 100, solid = true, flags, groups, excludeCollider) {

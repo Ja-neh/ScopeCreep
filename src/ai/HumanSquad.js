@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { WeaponEffects } from '../weapons/WeaponEffects.js';
 import config from '../config.json';
 
@@ -15,6 +16,10 @@ const HEADING_RATE = 2;      // How quickly the formation turns (1/s)
 const POST_REFRESH_DISTANCE = 0.5; // Recompute a formation place once the leader moves this far...
 const POST_REFRESH_TURN = 0.05;    // ...or the formation turns this much (radians)
 const FALLBACK_SCALES = [1, 0.5]; // Try the full formation place, then one half as far out
+const TRAIL_SPACING = 2;     // The leader's path is recorded every 2 m...
+const TRAIL_LENGTH = 100;    // ...keeping the last 200 m of it
+const TRAIL_JUMP = 12;       // A longer jump is a teleport (a respawn): the trail starts again
+const TRAIL_LOOKAHEAD = 14;  // How many trail points ahead a squadmate looks for a straight way
 const NO_ENEMIES = [];
 
 /**
@@ -23,6 +28,8 @@ const NO_ENEMIES = [];
  * with the GameWorld, tells them who the enemies are (another squad's members), gives each a
  * place in a formation that turns with the leader's travel direction, shares cover, draws their
  * tracers, reports their gunshots, and clears away the fallen. Updated by its level in Phase 5.
+ * It records the leader's path (the trail): a squadmate with a wall between it and its place
+ * follows the trail around it (routeTowards).
  *
  * Downed and revive: a member whose health reaches 0 (the player or a squadmate) is downed,
  * not dead. The squad sends the nearest free squadmate to revive them (holding still beside them
@@ -74,6 +81,7 @@ export class HumanSquad {
     this.enemySquad = null; // Set by the level: the squad whose members we shoot at
 
     this.heading = leader ? leader.yaw : 0;
+    this.trail = []; // The leader's recent path, oldest first
     this.effects = new WeaponEffects(gameWorld.effectsGroup, { flashLight: false });
     this._followers = 0;
   }
@@ -203,6 +211,36 @@ export class HumanSquad {
     return out.set(p.x + backX * 1.5, p.y, p.z + backZ * 1.5);
   }
 
+  /**
+   * Where `mate` should head to reach `post` when something solid (a house, a wall) is in the
+   * way: the furthest point a little way along the leader's trail it can walk straight to,
+   * or else the nearest trail point.
+   * @returns {boolean} False if the way to the post is clear (head straight there); true if
+   *   `out` holds a waypoint on the trail
+   */
+  routeTowards(mate, post, out) {
+    const physics = this.gameWorld.physics;
+    if (!physics || this.trail.length === 0 || physics.isLineClear(mate.position, post)) return false;
+    let nearest = 0;
+    let nearestDistance = Infinity;
+    for (let i = 0; i < this.trail.length; i++) {
+      const point = this.trail[i];
+      const distance = Math.hypot(point.x - mate.position.x, point.z - mate.position.z);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = i;
+      }
+    }
+    for (let i = Math.min(this.trail.length - 1, nearest + TRAIL_LOOKAHEAD); i > nearest; i--) {
+      if (physics.isLineClear(mate.position, this.trail[i])) {
+        out.copy(this.trail[i]);
+        return true;
+      }
+    }
+    out.copy(this.trail[nearest]);
+    return true;
+  }
+
   /** The yaw `mate` watches while standing in formation. */
   watchYaw(mate) {
     return this.heading + FORMATION[mate.slotIndex % FORMATION.length].watch;
@@ -240,6 +278,7 @@ export class HumanSquad {
         this.heading += diff * Math.min(1, HEADING_RATE * delta);
       }
     }
+    this._recordTrail();
 
     this._updateDowned(delta);
     this._sendRevivers();
@@ -255,6 +294,21 @@ export class HumanSquad {
         this.gameWorld.removeEntity(mate);
       }
     }
+  }
+
+  /** Records the leader's path, so squadmates who lose sight of their place can follow it. */
+  _recordTrail() {
+    const leader = this.leader;
+    if (!leader || !leader.position || (leader.health && leader.health.isDead)) return;
+    const p = leader.position;
+    const last = this.trail[this.trail.length - 1];
+    if (last) {
+      const distance = Math.hypot(p.x - last.x, p.z - last.z);
+      if (distance < TRAIL_SPACING) return;
+      if (distance > TRAIL_JUMP) this.trail.length = 0;
+    }
+    const point = this.trail.length >= TRAIL_LENGTH ? this.trail.shift() : new THREE.Vector3();
+    this.trail.push(point.copy(p));
   }
 
   /**

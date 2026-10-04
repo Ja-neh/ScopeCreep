@@ -4,8 +4,9 @@ import skyFrag from './shaders/sky.frag.glsl';
 
 /**
  * SkyDome
- * A gradient sky with the sun in it, drawn behind everything and always centred on the camera
- * (the vertex shader drops the camera's position), so it needs no per-frame update. The sun's
+ * A gradient sky with the sun (or moon) in it, and stars at night, drawn behind everything and
+ * always centred on the camera (the vertex shader drops the camera's position), so it needs no
+ * per-frame update. The sun's
  * disc sits along `sunDirection`, which should match the scene's sun light and the sea's glint.
  */
 export class SkyDome {
@@ -17,15 +18,17 @@ export class SkyDome {
    * @param {number} options.upperColor
    * @param {number} options.zenithColor
    * @param {number} options.sunColor
+   * @param {number} [options.stars=0] - 0..1: a night sky full of stars
    */
-  constructor({ sunDirection, horizonColor, glowColor, upperColor, zenithColor, sunColor }) {
+  constructor({ sunDirection, horizonColor, glowColor, upperColor, zenithColor, sunColor, stars = 0 }) {
     this.uniforms = {
       uSunDirection: { value: sunDirection.clone().normalize() },
       uHorizonColor: { value: new THREE.Color(horizonColor) },
       uGlowColor: { value: new THREE.Color(glowColor) },
       uUpperColor: { value: new THREE.Color(upperColor) },
       uZenithColor: { value: new THREE.Color(zenithColor) },
-      uSunColor: { value: new THREE.Color(sunColor) }
+      uSunColor: { value: new THREE.Color(sunColor) },
+      uStars: { value: stars }
     };
 
     this.geometry = new THREE.SphereGeometry(1, 48, 24);

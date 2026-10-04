@@ -174,6 +174,8 @@
       "maxHealth": 150,
       "walkSpeed": 3.5,
       "runSpeed": 6.0,
+      "catchUpSpeed": 10.0,
+      "catchUpDistance": 20,
       "sightRange": 55,
       "concealedSightRange": 8,
       "awarenessRadius": 8,
@@ -204,6 +206,9 @@
         { "trooper": 22, "brute": 2, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
         { "trooper": 24, "brute": 4, "lanes": ["centre", "west", "east", "farWest", "farEast"] }
       ]
+    },
+    "level03": {
+      "squareReachRadius": 20
     }
   },
   "testing": {

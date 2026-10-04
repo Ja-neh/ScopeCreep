@@ -5,15 +5,26 @@ import { SkyDome } from '../../rendering/SkyDome.js';
 import { Clouds } from '../../rendering/Clouds.js';
 import { valueNoise2D, fbm2D, smoothstep } from '../../rendering/Noise.js';
 
-// Island layout (meters). A long oval running north from the landing beach: Level 2 is fought
-// on the south beach (waterline at z = 200, where the ship anchors) and Level 3's village
-// sits on a plateau near the far northern end.
-const ISLAND_CENTRE_Z = -150;
-const ISLAND_HALF_WIDTH = 260;   // Along X
-const ISLAND_HALF_LENGTH = 350;  // Along Z: the south waterline is at ISLAND_CENTRE_Z + 350 = 200
-const TERRAIN_WIDTH = 680;       // Covers x = -340..340
-const TERRAIN_DEPTH = 920;       // Covers z = -620..300
-const TERRAIN_CENTRE_Z = -160;
+// Island layouts (meters). The island runs north from the landing beach (south waterline at
+// z = 200, where the ship anchors) to the village at the far end. Each level builds its own copy:
+// - beach (Level 2): an oval, with a small village plateau at the far end nobody visits
+// - village (Level 3): the northern half grows wider and longer to hold the big village
+//   (an oval plateau 400 m across and 490 m long); the south is the same
+// halfWidth / halfLength describe the southern half; northHalfWidth / northHalfLength the northern.
+const LAYOUTS = {
+  beach: {
+    centreZ: -150, halfWidth: 260, halfLength: 350, northHalfWidth: 260, northHalfLength: 350,
+    terrain: { width: 680, depth: 920, centreZ: -160 },       // x -340..340, z -620..300
+    scatter: { minX: -290, maxX: 290, minZ: -530, maxZ: 230 }, // Where trees and rocks may grow
+    village: { x: 0, z: -340, halfWidth: 90, halfLength: 90, height: 12 }
+  },
+  village: {
+    centreZ: -150, halfWidth: 260, halfLength: 350, northHalfWidth: 350, northHalfLength: 640,
+    terrain: { width: 800, depth: 1040, centreZ: -320 },      // x -400..400, z -840..200
+    scatter: { minX: -370, maxX: 370, minZ: -800, maxZ: 200 },
+    village: { x: 0, z: -400, halfWidth: 200, halfLength: 245, height: 12 }
+  }
+};
 const TERRAIN_CELL = 4;
 // The grid is shifted off round numbers: a perfectly vertical ray through an exact grid corner can
 // slip between Rapier's heightfield triangles, and the round coordinates we use for spawns and
@@ -21,22 +32,39 @@ const TERRAIN_CELL = 4;
 const TERRAIN_GRID_SHIFT = 0.173;
 const BEACH_WIDTH = 40;          // Sand band between the waterline and the grass
 const HILLS_RISE = 70;           // Distance over which the ground climbs from the beach into the hills
-const VILLAGE = { x: 0, z: -340, radius: 90, height: 12 }; // Flat ground for Level 3's village
-const VILLAGE_BLEND = 45;        // The hills ease down to the village flat over this width
+const VILLAGE_BLEND = 45;        // The hills ease down to the village plateau over this width
 const SEED = 7;
 
-// Sunset look: the sun low in the west (to the left looking inland, and in view from the sea
-// in the opening), a warm glow along that side of the sky, dusky blue overhead
-const SKY_COLOR = 0xeaa57e;        // Also the haze at the horizon and the fog
-const FOG_DENSITY = 0.0026;
-const SUN_COLOR = 0xff9a5a;
-const SUN_DIRECTION = new THREE.Vector3(-0.96, 0.24, -0.12).normalize(); // About 14 degrees up
-const SKY_GLOW_COLOR = 0xff9a5c;
-const SKY_UPPER_COLOR = 0xc58aa0;
-const SKY_ZENITH_COLOR = 0x4a4f86;
-const SUN_DISC_COLOR = 0xffe3b0;
-const SHADOW_CENTRE = new THREE.Vector3(0, 0, 140); // Covers the beach and the jungle edge
-const SHADOW_HALF_EXTENT = 170;
+// Times of day. `sky` is also the haze at the horizon and the fog colour; `light` is the sun
+// (or the moon) and `direction` points towards it.
+const LOOKS = {
+  // Level 2: the sun low in the west (to the left looking inland, and in view from the sea in
+  // the opening), a warm glow along that side of the sky, dusky blue overhead
+  sunset: {
+    sky: 0xeaa57e, fogDensity: 0.0026,
+    light: 0xff9a5a, lightIntensity: 2.0, direction: new THREE.Vector3(-0.96, 0.24, -0.12).normalize(),
+    hemiSky: 0xffc59a, hemiGround: 0x3a4a3a, hemiIntensity: 0.6,
+    glow: 0xff9a5c, upper: 0xc58aa0, zenith: 0x4a4f86, disc: 0xffe3b0, stars: 0,
+    cloud: 0xf6dccf, cloudGlow: 0x6e4f63
+  },
+  // Level 3: moonlight from high in the south-east, behind the squad as it heads north through
+  // the village (so the house fronts and the hall face the light), a deep blue sky full of
+  // stars, dark haze
+  night: {
+    sky: 0x1c2740, fogDensity: 0.0034,
+    light: 0xa9bde0, lightIntensity: 1.0, direction: new THREE.Vector3(0.4, 0.7, 0.6).normalize(),
+    hemiSky: 0x4a5d88, hemiGround: 0x1a2018, hemiIntensity: 0.8,
+    glow: 0x2c3d63, upper: 0x162139, zenith: 0x060a16, disc: 0xeef2ff, stars: 1,
+    cloud: 0x55617d, cloudGlow: 0x0d1322
+  }
+};
+const DEFAULT_SHADOW_CENTRE = new THREE.Vector3(0, 0, 140); // Covers the beach and the jungle edge
+const DEFAULT_SHADOW_HALF_EXTENT = 170;
+const _forward = new THREE.Vector3();     // Scratchpads for the camera-following shadow
+const _centre = new THREE.Vector3();
+const _lightRight = new THREE.Vector3();
+const _lightUp = new THREE.Vector3();
+const _worldUp = new THREE.Vector3(0, 1, 0);
 
 // Terrain palette
 const SEABED = new THREE.Color(0xb59c6c);
@@ -56,15 +84,39 @@ const ROCK = new THREE.Color(0x7b7266);
  * Shared by Level02 and Level02TestLevel; `village` tells Level 3 where its houses go.
  */
 export class BeachEnvironment {
-  constructor(gameWorld) {
+  /**
+   * @param {GameWorld} gameWorld
+   * @param {Object} [options]
+   * @param {'sunset'|'night'} [options.look='sunset'] - Time of day
+   * @param {'beach'|'village'} [options.layout='beach'] - Island shape (see LAYOUTS)
+   * @param {THREE.Vector3} [options.shadowCentre] - Middle of the area that gets shadows (the fight)
+   * @param {number} [options.shadowHalfExtent] - Half the width of that area (meters)
+   * @param {boolean} [options.shadowFollowsCamera=false] - Move the shadow area with the camera
+   *   (for a big place: sharper shadows where you are, and less to draw into the shadow map)
+   */
+  constructor(gameWorld, {
+    look = 'sunset', layout = 'beach', shadowCentre = DEFAULT_SHADOW_CENTRE,
+    shadowHalfExtent = DEFAULT_SHADOW_HALF_EXTENT, shadowFollowsCamera = false
+  } = {}) {
     this.gameWorld = gameWorld;
+    this.layout = LAYOUTS[layout] || LAYOUTS.beach;
+    this.layoutName = LAYOUTS[layout] ? layout : 'beach';
+    this.look = LOOKS[look] || LOOKS.sunset;
+    this.lookName = LOOKS[look] ? look : 'sunset';
+    this.shadowCentre = shadowCentre.clone();
+    this.shadowHalfExtent = shadowHalfExtent;
+    this.shadowFollowsCamera = shadowFollowsCamera;
+    this.sun = null;
     this.terrain = null;
     this.ocean = null;
     this.sky = null;
     this.clouds = null;
     this.lights = [];
     this.spawnPoints = {};
-    this.village = { ...VILLAGE }; // Where Level 3's houses go
+    // Where Level 3's houses go: an oval plateau (radius: its smaller half-size)
+    const v = this.layout.village;
+    this.village = { ...v, radius: Math.min(v.halfWidth, v.halfLength) };
+    this.scatterBounds = { ...this.layout.scatter };
 
     this._previousBackground = null;
     this._previousFog = null;
@@ -78,55 +130,59 @@ export class BeachEnvironment {
     const scene = this.gameWorld.scene;
     const group = this.gameWorld.environmentGroup;
 
-    // 1. Sunset sky, clouds and fog
+    // 1. Sky (with the sun or the moon, and stars at night), clouds and fog
+    const look = this.look;
     this._previousBackground = scene.background;
     this._previousFog = scene.fog;
-    scene.background = new THREE.Color(SKY_COLOR);
-    scene.fog = new THREE.FogExp2(SKY_COLOR, FOG_DENSITY);
+    scene.background = new THREE.Color(look.sky);
+    scene.fog = new THREE.FogExp2(look.sky, look.fogDensity);
     this.sky = new SkyDome({
-      sunDirection: SUN_DIRECTION,
-      horizonColor: SKY_COLOR,
-      glowColor: SKY_GLOW_COLOR,
-      upperColor: SKY_UPPER_COLOR,
-      zenithColor: SKY_ZENITH_COLOR,
-      sunColor: SUN_DISC_COLOR
+      sunDirection: look.direction,
+      horizonColor: look.sky,
+      glowColor: look.glow,
+      upperColor: look.upper,
+      zenithColor: look.zenith,
+      sunColor: look.disc,
+      stars: look.stars
     });
     group.add(this.sky.mesh);
-    this.clouds = new Clouds();
+    this.clouds = new Clouds({ color: look.cloud, glow: look.cloudGlow });
     group.add(this.clouds.mesh);
 
-    // 2. Low warm sun and a warm-sky / dark-ground fill
-    const hemi = new THREE.HemisphereLight(0xffc59a, 0x3a4a3a, 0.6);
+    // 2. The sun (or moon) and a sky / ground fill
+    const hemi = new THREE.HemisphereLight(look.hemiSky, look.hemiGround, look.hemiIntensity);
     this._addLight(hemi);
 
-    const sun = new THREE.DirectionalLight(SUN_COLOR, 2.0);
-    sun.position.copy(SHADOW_CENTRE).addScaledVector(SUN_DIRECTION, 400);
-    sun.target.position.copy(SHADOW_CENTRE);
+    const sun = new THREE.DirectionalLight(look.light, look.lightIntensity);
+    sun.position.copy(this.shadowCentre).addScaledVector(look.direction, 400);
+    sun.target.position.copy(this.shadowCentre);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.near = 1;
     sun.shadow.camera.far = 900;
-    sun.shadow.camera.left = -SHADOW_HALF_EXTENT;
-    sun.shadow.camera.right = SHADOW_HALF_EXTENT;
-    sun.shadow.camera.top = SHADOW_HALF_EXTENT;
-    sun.shadow.camera.bottom = -SHADOW_HALF_EXTENT;
+    sun.shadow.camera.left = -this.shadowHalfExtent;
+    sun.shadow.camera.right = this.shadowHalfExtent;
+    sun.shadow.camera.top = this.shadowHalfExtent;
+    sun.shadow.camera.bottom = -this.shadowHalfExtent;
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.03;
     this._addLight(sun);
     this._addLight(sun.target);
+    this.sun = sun;
 
-    // 3. Calm sea around the island, lit to match the dusk sky
-    this.ocean = new Ocean({ size: 2600, segments: 200, sunDirection: SUN_DIRECTION, waveScale: 0.3 });
-    this.ocean.uniforms.uSkyColor.value.set(SKY_COLOR);
-    this.ocean.uniforms.uSunColor.value.set(SUN_COLOR);
+    // 3. Calm sea around the island, lit to match the sky
+    this.ocean = new Ocean({ size: 2600, segments: 200, sunDirection: look.direction, waveScale: 0.3 });
+    this.ocean.uniforms.uSkyColor.value.set(look.sky);
+    this.ocean.uniforms.uSunColor.value.set(look.light);
     group.add(this.ocean.mesh);
 
     // 4. Terrain mesh and its matching heightfield collider
+    const terrain = this.layout.terrain;
     this.terrain = new Terrain({
-      width: TERRAIN_WIDTH,
-      depth: TERRAIN_DEPTH,
+      width: terrain.width,
+      depth: terrain.depth,
       cellSize: TERRAIN_CELL,
-      center: { x: TERRAIN_GRID_SHIFT, z: TERRAIN_CENTRE_Z + TERRAIN_GRID_SHIFT },
+      center: { x: TERRAIN_GRID_SHIFT, z: terrain.centreZ + TERRAIN_GRID_SHIFT },
       heightAt: (x, z) => this._islandHeight(x, z),
       colorAt: (x, z, h, slope, out) => this._islandColor(x, z, h, slope, out)
     });
@@ -148,7 +204,29 @@ export class BeachEnvironment {
    * Meters inland from the waterline at (x, z); negative out at sea.
    */
   inlandDistance(x, z) {
-    return this._shoreRadius(x, z) - Math.hypot(x, z - ISLAND_CENTRE_Z);
+    return this._shoreRadius(x, z) - Math.hypot(x, z - this.layout.centreZ);
+  }
+
+  /**
+   * True if (x, z) is on the village plateau (grown by `margin` meters all round).
+   */
+  isInVillage(x, z, margin = 0) {
+    const v = this.village;
+    const u = (x - v.x) / (v.halfWidth + margin);
+    const w = (z - v.z) / (v.halfLength + margin);
+    return u * u + w * w < 1;
+  }
+
+  /**
+   * Meters outside the village plateau's edge (negative inside), measured towards its centre.
+   */
+  distanceOutsideVillage(x, z) {
+    const v = this.village;
+    const dx = x - v.x;
+    const dz = z - v.z;
+    const scaled = Math.hypot(dx / v.halfWidth, dz / v.halfLength);
+    if (scaled <= 1) return -1;
+    return Math.hypot(dx, dz) * (1 - 1 / scaled);
   }
 
   /**
@@ -160,9 +238,9 @@ export class BeachEnvironment {
     return 1 - 1 / Math.sqrt(1 + dx * dx + dz * dz);
   }
 
-  /** Unit vector towards the sun (shared by the light, the sky and the sea's glint). */
+  /** Unit vector towards the sun or moon (shared by the light, the sky and the sea's glint). */
   get sunDirection() {
-    return SUN_DIRECTION;
+    return this.look.direction;
   }
 
   /**
@@ -170,10 +248,34 @@ export class BeachEnvironment {
    */
   update(delta) {
     if (this.ocean) this.ocean.update(delta);
-    if (this.clouds) {
-      const camera = this.gameWorld.getActiveCamera ? this.gameWorld.getActiveCamera() : this.gameWorld.camera;
-      this.clouds.update(delta, camera ? camera.position : null);
-    }
+    const camera = this.gameWorld.getActiveCamera ? this.gameWorld.getActiveCamera() : this.gameWorld.camera;
+    if (this.clouds) this.clouds.update(delta, camera ? camera.position : null);
+    if (this.shadowFollowsCamera && this.sun && camera) this._followShadow(camera);
+  }
+
+  /**
+   * Keeps the shadow area on what the camera sees (centred a little ahead of it), snapped to
+   * whole shadow-map texels so shadow edges do not shimmer as it moves.
+   */
+  _followShadow(camera) {
+    camera.getWorldDirection(_forward);
+    _forward.y = 0;
+    if (_forward.lengthSq() > 1e-6) _forward.normalize();
+    _centre.copy(camera.position).addScaledVector(_forward, this.shadowHalfExtent * 0.5);
+    _centre.y = this.shadowCentre.y;
+
+    // The shadow camera's own axes: it looks back down the light direction, with +y up
+    const toLight = this.look.direction;
+    _lightRight.crossVectors(_worldUp, toLight).normalize();
+    _lightUp.crossVectors(toLight, _lightRight);
+    const texel = (2 * this.shadowHalfExtent) / this.sun.shadow.mapSize.x;
+    const u = Math.round(_centre.dot(_lightRight) / texel) * texel;
+    const v = Math.round(_centre.dot(_lightUp) / texel) * texel;
+    const w = _centre.dot(toLight);
+    _centre.copy(_lightRight).multiplyScalar(u).addScaledVector(_lightUp, v).addScaledVector(toLight, w);
+
+    this.sun.target.position.copy(_centre);
+    this.sun.position.copy(_centre).addScaledVector(toLight, 400);
   }
 
   _pointOnGround(x, z) {
@@ -186,15 +288,20 @@ export class BeachEnvironment {
   }
 
   /**
-   * Distance from the island centre to the waterline in the direction of (x, z): an oval,
-   * with a wobbling coast everywhere except the landing beach (towards +Z), which stays a smooth arc.
+   * Distance from the island centre to the waterline in the direction of (x, z): an oval (wider
+   * and longer in the north for the village layout), with a wobbling coast everywhere except the
+   * landing beach (towards +Z), which stays a smooth arc.
    */
   _shoreRadius(x, z) {
-    const theta = Math.atan2(x, z - ISLAND_CENTRE_Z);
+    const layout = this.layout;
+    const theta = Math.atan2(x, z - layout.centreZ);
     const sin = Math.sin(theta);
     const cos = Math.cos(theta);
-    const oval = (ISLAND_HALF_WIDTH * ISLAND_HALF_LENGTH) /
-      Math.sqrt((ISLAND_HALF_LENGTH * sin) ** 2 + (ISLAND_HALF_WIDTH * cos) ** 2);
+    const north = smoothstep(Math.PI / 2 - 0.2, Math.PI / 2 + 0.6, Math.abs(theta));
+    const halfWidth = layout.halfWidth + (layout.northHalfWidth - layout.halfWidth) * north;
+    const halfLength = cos < 0 ? layout.northHalfLength : layout.halfLength;
+    const oval = (halfWidth * halfLength) /
+      Math.sqrt((halfLength * sin) ** 2 + (halfWidth * cos) ** 2);
     const wobble = Math.sin(3 * theta + 0.7) * 14 + Math.sin(7 * theta + 2.1) * 7 + Math.sin(11 * theta + 1.3) * 3;
     return oval + wobble * smoothstep(0.35, 1.0, Math.abs(theta));
   }
@@ -230,9 +337,8 @@ export class BeachEnvironment {
     const height = beach + rise * hills;
 
     // Village plateau at the far end (Level 3)
-    const fromVillage = Math.hypot(x - VILLAGE.x, z - VILLAGE.z);
-    const plateau = 1 - smoothstep(VILLAGE.radius, VILLAGE.radius + VILLAGE_BLEND, fromVillage);
-    return height + (VILLAGE.height - height) * plateau;
+    const plateau = 1 - smoothstep(0, VILLAGE_BLEND, this.distanceOutsideVillage(x, z));
+    return height + (this.village.height - height) * plateau;
   }
 
   _islandColor(x, z, height, slope, out) {

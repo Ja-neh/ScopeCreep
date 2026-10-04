@@ -9,16 +9,18 @@ Run it before every commit. If a test fails, either your change broke something 
 | File | Guards |
 | --- | --- |
 | `terrain.test.mjs` | Terrain mesh and heightfield collider describe the same ground |
-| `island.test.mjs` | Island layout: landing beach, sea depth under the ship, village plateau at the far end, size |
+| `island.test.mjs` | Island layout: landing beach, sea depth under the ship, village plateau at the far end, size; the Level 3 layout (6x the plateau, same beach) |
 | `landingZone.test.mjs` | Walking off the ship to the beach, no hopping downhill, parked helicopters |
 | `cover.test.mjs` | Tree, rock and bush placement rules, rock cover, triangle budget, scenery tiles (low detail far away, nothing in the fog), hiding in bushes, AI cover spots |
 | `weapons.test.mjs` | Machine gun, reload, knife and backstab, quick knife, aim zoom, cleanup |
 | `aliens.test.mjs` | Trooper sight, damage, concealment, hearing, call-outs, no friendly fire, death |
 | `brute.test.mjs` | Brute charge and slam, outrunning it, double damage to its back |
+| `village.test.mjs` | Level 3 village at night: moon and stars, 6x the size with hundreds of houses on the plateau, closed, walk-in and ruined houses with no overlaps, landed ships you can walk under, walking from the path up the avenue into the hall, solid walls and walk-in houses, mesh and light budgets, teardown |
+| `level03.test.mjs` | Level 3 so far: night start below the gate with the crew, no jungle inside the village, up the avenue to the square with the crew keeping up, the crew following round a street corner, the sandbox level, clean teardown |
 | `waveDirector.test.mjs` | Wave order, lanes, spawn pacing, pauses between waves, completion |
 | `renderQuality.test.mjs` | Graphics settings: the player's choice is applied and remembered, Auto resolution, the recommendation (from the graphics card, then the measured frame rate), software renderers start light |
 | `models.test.mjs` | Character models stay cheap to draw (merged parts), keep their colours and glow, and free everything on dispose |
-| `squad.test.mjs` | AI squadmates: formation around the player, shooting aliens, no friendly fire, being hunted and fighting back, reviving each other and the player, bleeding out |
+| `squad.test.mjs` | AI squadmates: formation around the player, following the player's trail round a wall and catching up, shooting aliens, no friendly fire, being hunted and fighting back, reviving each other and the player, bleeding out |
 | `landing.test.mjs` | Level 2 opening: camera sweep and skip, crew walking off, helicopters clearing the ship and landing, pilots, starting view, going down during the opening, supply crate (ammo and health) |
 | `level02.test.mjs` | Level 2 end to end: landing, three waves, objective and victory, the player downed and revived, bleeding out, reviving a squadmate with [E], defeat and retry, the sandbox level (revive, respawn, F4 squad toggle), wave size and spread, the alive cap, the controls card, clean teardown |
 | `uiOverlay.test.mjs` | HUD layers never swallow the clicks the game needs to lock the mouse |
