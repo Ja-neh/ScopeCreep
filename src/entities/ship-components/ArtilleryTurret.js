@@ -29,6 +29,9 @@ export class ArtilleryTurret extends BaseStation {
     this.turretTitle = options.title || 'MAIN ARTILLERY TURRET';
     this.promptText = options.promptText || 'OPERATE MAIN ARTILLERY GUN';
     this.accentColor = '#e76f51';
+    this.battleship = options.battleship || null;
+    this.isAI = options.isAI || false;
+    this._faction = options.faction || null;
 
     // Turret orientation angles
     this.yaw = 0;   // Left/Right rotation relative to ship heading
@@ -50,11 +53,14 @@ export class ArtilleryTurret extends BaseStation {
     // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
     this._muzzleWorldPos = new THREE.Vector3();
     this._barrelWorldDir = new THREE.Vector3();
+    this._targetLocalPos = new THREE.Vector3();
+    this._turretLocalPos = new THREE.Vector3();
 
     // Rate of fire (heavy naval cannon, slow reload)
     const artilleryCfg = config.turrets.artillery;
     this.fireCooldown = 0;
-    this.fireRate = artilleryCfg.defaultReloadCadence; // seconds between shots
+    this.fireRate = options.reloadCadence ?? artilleryCfg.defaultReloadCadence; // seconds between shots
+    this.damage = options.damage !== undefined ? options.damage : config.projectiles.artillery.damage;
 
     // Distance from the pitch-group pivot to the muzzle tip along the barrel axis
     this.barrelLength = 13.5;
@@ -73,6 +79,9 @@ export class ArtilleryTurret extends BaseStation {
     // 1. Build the station detection field
     this._createMesh();
 
+    if (!this.yawGroup) this.yawGroup = this.mesh;
+    if (!this.pitchGroup) this.pitchGroup = this.mesh;
+
     // 2. Dedicated Aiming Camera
     this._createCamera();
 
@@ -81,11 +90,19 @@ export class ArtilleryTurret extends BaseStation {
     }
   }
 
+  get faction() {
+    return this._faction || this.battleship?.faction || 'humans';
+  }
+
+  set faction(val) {
+    this._faction = val;
+  }
+
   attachTurretNodes(turretMesh, barrelMesh) {
     this.turretMesh = turretMesh;
     this.barrelMesh = barrelMesh;
-    this.yawGroup = turretMesh;
-    this.pitchGroup = barrelMesh;
+    this.yawGroup = turretMesh || this.mesh;
+    this.pitchGroup = barrelMesh || this.mesh;
     if (this.turretMesh) this.turretMesh.userData.entity = this;
     if (this.barrelMesh) this.barrelMesh.userData.entity = this;
 
@@ -115,6 +132,9 @@ export class ArtilleryTurret extends BaseStation {
     this.detectFieldGroup = this.createDetectField({ radius: this.detectionRadius, color: 0xe76f51 });
     this.detectFieldGroup.position.set(0, 0.1, 0.0);
     this.detectFieldGroup.userData = { noCollision: true };
+    if (this.isAI) {
+      this.detectFieldGroup.visible = false;
+    }
     this.mesh.add(this.detectFieldGroup);
   }
 
@@ -189,6 +209,7 @@ export class ArtilleryTurret extends BaseStation {
     pool.fireArtillery({
       origin: this._muzzleWorldPos,
       direction: this._barrelWorldDir,
+      damage: this.damage,
       source: this
     });
 
@@ -231,6 +252,95 @@ export class ArtilleryTurret extends BaseStation {
   }
 
   /**
+   * AI aiming routine: computes relative azimuth (yaw) and ballistic elevation pitch
+   * towards a world-space target position, smoothly slewing the gun mounts.
+   * @param {THREE.Vector3} targetWorldPos
+   * @param {number} delta
+   * @param {number} turnSpeed - Yaw traversal speed (rad/s)
+   * @param {number} elevationSpeed - Pitch elevation speed (rad/s)
+   * @returns {{ onTarget: boolean, angleDiff: number }}
+   */
+  aimTowards(targetWorldPos, delta, turnSpeed = 0.5, elevationSpeed = 0.3) {
+    if (!this.yawGroup || !this.pitchGroup || this.isDestroyed) {
+      return { onTarget: false, angleDiff: Math.PI };
+    }
+
+    const shipMesh = this.battleship?.mesh || this.mesh;
+    if (!shipMesh) return { onTarget: false, angleDiff: Math.PI };
+
+    // Get turret world position and transform into vessel hull coordinates
+    this.yawGroup.getWorldPosition(this._turretLocalPos);
+    shipMesh.worldToLocal(this._turretLocalPos);
+
+    // Transform world target into vessel hull coordinates
+    this._targetLocalPos.copy(targetWorldPos);
+    shipMesh.worldToLocal(this._targetLocalPos);
+
+    const dx = this._targetLocalPos.x - this._turretLocalPos.x;
+    const dy = this._targetLocalPos.y - this._turretLocalPos.y;
+    const dz = this._targetLocalPos.z - this._turretLocalPos.z;
+
+    const horizDist = Math.hypot(dx, dz);
+    if (horizDist < 0.1) return { onTarget: false, angleDiff: Math.PI };
+
+    // Desired yaw: in vessel coordinates, bow is along -Z, starboard is +X
+    const desiredYaw = Math.atan2(-dx, -dz);
+
+    // Ballistic drop compensation for artillery
+    const artilleryCfg = config.projectiles.artillery;
+    const speed = artilleryCfg.speed || 220.0;
+    const gravity = Math.abs(artilleryCfg.gravity || 18.0);
+    const timeOfFlight = horizDist / speed;
+    const ballisticDrop = 0.5 * gravity * timeOfFlight * timeOfFlight;
+    const compDy = dy + ballisticDrop;
+
+    const desiredPitch = Math.atan2(compDy, horizDist);
+
+    // Mechanical limits
+    const targetYaw = THREE.MathUtils.clamp(desiredYaw, -this.maxYaw, this.maxYaw);
+    const targetPitch = THREE.MathUtils.clamp(desiredPitch, this.minPitch, this.maxPitch);
+
+    // Smooth traversal
+    const yawDiff = targetYaw - this.yaw;
+    const pitchDiff = targetPitch - this.pitch;
+
+    const maxStepYaw = turnSpeed * delta;
+    const maxStepPitch = elevationSpeed * delta;
+
+    if (Math.abs(yawDiff) <= maxStepYaw) {
+      this.yaw = targetYaw;
+    } else {
+      this.yaw += Math.sign(yawDiff) * maxStepYaw;
+    }
+
+    if (Math.abs(pitchDiff) <= maxStepPitch) {
+      this.pitch = targetPitch;
+    } else {
+      this.pitch += Math.sign(pitchDiff) * maxStepPitch;
+    }
+
+    this.setAim(this.yaw, this.pitch);
+
+    const totalAngleDiff = Math.hypot(yawDiff, pitchDiff);
+    const mechanicalYawMatch = Math.abs(desiredYaw - targetYaw) < 0.08;
+    const onTarget = (totalAngleDiff < 0.08) && mechanicalYawMatch;
+
+    return { onTarget, angleDiff: totalAngleDiff };
+  }
+
+  /**
+   * AI weapon trigger: fires when reload cooldown is elapsed.
+   */
+  fireAI() {
+    if (this.fireCooldown <= 0 && !this.isDestroyed) {
+      this.fireCooldown = this.fireRate;
+      this._fireWeapon();
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Update loop: handles proximity detection, prompt display, mounting, aiming, firing, and dismounting
    */
   update(delta, gameWorld = this.gameWorld) {
@@ -239,6 +349,11 @@ export class ArtilleryTurret extends BaseStation {
 
     if (this.fireCooldown > 0) {
       this.fireCooldown -= delta;
+    }
+
+    // AI turrets are managed by their parent entity (EnemyBattleship)
+    if (this.isAI) {
+      return;
     }
 
     // -------------------------------------------------------------

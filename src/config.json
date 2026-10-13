@@ -316,5 +316,38 @@
       "maxPitch": 1.309,
       "defaultRoundsPerSecond": 12.0
     }
+  },
+  "enemyBattleship": {
+    "health": {
+      "maxHealth": 1800
+    },
+    "movement": {
+      "cruisingSpeed": 5.0,
+      "patrolSpeed": 2.5,
+      "broadsideSpeed": 3.5,
+      "turnRate": 0.2,
+      "stopDistance": 160.0,
+      "engagementRange": 360.0
+    },
+    "combat": {
+      "aimAccuracy": 0.06,
+      "reloadCadence": 4.5,
+      "damage": 120,
+      "turretTurnSpeed": 0.5,
+      "turretElevationSpeed": 0.3,
+      "maxEngagementDistance": 600.0
+    },
+    "states": {
+      "patrolRadius": 250.0,
+      "detectRange": 550.0,
+      "broadsideMinDistance": 180.0,
+      "broadsideMaxDistance": 380.0,
+      "repositionDistance": 150.0,
+      "broadsideAngleOffset": 1.48
+    },
+    "sinking": {
+      "sinkSpeed": 2.0,
+      "maxSinkDepth": -35.0
+    }
   }
 }

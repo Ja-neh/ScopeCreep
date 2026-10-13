@@ -28,14 +28,14 @@ export function installBrowserGlobals() {
     innerWidth: 1600,
     innerHeight: 900,
     performance: globalThis.performance,
-    addEventListener() {},
-    removeEventListener() {}
+    addEventListener() { },
+    removeEventListener() { }
   });
   globalThis.document = globalThis.document || {
     pointerLockElement: null,
-    addEventListener() {},
-    removeEventListener() {},
-    exitPointerLock() {}
+    addEventListener() { },
+    removeEventListener() { },
+    exitPointerLock() { }
   };
 }
 
@@ -57,8 +57,8 @@ export function createTestInput() {
     hold(action) { down.add(action); },
     release(action) { down.delete(action); },
     press(action) { pressed.add(action); },
-    requestPointerLock() {},
-    exitPointerLock() {},
+    requestPointerLock() { },
+    exitPointerLock() { },
     endFrame() {
       pressed.clear();
       this.mouseDelta.x = 0;
@@ -87,7 +87,7 @@ export function createUiRecorder() {
 export async function createTestWorld({ seed = 1 } = {}) {
   installBrowserGlobals();
   seedRandom(seed);
-  console.log = () => {}; // Game code logs freely; keep test output readable (warnings still show)
+  console.log = () => { }; // Game code logs freely; keep test output readable (warnings still show)
 
   const physics = new PhysicsWorld();
   await physics.init();
@@ -110,7 +110,7 @@ export async function createTestWorld({ seed = 1 } = {}) {
     input: createTestInput(),
     ui: createUiRecorder(),
     camera: new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 2000),
-    canvas: { addEventListener() {}, removeEventListener() {} },
+    canvas: { addEventListener() { }, removeEventListener() { } },
     entities: new Set(),
     projectilePool: null,
     activeCamera: null,

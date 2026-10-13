@@ -201,8 +201,13 @@ export class HelmStation extends BaseStation {
 
         // Forward locomotion along current heading
         this._forwardVec.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
-        mesh.position.x += this._forwardVec.x * this.speed * delta;
-        mesh.position.z += this._forwardVec.z * this.speed * delta;
+        const candPos = {
+          x: mesh.position.x + this._forwardVec.x * this.speed * delta,
+          z: mesh.position.z + this._forwardVec.z * this.speed * delta
+        };
+        this._resolveShipCollisions(candPos, gameWorld);
+        mesh.position.x = candPos.x;
+        mesh.position.z = candPos.z;
         mesh.rotation.y = this.heading;
 
         // Update HUD readouts
@@ -233,9 +238,13 @@ export class HelmStation extends BaseStation {
       // -------------------------------------------------------------
       if (Math.abs(this.speed) > 0.05) {
         this.speed *= Math.max(0.0, 1.0 - this.drag * 1.5 * delta);
-        this._forwardVec.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
-        mesh.position.x += this._forwardVec.x * this.speed * delta;
-        mesh.position.z += this._forwardVec.z * this.speed * delta;
+        const candPos = {
+          x: mesh.position.x + this._forwardVec.x * this.speed * delta,
+          z: mesh.position.z + this._forwardVec.z * this.speed * delta
+        };
+        this._resolveShipCollisions(candPos, gameWorld);
+        mesh.position.x = candPos.x;
+        mesh.position.z = candPos.z;
       }
 
       this.checkProximity(delta, gameWorld);
@@ -246,6 +255,63 @@ export class HelmStation extends BaseStation {
     // -------------------------------------------------------------
     mesh.rotation.x = 0;
     mesh.rotation.z = 0;
+  }
+
+  /**
+   * Prevents ship from penetrating into other ships during navigation
+   * @param {{x: number, z: number}} candPos - Candidate position to adjust in-place
+   * @param {GameWorld} gameWorld
+   */
+  _resolveShipCollisions(candPos, gameWorld) {
+    if (!gameWorld || !gameWorld.entities) return;
+
+    const offsets = [-50, -25, 0, 25, 50];
+    const circleRadius = 11.0;
+    const minSeparation = circleRadius * 2;
+
+    const sinA = Math.sin(this.heading);
+    const cosA = Math.cos(this.heading);
+
+    let hasCollision = false;
+    for (const entity of gameWorld.entities) {
+      if (!entity || entity === this.battleship || !entity.mesh) continue;
+      if (entity.name === 'Battleship' || entity.name === 'EnemyBattleship' || entity.colliders) {
+        const otherPos = entity.mesh.position;
+        const distSq = (candPos.x - otherPos.x) ** 2 + (candPos.z - otherPos.z) ** 2;
+        if (distSq > 40000) continue; // Broadphase 200m
+
+        const otherHeading = entity.mesh.rotation.y || 0;
+        const sinB = Math.sin(otherHeading);
+        const cosB = Math.cos(otherHeading);
+
+        for (const ozA of offsets) {
+          const ax = candPos.x - sinA * ozA;
+          const az = candPos.z - cosA * ozA;
+
+          for (const ozB of offsets) {
+            const bx = otherPos.x - sinB * ozB;
+            const bz = otherPos.z - cosB * ozB;
+
+            const dx = ax - bx;
+            const dz = az - bz;
+            const dist = Math.hypot(dx, dz);
+
+            if (dist < minSeparation && dist > 0.0001) {
+              const overlap = minSeparation - dist;
+              const nx = dx / dist;
+              const nz = dz / dist;
+              candPos.x += nx * overlap;
+              candPos.z += nz * overlap;
+              hasCollision = true;
+            }
+          }
+        }
+      }
+    }
+
+    if (hasCollision) {
+      this.speed = -Math.abs(this.speed) * 0.25;
+    }
   }
 
   /**

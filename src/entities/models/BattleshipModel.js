@@ -126,6 +126,13 @@ export async function loadBattleshipModel(options = {}) {
     }
   });
 
+  ['Collider_hull', 'Collider_superstructure'].forEach((colliderName) => {
+    const colNode = modelRoot.getObjectByName(colliderName);
+    if (colNode && colNode.parent !== modelRoot) {
+      modelRoot.attach(colNode);
+    }
+  });
+
   // Extract station operational positions from Area nodes (with sensible fallbacks)
   function getAreaWorldPos(name, fallback) {
     const node = modelRoot.getObjectByName(name);
