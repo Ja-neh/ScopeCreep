@@ -212,11 +212,13 @@ export class ProjectilePool extends BaseEntity {
     origin,
     direction,
     speed,
+    damage,
     source = null,
     excludeCollider = null
   } = {}) {
     const artCfg = config.projectiles.artillery;
     const finalSpeed = speed !== undefined ? speed : artCfg.speed;
+    const finalDamage = damage !== undefined ? damage : artCfg.damage;
 
     let p = this.artilleryPool.pop();
 
@@ -239,7 +241,7 @@ export class ProjectilePool extends BaseEntity {
       gravity: artCfg.gravity,
       drag: artCfg.drag,
       maxLifeTime: artCfg.maxLifeTime,
-      damage: artCfg.damage,
+      damage: finalDamage,
       damageType: DamageType.EXPLOSIVE,
       source,
       excludeCollider

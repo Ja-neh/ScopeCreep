@@ -22,6 +22,7 @@ export class Battleship extends BaseEntity {
     this.gameWorld = gameWorld;
     this.position = options.position || new THREE.Vector3(0, 0, 0);
     this.water = options.water || null;
+    this.faction = options.faction || 'humans';
     this.health = new HealthComponent(options.maxHealth ?? config.ship.health.maxHealth);
     this.isDestroyed = false;
     this.health.onDeath = () => {
@@ -61,7 +62,8 @@ export class Battleship extends BaseEntity {
       promptText: 'OPERATE FORWARD ARTILLERY GUN',
       position: this.stations.artilleryGunner,
       gameWorld: this.gameWorld,
-      battleship: this
+      battleship: this,
+      faction: this.faction
     });
     this.mesh.add(this.mainGun.mesh);
 
@@ -71,14 +73,16 @@ export class Battleship extends BaseEntity {
       promptText: 'OPERATE REAR ARTILLERY GUN',
       position: this.stations.artilleryGunnerBack,
       gameWorld: this.gameWorld,
-      battleship: this
+      battleship: this,
+      faction: this.faction
     });
     this.mesh.add(this.mainGunBack.mesh);
 
     this.flakTurret = new FlakTurret({
       position: this.stations.flakGunner,
       gameWorld: this.gameWorld,
-      battleship: this
+      battleship: this,
+      faction: this.faction
     });
     this.mesh.add(this.flakTurret.mesh);
 

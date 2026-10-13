@@ -24,18 +24,26 @@ export function extractTrimeshGeometryFromObject(object3d) {
   const rootInverse = new THREE.Matrix4().copy(object3d.matrixWorld).invert();
 
   object3d.traverse((child) => {
-    // Skip meshes or hierarchies marked as noCollision (e.g. trigger fields, visual markers)
-    let curr = child;
-    let ignore = false;
-    while (curr) {
-      if (curr.userData && curr.userData.noCollision) {
-        ignore = true;
-        break;
-      }
-      if (curr === object3d) break;
-      curr = curr.parent;
+    // 1. If child itself is explicitly marked noCollision, skip it
+    if (child.userData && child.userData.noCollision) {
+      return;
     }
-    if (ignore) return;
+
+    // 2. Skip meshes or hierarchies marked as noCollision (e.g. trigger fields, visual markers),
+    // unless the child is an explicit collider mesh (e.g. name starts with 'Collider_')
+    const isExplicitCollider = child.name && child.name.startsWith('Collider_');
+    if (!isExplicitCollider) {
+      let curr = child.parent;
+      let ignore = false;
+      while (curr && curr !== object3d) {
+        if (curr.userData && curr.userData.noCollision) {
+          ignore = true;
+          break;
+        }
+        curr = curr.parent;
+      }
+      if (ignore) return;
+    }
 
     if (child.isMesh && child.geometry) {
       const geom = child.geometry;

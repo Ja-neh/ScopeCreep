@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BaseLevel } from './BaseLevel.js';
 import { Ocean } from '../rendering/Ocean.js';
 import { Battleship } from '../entities/Battleship.js';
+import { EnemyBattleship } from '../entities/enemies/EnemyBattleship.js';
 import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 
@@ -20,6 +21,7 @@ export class Level01TestLevel extends BaseLevel {
     super(gameWorld, 'Level 1: AI Ship Test Level');
     this.water = null;
     this.battleship = null;
+    this.enemyBattleship = null;
     this.player = null;
     this.projectilePool = null;
 
@@ -82,6 +84,17 @@ export class Level01TestLevel extends BaseLevel {
     await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);
     this.battleship.initPhysics(this.gameWorld.physics);
+
+    // 4.5 Instantiate Enemy Battleship with Ocean Buoyancy & Target Player Ship
+    this.enemyBattleship = new EnemyBattleship(this.gameWorld, {
+      position: new THREE.Vector3(0, 0, -320),
+      water: this.water,
+      target: this.battleship
+    });
+    this.enemyBattleship.mesh.rotation.y = Math.PI; // Face towards player battleship
+    await this.enemyBattleship.ready;
+    this.gameWorld.addEntity(this.enemyBattleship);
+    this.enemyBattleship.initPhysics(this.gameWorld.physics);
 
     // 5. Spawn Player Character Controller on the Battleship Walking Deck
     this.player = new Player(this.gameWorld, {
@@ -268,6 +281,7 @@ export class Level01TestLevel extends BaseLevel {
     this.projectilePool = null;
     this.player = null;
     this.battleship = null;
+    this.enemyBattleship = null;
 
     super.dispose();
     this.water = null;
