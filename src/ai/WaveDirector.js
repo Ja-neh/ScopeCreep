@@ -58,6 +58,11 @@ export class WaveDirector {
     return this.state === 'done';
   }
 
+  /** Seconds until the next wave starts (0 while a wave is up or the run is over). */
+  get nextWaveInSeconds() {
+    return this.state === 'between' ? Math.max(0, this._timer) : 0;
+  }
+
   start() {
     if (this.state === 'idle') this._beginWave(0);
   }

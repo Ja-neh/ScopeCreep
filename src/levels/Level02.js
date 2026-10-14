@@ -169,19 +169,22 @@ export class Level02 extends IslandLevel {
         if (this._isPlayerAshore() || this.elapsed >= this.cfg.firstWaveTriggerSeconds) {
           this.state = 'waves';
           this.waves.start();
+          this._announceWave(); // The wave-count check in the 'waves' case only sees later waves
         }
         break;
 
       case 'waves': {
         const waveBefore = this.waves.waveNumber;
+        const stateBefore = this.waves.state;
         this.waves.update(delta);
         if (this.waves.waveNumber !== waveBefore) this._announceWave();
+        if (stateBefore !== 'between' && this.waves.state === 'between') this._announceHeldWave();
         if (this.waves.isDone) {
           this.state = 'objective';
           this.beacon.setVisible(true);
           if (this.gameWorld.ui) this.gameWorld.ui.showToast('The beach is ours. Push inland!', 'success', 3500);
         } else if (this.waves.state === 'between') {
-          this._showObjective(`WAVE ${this.waves.waveNumber + 1} INCOMING`, 'Regroup and reload');
+          this._showObjective(`WAVE ${this.waves.waveNumber + 1} INCOMING`, `Next wave in ${Math.ceil(this.waves.nextWaveInSeconds)}s — regroup and reload`);
         } else {
           this._showObjective(`HOLD THE BEACH — WAVE ${this.waves.waveNumber} OF ${this.waves.totalWaves}`, `Aliens left: ${this.waves.remaining}`);
         }
@@ -209,6 +212,13 @@ export class Level02 extends IslandLevel {
     const count = (wave.trooper || 0) + (wave.brute || 0);
     const brutes = wave.brute ? ` — ${wave.brute} brute${wave.brute > 1 ? 's' : ''} among them` : '';
     ui.showToast(`Wave ${this.waves.waveNumber}: ${count} aliens coming ${from}${brutes}!`, 'warning', 4000);
+  }
+
+  /** Tells the player a wave is broken and how long they have before the next one. */
+  _announceHeldWave() {
+    const ui = this.gameWorld.ui;
+    if (!ui) return;
+    ui.showToast(`Wave ${this.waves.waveNumber} held! Next wave in ${Math.round(this.cfg.betweenWavesSeconds)}s — regroup, reload, patch up.`, 'success', 3500);
   }
 
   // ---------------------------------------------------------------------------

@@ -56,6 +56,7 @@ export class WeaponController extends BaseEntity {
     this.isAiming = false;
     this._adsBlend = 0;
     this._recoil = 0;
+    this._recoilPitch = 0; // Aim climb not yet settled back
 
     // Held copy on the avatar (third person) and a view-model copy in front of the camera (first person)
     this.materials = createWeaponMaterials();
@@ -156,6 +157,15 @@ export class WeaponController extends BaseEntity {
       }
     }
 
+    // Recoil settles back once the trigger is released (the climb itself happens in _fireRifle)
+    const firingRifle = canAct && this.equipped === 'rifle' && this.switchTimer <= 0 &&
+      this.quickMeleeTimer <= 0 && input.isActionDown('firePrimary');
+    if (!firingRifle && this._recoilPitch > 0) {
+      const recover = this._recoilPitch * Math.min(1, this.gunCfg.recoilRecoveryRate * delta);
+      player.pitch = Math.max(-1.4, player.pitch - recover);
+      this._recoilPitch -= recover;
+    }
+
     this._refreshHud(false);
   }
 
@@ -200,10 +210,12 @@ export class WeaponController extends BaseEntity {
       gameWorld.ui.flashCrosshairHit(result.killed);
     }
 
-    // Recoil: the aim climbs and wanders a little
+    // Recoil: the aim climbs and wanders a little (tracked so it can settle back after release)
     const recoilScale = this.isAiming ? 0.6 : 1;
-    player.pitch = Math.min(1.4, player.pitch + this.gunCfg.recoilPitch * recoilScale);
+    const climb = Math.min(1.4 - player.pitch, this.gunCfg.recoilPitch * recoilScale);
+    player.pitch += climb;
     player.yaw += (Math.random() - 0.5) * 2 * this.gunCfg.recoilYaw * recoilScale;
+    this._recoilPitch += climb;
     this._recoil = RECOIL_KICK;
 
     if (this.onGunshot) this.onGunshot(this._origin);

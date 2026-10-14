@@ -12,7 +12,7 @@ Run it before every commit. If a test fails, either your change broke something 
 | `island.test.mjs` | Island layout: landing beach, sea depth under the ship, village plateau at the far end, size; the Level 3 layout (6x the plateau, same beach) |
 | `landingZone.test.mjs` | Walking off the ship to the beach, no hopping downhill, parked helicopters |
 | `cover.test.mjs` | Tree, rock and bush placement rules, rock cover, triangle budget, scenery tiles (low detail far away, nothing in the fog), hiding in bushes, AI cover spots |
-| `weapons.test.mjs` | Machine gun, reload, knife and backstab, quick knife, aim zoom, cleanup |
+| `weapons.test.mjs` | Machine gun, reload, recoil climbing and settling back, knife and backstab, quick knife, aim zoom, cleanup |
 | `aliens.test.mjs` | Trooper sight, damage, concealment, hearing, call-outs, no friendly fire, death |
 | `brute.test.mjs` | Brute charge and slam, outrunning it, double damage to its back |
 | `village.test.mjs` | Level 3 village at night: moon and stars, 6x the size with hundreds of houses on the plateau, closed, walk-in and ruined houses with no overlaps, landed ships you can walk under, walking from the path up the avenue into the hall, solid walls and walk-in houses, mesh and light budgets, teardown |
@@ -20,12 +20,12 @@ Run it before every commit. If a test fails, either your change broke something 
 | `warden.test.mjs` | Level 3's boss fight: the Warden wakes when the player walks into the hall, the shield holds until both crystals are shot, plasma volleys, the shockwave (jump it), enraged at half health with new crystals and troopers, winning, room for the squad in the hall, the sandbox [F6], teardown |
 | `ending.test.mjs` | Level 3's opening sweep over the village (title card, held player, ends on the player's view, skip) and its ending: cages locked until the Warden falls then freed with [E], night turning to dawn, the camera leaving the hall, the credits and their skip, the mission result, teardown |
 | `generators.test.mjs` | Level 3's force field and its generators: three guarded generators by the ships with beams to the dome, the dome keeping people and bullets out, holding [E] to shut a generator down (progress, draining, reach), aliens that never stop coming to a running generator, aliens from every direction once in the village, wave 2 at the sealed hall door (aliens from both sides of the hall until enough are killed), revive points and coming back at the last one, aliens losing the player after a respawn (wandering off, a respite), crates by the revive points, shield pickups and the shield wearing down, teardown |
-| `waveDirector.test.mjs` | Wave order, lanes, spawn pacing, pauses between waves, completion |
+| `waveDirector.test.mjs` | Wave order, lanes, spawn pacing, refused spawns retried instead of dropped, pauses between waves and their countdown, completion |
 | `renderQuality.test.mjs` | Graphics settings: the player's choice is applied and remembered, Auto resolution, the recommendation (from the graphics card, then the measured frame rate), software renderers start light |
 | `models.test.mjs` | Character models stay cheap to draw (merged parts), keep their colours and glow, and free everything on dispose |
 | `squad.test.mjs` | AI squadmates: formation around the player, following the player's trail round a wall and catching up, shooting aliens, no friendly fire, being hunted and fighting back, reviving each other and the player, bleeding out |
 | `landing.test.mjs` | Level 2 opening: camera sweep and skip, crew walking off, helicopters clearing the ship and landing, pilots, starting view, going down during the opening, supply crate (ammo and health) |
-| `level02.test.mjs` | Level 2 end to end: landing, three waves, objective and victory, the player downed and revived, bleeding out, reviving a squadmate with [E], defeat and retry, the sandbox level (revive, respawn, F4 squad toggle), wave size and spread, the alive cap, the controls card, clean teardown |
+| `level02.test.mjs` | Level 2 end to end: landing, three waves with their call-outs and the break between them counting down, objective and victory, the player downed and revived, bleeding out, reviving a squadmate with [E] (the crate yielding to it), defeat and retry, the sandbox level (revive, respawn, F4 squad toggle), wave size and spread, the alive cap, the controls card, clean teardown |
 | `uiOverlay.test.mjs` | HUD layers never swallow the clicks the game needs to lock the mouse |
 | `level1Compat.test.mjs` | Shared code still behaves as Level 1 expects (player, camera, ocean, input, projectiles, deck walking) |
 

@@ -165,3 +165,23 @@ test('a unit nowhere can be placed is skipped after the retry limit; the wave st
   run(0.5);
   assert.equal(director.isDone, true, 'the wave could finish');
 });
+
+test('nextWaveInSeconds counts a wave break down and is zero otherwise', () => {
+  const { director, alive, run } = createDirector();
+  assert.equal(director.nextWaveInSeconds, 0, 'nothing counted before start()');
+
+  director.start();
+  run(2.2); // Wave 1 is up, its two troopers still standing
+  assert.equal(director.nextWaveInSeconds, 0, 'not counting while a wave is up');
+
+  alive.length = 0;
+  run(0.2);
+  assert.equal(director.state, 'between');
+  assert.ok(director.nextWaveInSeconds > 4 && director.nextWaveInSeconds <= 5, `counting (${director.nextWaveInSeconds.toFixed(2)})`);
+  run(2);
+  assert.ok(director.nextWaveInSeconds > 1 && director.nextWaveInSeconds < 3, 'still counting down');
+
+  run(4); // The break ends and wave 2 arrives
+  assert.equal(director.state, 'spawning');
+  assert.equal(director.nextWaveInSeconds, 0, 'zero again while the next wave lands');
+});

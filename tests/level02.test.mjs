@@ -232,6 +232,41 @@ test('Level 2: a downed squadmate beside the supply crate owns [E]; the crate co
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });
 
+test('Level 2: the wave call-outs are heard, and the break between waves counts down', async () => {
+  const { world, level } = await loadLevel(Level02);
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+  level.player.teleport(foot.x, foot.y, foot.z);
+  stepWorld(world, 1, { level });
+  assert.equal(level.state, 'waves', 'the first wave has started');
+  assert.ok(
+    world.ui.callsTo('showToast').some((call) => /^Wave 1: \d+ aliens/.test(call.args[0])),
+    'the first wave is announced'
+  );
+
+  // Cut down every alien as it arrives until wave 1 is broken
+  stepWorld(world, 60, {
+    level,
+    onFrame: () => {
+      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+      return level.waves.state === 'between';
+    }
+  });
+  assert.equal(level.waves.state, 'between', 'the wave was held');
+  assert.ok(
+    world.ui.callsTo('showToast').some((call) => /^Wave 1 held! Next wave in \d+s/.test(call.args[0])),
+    'the break is called out'
+  );
+  assert.ok(level.waves.nextWaveInSeconds > 0 && level.waves.nextWaveInSeconds <= cfg.betweenWavesSeconds);
+  const objective = world.ui.callsTo('showObjective').at(-1).args;
+  assert.equal(objective[0], 'WAVE 2 INCOMING');
+  assert.match(objective[1], /^Next wave in \d+s/);
+
+  // The break ends when the next wave arrives
+  stepWorld(world, cfg.betweenWavesSeconds + 1, { level });
+  assert.ok(world.ui.callsTo('showToast').some((call) => /^Wave 2: \d+ aliens/.test(call.args[0])), 'wave 2 is announced');
+  assert.equal(teardown(world, level), 0, 'no physics bodies left');
+});
+
 test('Level 2 test level: dummies, a respawning alien group including a brute, revive and respawn', async () => {
   const { world, level } = await loadLevel(Level02TestLevel);
   assert.equal(level.dummies.length, 5);

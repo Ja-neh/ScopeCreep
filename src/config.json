@@ -108,8 +108,9 @@
       "movingSpreadPenalty": 0.01,
       "adsSpreadMultiplier": 0.35,
       "crouchSpreadMultiplier": 0.7,
-      "recoilPitch": 0,
-      "recoilYaw": 0
+      "recoilPitch": 0.0035,
+      "recoilYaw": 0.0028,
+      "recoilRecoveryRate": 1.8
     },
     "knife": {
       "damage": 75,
