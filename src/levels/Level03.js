@@ -131,16 +131,19 @@ export class Level03 extends IslandLevel {
    * generators, and the revive points.
    */
   _createProps() {
+    // The crates yield [E] while the player is reviving a downed squadmate (IslandLevel owns revives)
     this.supplyCrate = new SupplyCrate(this.gameWorld, {
       position: this.village.spawnPoints.supplyCrate,
       player: this.player,
-      weapons: this.weapons
+      weapons: this.weapons,
+      isSuppressed: () => this._reviveCandidate() !== null
     });
     this.gameWorld.addEntity(this.supplyCrate);
     this.hallCrate = new SupplyCrate(this.gameWorld, {
       position: this.village.hall.supplyPoint,
       player: this.player,
-      weapons: this.weapons
+      weapons: this.weapons,
+      isSuppressed: () => this._reviveCandidate() !== null
     });
     this.gameWorld.addEntity(this.hallCrate);
 
@@ -190,7 +193,12 @@ export class Level03 extends IslandLevel {
       if (crates.some((crate) => flat(crate.position, point.position) < CRATE_NEAR)) continue;
       const spot = this._besidePoint(point.position);
       if (!spot) continue;
-      const crate = new SupplyCrate(this.gameWorld, { position: spot, player: this.player, weapons: this.weapons });
+      const crate = new SupplyCrate(this.gameWorld, {
+        position: spot,
+        player: this.player,
+        weapons: this.weapons,
+        isSuppressed: () => this._reviveCandidate() !== null
+      });
       this.gameWorld.addEntity(crate);
       crates.push(crate);
       this.reviveCrates.push(crate);

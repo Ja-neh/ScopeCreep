@@ -91,12 +91,13 @@ export class Level02 extends IslandLevel {
     return { position: this.landingZone.spawnPoints.gangwayTop, yaw: 0 };
   }
 
-  /** Supply crate between the helicopters. */
+  /** Supply crate between the helicopters. It yields [E] while the player is reviving a squadmate. */
   _createProps() {
     this.supplyCrate = new SupplyCrate(this.gameWorld, {
       position: this.landingZone.spawnPoints.supplyCrate,
       player: this.player,
-      weapons: this.weapons
+      weapons: this.weapons,
+      isSuppressed: () => this._reviveCandidate() !== null
     });
     this.gameWorld.addEntity(this.supplyCrate);
   }

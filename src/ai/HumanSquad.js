@@ -115,6 +115,17 @@ export class HumanSquad {
   }
 
   /**
+   * The squadmate on their way to revive `member` right now (assigned by _sendRevivers),
+   * or null when nobody is coming.
+   */
+  reviverFor(member) {
+    for (const mate of this.mates) {
+      if (mate !== member && !mate.isDead && mate.isReviving && mate.reviveTarget === member) return mate;
+    }
+    return null;
+  }
+
+  /**
    * The downed squadmate nearest to `position` within `radius`, or null.
    */
   nearestDownedMate(position, radius) {

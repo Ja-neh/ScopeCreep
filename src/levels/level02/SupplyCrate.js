@@ -20,14 +20,16 @@ export class SupplyCrate extends BaseEntity {
    * @param {Player} options.player
    * @param {WeaponController} options.weapons - Whose rifle gets refilled
    * @param {number} [options.radius] - Interaction distance (config.levels.level02.supplyCrateRadius)
+   * @param {() => boolean} [options.isSuppressed] - True while another interaction (a revive) owns [E]
    */
-  constructor(gameWorld, { position, player, weapons, radius = config.levels.level02.supplyCrateRadius }) {
+  constructor(gameWorld, { position, player, weapons, radius = config.levels.level02.supplyCrateRadius, isSuppressed = null }) {
     super('SupplyCrate');
     this.gameWorld = gameWorld;
     this.physicsWorld = gameWorld.physics;
     this.player = player;
     this.weapons = weapons;
     this.radius = radius;
+    this.isSuppressed = isSuppressed;
     this.position = position.clone();
     this.isPlayerNear = false;
     this.timesUsed = 0;
@@ -112,7 +114,9 @@ export class SupplyCrate extends BaseEntity {
     const player = this.player;
     const ui = gameWorld.ui;
     const alive = !player.health || !player.health.isDead;
-    const near = alive && !player.isDevSuspended &&
+    // A revive beside a downed squadmate outranks the crate: while one is on, it stays quiet
+    const suppressed = this.isSuppressed ? this.isSuppressed() : false;
+    const near = alive && !suppressed && !player.isDevSuspended &&
       Math.hypot(player.position.x - this.position.x, player.position.z - this.position.z) <= this.radius;
 
     if (near) {

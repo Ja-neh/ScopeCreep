@@ -133,7 +133,10 @@ test('Level 2: a squadmate revives the downed player; out of reach of everyone, 
   stepWorld(world, 0.5, { level });
   assert.notEqual(level.state, 'lost');
   assert.equal(level.player.isDevSuspended, true, 'downed: lying still');
-  assert.ok(world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED/.test(call.args[0])));
+  assert.ok(
+    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: [A-Za-z]+ is coming to revive you/.test(call.args[0])),
+    'the rescuer is named'
+  );
   stepWorld(world, 15, { level, onFrame: () => !level.player.health.isDead });
   stepWorld(world, 0.1, { level });
   assert.equal(level.player.health.isDead, false, 'revived by a squadmate');
@@ -147,6 +150,10 @@ test('Level 2: a squadmate revives the downed player; out of reach of everyone, 
   level.player.health.takeDamage({ amount: 1000 });
   stepWorld(world, config.revive.bleedOutSeconds + 1, { level });
   assert.equal(level.state, 'lost');
+  assert.ok(
+    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: bleeding out — nobody can reach you/.test(call.args[0])),
+    'nobody in reach: the indicator says so honestly'
+  );
   assert.match(world.ui.callsTo('showMissionResult').at(-1).args[0].message, /bled out/);
   assert.equal(teardown(world, level), 0);
 });
@@ -179,6 +186,50 @@ test('Level 2: holding [E] beside a downed squadmate revives them; letting go st
   assert.equal(mate.health.currentHealth, mate.health.maxHealth * config.revive.healthFraction);
   assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === `You revived ${mate.name}.`));
   assert.equal(teardown(world, level), 0);
+});
+
+test('Level 2: a downed squadmate beside the supply crate owns [E]; the crate comes back after', async () => {
+  const { world, level } = await loadLevel(Level02);
+  world.input.press('skipCutscene');
+  stepWorld(world, 12, { level });
+  level.allies.reviveSearchRadius = 0; // Only the player revives in this test
+
+  // A squadmate goes down beside the crate; the player stands next to them, in reach of both
+  const crate = level.supplyCrate.position;
+  const ground = (x, z) => level.environment.heightAt(x, z) + 0.1;
+  const mate = level.allies.mates[0];
+  mate.teleport(crate.x - 0.5, ground(crate.x - 0.5, crate.z - 1.1), crate.z - 1.1);
+  mate.health.takeDamage({ amount: 9999 });
+  level.player.teleport(crate.x - 1.9, ground(crate.x - 1.9, crate.z + 0.2), crate.z + 0.2);
+  stepWorld(world, 0.4, { level });
+  assert.ok(level.allies.isDowned(mate));
+  assert.ok(Math.hypot(level.player.position.x - crate.x, level.player.position.z - crate.z) <= level.supplyCrate.radius, 'in crate reach');
+
+  const prompt = () => world.ui.callsTo('showPrompt').at(-1);
+  assert.equal(prompt().args[1], `HOLD TO REVIVE ${mate.name.toUpperCase()}`, 'the revive owns the prompt, not the crate');
+  assert.equal(prompt().args[3], level, 'shown by the level');
+
+  // A press meant for the crate does nothing while a revive is on: no ammo, no patch-up
+  level.weapons.rifle.reserve = 0;
+  level.player.health.takeDamage({ amount: 30 });
+  world.input.press('specialAction');
+  stepWorld(world, 0.1, { level });
+  assert.equal(level.weapons.rifle.reserve, 0, 'the crate stayed quiet');
+  assert.ok(level.player.health.currentHealth < level.player.health.maxHealth, 'no patch-up either');
+
+  // Complete the revive: the crate comes back, and [E] resupplies
+  world.input.hold('specialAction');
+  stepWorld(world, config.revive.holdSeconds + 0.2, { level });
+  world.input.release('specialAction');
+  assert.equal(mate.isDead, false, 'revived');
+  stepWorld(world, 0.2, { level });
+  assert.match(world.ui.callsTo('showPrompt').at(-1).args[1], /RESUPPLY|FULLY SUPPLIED/, 'the crate prompt is back');
+
+  world.input.press('specialAction');
+  stepWorld(world, 0.1, { level });
+  assert.equal(level.weapons.rifle.reserve, level.weapons.rifle.cfg.reserveAmmo, 'the crate resupplied');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /Resupplied/.test(call.args[0])));
+  assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });
 
 test('Level 2 test level: dummies, a respawning alien group including a brute, revive and respawn', async () => {

@@ -98,3 +98,70 @@ test('with maxAlive, the field never holds more than that; the rest come as othe
   assert.equal(alive.length, 4);
   assert.equal(spawned.length, 6);
 });
+
+test('a spawn the level turns down is retried at the next interval, not dropped', () => {
+  const alive = [];
+  const spawned = [];
+  let refusals = 2;
+  const director = new WaveDirector({
+    waves: [{ trooper: 1, lanes: ['centre'] }],
+    betweenWavesSeconds: 5,
+    spawnIntervalSeconds: 1,
+    spawn: (type, lane) => {
+      if (refusals > 0) {
+        refusals--; // Nowhere clear for it yet
+        return null;
+      }
+      const unit = { type, lane };
+      alive.push(unit);
+      spawned.push(unit);
+      return unit;
+    },
+    aliveCount: () => alive.length
+  });
+  const run = (seconds, step = 0.1) => {
+    for (let t = 0; t < seconds; t += step) director.update(step);
+  };
+
+  director.start();
+  director.update(0.01); // First attempt: refused
+  run(1.05);             // Second attempt: refused again
+  assert.equal(spawned.length, 0, 'the unit waits its turn; nothing is lost');
+  assert.equal(director.state, 'spawning');
+  assert.equal(director.remaining, 1);
+
+  run(1.05); // Third attempt: accepted
+  assert.deepEqual(spawned, [{ type: 'trooper', lane: 'centre' }]);
+  assert.equal(director.state, 'fighting');
+  assert.equal(director.remaining, 1);
+});
+
+test('a unit nowhere can be placed is skipped after the retry limit; the wave still finishes', () => {
+  const alive = [];
+  const spawned = [];
+  const director = new WaveDirector({
+    waves: [{ trooper: 1, brute: 1, lanes: ['centre'] }],
+    betweenWavesSeconds: 5,
+    spawnIntervalSeconds: 1,
+    spawn: (type, lane) => {
+      if (type === 'trooper') return null; // Nowhere to put it, ever
+      const unit = { type, lane };
+      alive.push(unit);
+      spawned.push(unit);
+      return unit;
+    },
+    aliveCount: () => alive.length
+  });
+  const run = (seconds, step = 0.1) => {
+    for (let t = 0; t < seconds; t += step) director.update(step);
+  };
+
+  director.start();
+  run(14); // The trooper is retried 12 times, then skipped; the brute behind it arrives
+  assert.deepEqual(spawned.map((unit) => unit.type), ['brute'], 'the blocked unit did not hold up the wave');
+  assert.equal(director.state, 'fighting');
+
+  alive.length = 0;
+  run(0.5);
+  assert.equal(director.isDone, true, 'the wave could finish');
+});

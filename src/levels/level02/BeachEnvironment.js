@@ -14,7 +14,7 @@ import { valueNoise2D, fbm2D, smoothstep } from '../../rendering/Noise.js';
 const LAYOUTS = {
   beach: {
     centreZ: -150, halfWidth: 260, halfLength: 350, northHalfWidth: 260, northHalfLength: 350,
-    terrain: { width: 680, depth: 920, centreZ: -160 },       // x -340..340, z -620..300
+    terrain: { width: 680, depth: 920, centreZ: -160, cellSize: 2 }, // Higher detail for close beach combat
     scatter: { minX: -290, maxX: 290, minZ: -530, maxZ: 230 }, // Where trees and rocks may grow
     village: { x: 0, z: -340, halfWidth: 90, halfLength: 90, height: 12 }
   },
@@ -25,6 +25,7 @@ const LAYOUTS = {
     village: { x: 0, z: -400, halfWidth: 200, halfLength: 245, height: 12 }
   }
 };
+// The larger island terrain uses this lighter grid; the beach opts into a finer grid above.
 const TERRAIN_CELL = 4;
 // The grid is shifted off round numbers: a perfectly vertical ray through an exact grid corner can
 // slip between Rapier's heightfield triangles, and the round coordinates we use for spawns and
@@ -195,7 +196,7 @@ export class BeachEnvironment {
     this.terrain = new Terrain({
       width: terrain.width,
       depth: terrain.depth,
-      cellSize: TERRAIN_CELL,
+      cellSize: terrain.cellSize ?? TERRAIN_CELL,
       center: { x: TERRAIN_GRID_SHIFT, z: terrain.centreZ + TERRAIN_GRID_SHIFT },
       heightAt: (x, z) => this._islandHeight(x, z),
       colorAt: (x, z, h, slope, out) => this._islandColor(x, z, h, slope, out)
