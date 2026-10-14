@@ -19,9 +19,17 @@ export class PlayerJet extends BaseEntity {
     this.faction = options.faction ?? 'humans';
     this.health = new HealthComponent(options.maxHealth ?? config.playerJet.health);
     this.isDestroyed = false;
+    this.onDestroyed = options.onDestroyed ?? null;
+    this.health.onDamage = () => {
+      const ui = this.gameWorld.ui;
+      if (!ui) return;
+      ui.flashDamage();
+      ui.updatePlayerHealth(this.health.currentHealth, this.health.maxHealth);
+    };
     this.health.onDeath = () => {
       this.isDestroyed = true;
       this.mesh.visible = false;
+      if (this.onDestroyed) this.onDestroyed(this);
     };
 
     const jetConfig = config.playerJet;

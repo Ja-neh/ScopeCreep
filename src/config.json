@@ -68,6 +68,30 @@
     "collider": {
       "halfHeight": 1.4,
       "radius": 0.7
+    },
+    "burstSize": 3,
+    "breakawaySeconds": 2.8,
+    "repositionAltitude": 55,
+    "targetHeight": 5,
+    "waves": [
+      { "fighters": 2, "aces": 0 },
+      { "fighters": 2, "aces": 1 },
+      { "fighters": 2, "aces": 2 }
+    ],
+    "defense": {
+      "firstWaveDelaySeconds": 3,
+      "spawnIntervalSeconds": 4,
+      "betweenWavesSeconds": 8,
+      "spawnRadius": 420,
+      "spawnAltitude": 85
+    },
+    "ace": {
+      "health": 320,
+      "cruiseSpeed": 92,
+      "turnRate": 1.65,
+      "fireCadence": 0.48,
+      "projectileDamage": 10,
+      "spread": 0.003
     }
   },
   "player": {
