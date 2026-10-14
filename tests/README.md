@@ -22,6 +22,7 @@ Run it before every commit. If a test fails, either your change broke something 
 | `generators.test.mjs` | Level 3's force field and its generators: three guarded generators by the ships with beams to the dome, the dome keeping people and bullets out, holding [E] to shut a generator down (progress, draining, reach), aliens that never stop coming to a running generator, aliens from every direction once in the village, wave 2 at the sealed hall door (aliens from both sides of the hall until enough are killed), revive points and coming back at the last one, aliens losing the player after a respawn (wandering off, a respite), crates by the revive points, shield pickups and the shield wearing down, teardown |
 | `waveDirector.test.mjs` | Wave order, lanes, spawn pacing, refused spawns retried instead of dropped, pauses between waves and their countdown, completion |
 | `renderQuality.test.mjs` | Graphics settings: the player's choice is applied and remembered, Auto resolution, the recommendation (from the graphics card, then the measured frame rate), software renderers start light |
+| `audio.test.mjs` | Sound engine: the six core effects, silent no-op without an AudioContext, lazy unlock, saved volume and mute, hurt throttling, the concurrent-voice cap, distance fall-off and cutoff |
 | `models.test.mjs` | Character models stay cheap to draw (merged parts), keep their colours and glow, and free everything on dispose |
 | `squad.test.mjs` | AI squadmates: formation around the player, following the player's trail round a wall and catching up, shooting aliens, no friendly fire, being hunted and fighting back, reviving each other and the player, bleeding out |
 | `landing.test.mjs` | Level 2 opening: camera sweep and skip, crew walking off, helicopters clearing the ship and landing, pilots, starting view, going down during the opening, supply crate (ammo and health) |
@@ -33,7 +34,7 @@ Run it before every commit. If a test fails, either your change broke something 
 
 - `support/loader.mjs` loads `.glsl` files as empty strings and `config.json` as a default export, the way Vite does. It also swaps the battleship model loader for `support/battleshipModelStub.mjs`, which reads only the collider meshes from the GLB.
 - `support/testWorld.mjs` provides:
-  - `createTestWorld()`: a GameWorld stand-in with real physics, scripted input (`world.input.hold('forward')`) and a UI recorder (`world.ui.callsTo('showToast')`).
+  - `createTestWorld()`: a GameWorld stand-in with real physics, scripted input (`world.input.hold('forward')`), a UI recorder (`world.ui.callsTo('showToast')`) and an audio recorder (`world.audio.callsTo('play')`).
   - `stepWorld(world, seconds, { level, onFrame })`: runs frames in the same 8-phase order as `GameWorld._loop`.
   - `bodyCount(world)`: checks that teardown left no physics bodies behind.
 - `Math.random` is seeded in each test file, so AI and scatter behave the same on every run.

@@ -452,6 +452,9 @@ export class IslandLevel extends BaseLevel {
   }
 
   _onPlayerHurt() {
+    if (this.gameWorld && this.gameWorld.audio) {
+      this.gameWorld.audio.play('hurt');
+    }
     const ui = this.gameWorld.ui;
     if (!ui) return;
     ui.flashDamage();

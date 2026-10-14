@@ -202,6 +202,9 @@ export class SquadMate extends GroundCombatant {
       excludeCollider: this.collider,
       source: this
     });
+    if (result && this.gameWorld && this.gameWorld.audio) {
+      this.gameWorld.audio.play('gunshot', this._muzzle, 0.6);
+    }
     if (result && this.squad) this.squad.onShot(this, this._muzzle, result);
   }
 

@@ -109,6 +109,7 @@ export async function createTestWorld({ seed = 1 } = {}) {
     physics,
     input: createTestInput(),
     ui: createUiRecorder(),
+    audio: createUiRecorder(),
     camera: new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 2000),
     canvas: { addEventListener() { }, removeEventListener() { } },
     entities: new Set(),

@@ -138,7 +138,7 @@ export class WeaponController extends BaseEntity {
       }
 
       if (input.isActionJustPressed('reload') && this.equipped === 'rifle') {
-        this.rifle.startReload();
+        if (this.rifle.startReload() && gameWorld.audio) gameWorld.audio.play('reload');
       }
 
       // Quick knife: swing without switching weapons
@@ -180,7 +180,9 @@ export class WeaponController extends BaseEntity {
 
   _fireRifle(gameWorld) {
     if (!this.rifle.canFire()) {
-      if (this.rifle.ammo === 0) this.rifle.startReload();
+      if (this.rifle.ammo === 0 && this.rifle.startReload() && gameWorld.audio) {
+        gameWorld.audio.play('reload');
+      }
       return;
     }
 
@@ -198,6 +200,8 @@ export class WeaponController extends BaseEntity {
     });
     if (!result) return;
 
+    if (gameWorld.audio) gameWorld.audio.play('gunshot');
+
     // Effects leave from the gun the player can see
     this._visibleMuzzle(this._muzzle);
     this.effects.muzzleFlash(this._muzzle, result.point);
@@ -205,6 +209,9 @@ export class WeaponController extends BaseEntity {
     if (result.hit) {
       const surface = result.entity ? 'hit' : (result.collider.userData && result.collider.userData.isTerrain ? 'dust' : 'spark');
       this.effects.impact(result.point, surface);
+    }
+    if (result.damaged && gameWorld.audio) {
+      gameWorld.audio.play('hit');
     }
     if (result.damaged && gameWorld.ui) {
       gameWorld.ui.flashCrosshairHit(result.killed);
@@ -274,6 +281,7 @@ export class WeaponController extends BaseEntity {
     });
     if (result.hit) {
       this.effects.impact(result.point, 'hit');
+      if (gameWorld.audio) gameWorld.audio.play('hit');
       if (gameWorld.ui) gameWorld.ui.flashCrosshairHit(result.killed);
     }
   }

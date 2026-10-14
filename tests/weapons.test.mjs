@@ -60,6 +60,9 @@ test('machine gun drops a dummy 12 m away with the crosshair on it', () => {
   const needed = Math.ceil(config.testing.trainingDummy.maxHealth / config.weapons.machineGun.damage);
   assert.ok(fired <= needed + 2, `${fired} rounds for ${needed} needed`);
   assert.ok(world.ui.callsTo('flashCrosshairHit').some((call) => call.args[0] === true), 'kill marker shown');
+  const plays = world.audio.callsTo('play');
+  assert.ok(plays.some((call) => call.args[0] === 'gunshot'), 'gunshots are audible');
+  assert.ok(plays.some((call) => call.args[0] === 'hit'), 'hit confirmations are audible');
   assert.ok(player.pitch > 0, 'the aim climbs while firing');
   assert.ok(Math.abs(player.yaw) <= config.weapons.machineGun.recoilYaw * fired, 'the aim only wanders a little');
 });
@@ -94,6 +97,7 @@ test('an empty magazine reloads automatically from reserve', () => {
   world.input.hold('firePrimary');
   stepWorld(world, 3.5, { onFrame: () => weapons.rifle.isReloading });
   assert.ok(weapons.rifle.isReloading, 'reload started when empty');
+  assert.ok(world.audio.callsTo('play').some((call) => call.args[0] === 'reload'), 'reloading is audible');
   world.input.release('firePrimary');
   stepWorld(world, config.weapons.machineGun.reloadSeconds + 0.2);
   assert.equal(weapons.rifle.ammo, config.weapons.machineGun.magazine);
