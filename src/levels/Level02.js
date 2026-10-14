@@ -23,6 +23,9 @@ const SPAWN_SPREAD_Z = 10;        // ...and along the island
 const ASSAULT_JITTER = 20;
 const OBJECTIVE_Z = 80;           // Where the jungle path enters the trees
 const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
+// The final ambush waits in the lanes that meet the jungle path and springs when the player
+// pushes inland; the ambushers converge on the beacon and hold it.
+const AMBUSH_LANES = ['centre', 'west', 'east'];
 
 // The helicopter pilots (call signs for messages)
 const PILOT_NAMES = ['Hawk', 'Viper'];
@@ -51,7 +54,8 @@ const RALLY_POSTS = [
  * squadmates (the ship's crew is always 5), who wait on the sand, then follow the player in
  * formation and fight alongside them. A supply crate stands between the helicopters.
  *
- * Flow: landing (until the player is ashore or the timer runs out) -> waves -> objective -> won.
+ * Flow: landing (until the player is ashore or the timer runs out) -> waves -> objective (a last
+ * group springs from the trees on the way in) -> won.
  * Losing: the player bleeds out, or goes down with nobody left standing to come.
  *
  * Level02TestLevel extends this with dummies, a respawning trio instead of waves, and dev tools.
@@ -63,6 +67,8 @@ export class Level02 extends IslandLevel {
 
     this.landingZone = null;
     this.waves = null;
+    this.ambush = null;
+    this.ambushTriggered = false;
     this.beacon = null;
     this.supplyCrate = null;
 
@@ -157,6 +163,17 @@ export class Level02 extends IslandLevel {
       maxAlive: this.cfg.maxAliveAliens
     });
 
+    // The final ambush: one group, waiting in the trees by the path
+    const ambush = this.cfg.finalAmbush;
+    this.ambush = new WaveDirector({
+      waves: [{ trooper: ambush.trooper, brute: ambush.brute, lanes: AMBUSH_LANES }],
+      betweenWavesSeconds: 0, // A single wave: the pause is never reached
+      spawnIntervalSeconds: ambush.spawnIntervalSeconds,
+      spawn: (type, lane) => this.spawnAlien(type, lane, this._objectivePoint),
+      aliveCount: () => this.squad.aliveCount,
+      maxAlive: this.cfg.maxAliveAliens
+    });
+
     this._showObjective('OBJECTIVE', 'Get off the ship and hold the beach');
   }
 
@@ -193,8 +210,22 @@ export class Level02 extends IslandLevel {
 
       case 'objective': {
         const distance = Math.hypot(this.player.position.x - this._objectivePoint.x, this.player.position.z - this._objectivePoint.z);
+        if (!this.ambushTriggered && distance <= this.cfg.finalAmbush.triggerDistance) {
+          this._startAmbush();
+          break;
+        }
         this._showObjective('PUSH INLAND', `Reach the jungle path (green beacon) — ${Math.round(distance)} m`);
         if (distance <= this.cfg.objectiveRadius) this._finish(true);
+        break;
+      }
+
+      case 'ambush': {
+        this.ambush.update(delta);
+        this._showObjective('AMBUSH', `They were waiting in the trees — ${this.ambush.remaining} left`);
+        if (this.ambush.isDone) {
+          this.state = 'objective';
+          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The ambush is broken — push on to the path!', 'success', 3000);
+        }
         break;
       }
     }
@@ -219,6 +250,16 @@ export class Level02 extends IslandLevel {
     const ui = this.gameWorld.ui;
     if (!ui) return;
     ui.showToast(`Wave ${this.waves.waveNumber} held! Next wave in ${Math.round(this.cfg.betweenWavesSeconds)}s — regroup, reload, patch up.`, 'success', 3500);
+  }
+
+  /** The last stand: the group waiting in the trees springs as the player pushes inland. */
+  _startAmbush() {
+    this.ambushTriggered = true;
+    this.state = 'ambush';
+    this.ambush.start();
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showToast('Ambush! They were waiting in the trees — hold them off!', 'warning', 4000);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -314,11 +355,14 @@ export class Level02 extends IslandLevel {
   // ---------------------------------------------------------------------------
 
   /**
-   * Spawns one alien in `laneName` and sends it at the beach.
+   * Spawns one alien in `laneName` and sends it at the beach (or at `assaultPoint`).
+   * @param {THREE.Vector3} [assaultPoint] - Where it should push to and hold (default: the lane's beach point)
    * @returns {AlienCombatant|null}
    */
-  spawnAlien(type, laneName) {
-    const lane = LANES[laneName] || LANES.centre;
+  spawnAlien(type, laneName, assaultPoint = null) {
+    const base = LANES[laneName] || LANES.centre;
+    // Ambushers hold the point they were sent to (the beacon), not the lane's beach point
+    const lane = { ...base, assault: assaultPoint || base.assault };
     const spot = this._findSpawnSpot(lane.spawn);
     if (!spot) return null;
 
@@ -348,6 +392,7 @@ export class Level02 extends IslandLevel {
 
   dispose() {
     this.waves = null;
+    this.ambush = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them
     super.dispose(); // Also the landing zone and the beacon (tracked)
     this.beacon = null;

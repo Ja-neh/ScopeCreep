@@ -221,7 +221,7 @@ The edge server runs headless without DOM, WebGL, GPU, or Three.js. If and when 
 
 Level 2 is fought on foot. The squad lands from the anchored warship onto the south beach of the island and holds it against three waves of aliens coming down from the village, then pushes inland to the jungle path. All of its code is new and lives in its own files; shared engine files only gained small, opt-in additions.
 
-**Flow (`Level02`):** opening (10 s camera sweep) -> `landing` (until the player is ashore, or `firstWaveTriggerSeconds`) -> `waves` -> `objective` (reach the beacon) -> `won`. The result screen offers Retry or Play again, and Main menu. `Level02TestLevel` extends it as the sandbox: training dummies, a respawning alien group, player respawn instead of failure, and dev keys.
+**Flow (`Level02`):** opening (10 s camera sweep) -> `landing` (until the player is ashore, or `firstWaveTriggerSeconds`) -> `waves` -> `objective` (push inland to the beacon; a final ambush waits in the trees and springs on the way in — breaking it resumes the push) -> `won`. The result screen offers Retry or Play again, and Main menu. `Level02TestLevel` extends it as the sandbox: training dummies, a respawning alien group, player respawn instead of failure, and dev keys.
 
 **Downed, revive and healing:**
 - At 0 health the player (or a squadmate) is downed, not killed. Aliens ignore the downed, because `Perception` skips anyone whose health `isDead`.
@@ -247,7 +247,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 - `StateMachine` (states are `{ enter, update, exit }`; `update` returns the next state's name) and `Perception` (sight range and field of view with a line-of-sight ray, a shorter range against concealed targets, hearing, last known position).
 - `AlienSquad`: registers aliens, gives them targets and cover, passes call-outs and gunshot noise, counts kills and clears corpses.
 - `HumanSquad`: the leader (the player) plus `SquadMate`s. It provides formation places that turn with the leader's travel direction, the enemy list, shared tracers, and gunshot reporting. It also runs downed and revive: who is down and for how long (`isDowned`, `bleedOutLeft`), sending revivers, `reviveMember`, and bleed-out. Its `members` array is passed as `AlienSquad.targets`, so the aliens hunt the whole squad.
-- `WaveDirector`: spawns each wave's units round-robin across its lanes, at most `maxAlive` at a time, waits for the wave to be cleared, then pauses before the next.
+- `WaveDirector`: spawns each wave's units round-robin across its lanes, at most `maxAlive` at a time, waits for the wave to be cleared, then pauses before the next. Level 2 runs a second, one-wave director for its final ambush; its `spawn` callback points each alien at the beacon instead of the beach.
 
 **Weapons (`src/weapons/`):** `WeaponController` (the player's machine gun and knife, switching, aiming down sights, recoil and HUD), `HitscanWeapon` (no friendly fire: a shot stops on a teammate but does not hurt them), `MeleeWeapon` (backstab bonus), `WeaponEffects` (pooled tracers, impacts, muzzle flash) and `WeaponModels`.
 
@@ -255,7 +255,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 **UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class), `GraphicsSettings` (the Graphics section of the Options menu) and, for Level 3, `BossHealthBar` (a boss's name and health under the objective, blue while shielded) and `Credits` (the end credits rolling up the screen; the HUD hides through `ui-credits-active`). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
 
-**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, `maxAliveAliens`, timings, radii).
+**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, the `finalAmbush` group, `maxAliveAliens`, timings, radii).
 
 **Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad, and in the Level 3 sandbox [F6] starts the fight with the Warden.
 

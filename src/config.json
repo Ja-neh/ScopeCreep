@@ -237,7 +237,13 @@
         { "trooper": 20, "brute": 0, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
         { "trooper": 22, "brute": 2, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
         { "trooper": 24, "brute": 4, "lanes": ["centre", "west", "east", "farWest", "farEast"] }
-      ]
+      ],
+      "finalAmbush": {
+        "triggerDistance": 45,
+        "trooper": 6,
+        "brute": 1,
+        "spawnIntervalSeconds": 0.4
+      }
     },
     "level03": {
       "generator": {

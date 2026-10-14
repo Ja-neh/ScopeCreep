@@ -1,5 +1,5 @@
-// Level 2 end to end: landing, three waves, objective and victory; defeat; the sandbox level;
-// and clean teardown. Aliens are killed by the test so the flow runs quickly.
+// Level 2 end to end: landing, three waves, the final ambush, objective and victory; defeat; the
+// sandbox level; and clean teardown. Aliens are killed by the test so the flow runs quickly.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestWorld, stepWorld, bodyCount } from './support/testWorld.mjs';
@@ -68,10 +68,17 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
   assert.equal(level.beacon.mesh.visible, true, 'objective beacon shown');
   assert.ok(world.ui.callsTo('showObjective').some((call) => call.args[0].startsWith('HOLD THE BEACH')));
 
-  // Walk into the beacon's ring
+  // Walk into the beacon's ring: the group left in the trees springs on the way in, and breaking
+  // the ambush is what wins the beach
   const goal = level.beacon.mesh.position;
   level.player.teleport(goal.x + 3, goal.y + 0.1, goal.z);
-  stepWorld(world, 0.3, { level });
+  stepWorld(world, 90, {
+    level,
+    onFrame: () => {
+      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+      return level.state === 'won';
+    }
+  });
   assert.equal(level.state, 'won');
 
   const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
@@ -84,6 +91,86 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
   assert.equal(world.environmentGroup.children.length, 0);
   assert.equal(world.projectilePool, null);
+});
+
+test('Level 2: the push inland springs a final ambush, and the beach is won once it is broken', async () => {
+  const { world, level } = await loadLevel(Level02);
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+  level.player.teleport(foot.x, foot.y, foot.z);
+  stepWorld(world, 0.5, { level });
+
+  // Clear the three waves without going anywhere near the beacon
+  stepWorld(world, 200, {
+    level,
+    onFrame: () => {
+      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+      return level.state === 'objective';
+    }
+  });
+  assert.equal(level.state, 'objective');
+  assert.equal(level.ambushTriggered, false, 'nothing springs until the player pushes in');
+
+  // Step inside the ambush's reach (outside the beacon's ring): the trees come alive
+  const goal = level.beacon.mesh.position;
+  const ground = (x, z) => level.environment.heightAt(x, z) + 0.1;
+  const triggerZ = goal.z + cfg.finalAmbush.triggerDistance - 5;
+  level.player.teleport(goal.x, ground(goal.x, triggerZ), triggerZ);
+
+  // Track the arrivals by identity: dead wave aliens are pruned from `members` along the way, so
+  // indices and lengths lie; the first ambusher stands up while the trigger lands
+  const already = new Set(level.squad.members);
+  const group = [];
+  const arrivals = () => {
+    for (const alien of level.squad.members) {
+      if (!already.has(alien) && !group.includes(alien)) group.push(alien);
+    }
+  };
+
+  stepWorld(world, 0.3, { level, onFrame: () => { level.player.health.reset(); arrivals(); } });
+  assert.equal(level.state, 'ambush');
+  assert.equal(level.ambushTriggered, true);
+  assert.ok(world.ui.callsTo('showToast').some((call) => /^Ambush!/.test(call.args[0])), 'the ambush is called out');
+  assert.equal(world.ui.callsTo('showObjective').at(-1).args[0], 'AMBUSH');
+
+  // The whole group stands up, and it is headed for the beacon, not the beach
+  const total = cfg.finalAmbush.trooper + cfg.finalAmbush.brute;
+  stepWorld(world, 12, {
+    level,
+    onFrame: () => {
+      level.player.health.reset();
+      arrivals();
+      return group.length >= total;
+    }
+  });
+  assert.equal(group.length, total, 'the whole ambush group arrived');
+  assert.equal(group.filter((alien) => alien.name === 'AlienTrooper').length, cfg.finalAmbush.trooper);
+  assert.equal(group.filter((alien) => alien.name === 'AlienBrute').length, cfg.finalAmbush.brute, 'a brute waited in the trees too');
+  assert.ok(
+    group.every((alien) => Math.hypot(alien.home.x - goal.x, alien.home.z - goal.z) < 40),
+    'they hold the beacon, not the beach'
+  );
+
+  // Reaching the beacon is not enough while the ambush stands; breaking it lets the push finish
+  level.player.teleport(goal.x + 3, goal.y + 0.1, goal.z);
+  stepWorld(world, 0.3, { level, onFrame: () => level.player.health.reset() });
+  assert.equal(level.state, 'ambush', 'the beach is not won while the ambush stands');
+
+  stepWorld(world, 3, {
+    level,
+    onFrame: () => {
+      level.player.health.reset();
+      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+      return level.ambush.isDone;
+    }
+  });
+  assert.equal(level.ambush.isDone, true, 'the ambush is broken');
+  assert.equal(level.state, 'objective', 'the push resumes');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /ambush is broken/.test(call.args[0])));
+
+  stepWorld(world, 0.3, { level });
+  assert.equal(level.state, 'won');
+  assert.equal(world.ui.callsTo('showMissionResult').at(-1).args[0].outcome, 'victory');
+  assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });
 
 test('Level 2: the first wave also starts if the player stays aboard', async () => {
