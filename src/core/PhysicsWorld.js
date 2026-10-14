@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 
 const GRAVITY = { x: 0.0, y: -24.0, z: 0.0 };
+const DEFAULT_TIMESTEP = 1 / 60;
+// Matches the frame-time clamp in GameWorld._loop, so a long hitch cannot hand Rapier a huge step.
+const MAX_TIMESTEP = 0.1;
 
 /**
  * PhysicsWorld
@@ -23,16 +26,24 @@ export class PhysicsWorld {
     if (this.isInitialized) return;
     await RAPIER.init();
     this.world = new RAPIER.World(this.gravity);
+    this.world.timestep = DEFAULT_TIMESTEP;
     this.isInitialized = true;
     console.log('Rapier3D Physics Engine Initialized.');
   }
 
   /**
-   * Advance the physics simulation
-   * @param {number} delta - Frame time in seconds
+   * Advance the simulation by exactly one step.
+   *
+   * One step per frame, never an accumulator: platforms queue their collider transforms with
+   * setNextKinematicTranslation, which Rapier applies only during a step, so a skipped step
+   * would leave deck colliders a frame behind the Phase 4 character sweeps. Every body is fixed
+   * or kinematic today, so nothing integrates over the timestep yet; revisit substepping before
+   * adding dynamic bodies.
+   * @param {number} [delta] - Frame time in seconds; defaults to 1/60
    */
-  step(delta) {
+  step(delta = DEFAULT_TIMESTEP) {
     if (!this.isInitialized || !this.world) return;
+    this.world.timestep = delta > 0 ? Math.min(delta, MAX_TIMESTEP) : DEFAULT_TIMESTEP;
     this.world.step();
   }
 
