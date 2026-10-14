@@ -155,6 +155,7 @@ export class ProjectilePool extends BaseEntity {
     direction,
     spread,
     speed,
+    damage,
     source = null,
     excludeCollider = null
   } = {}) {
@@ -195,7 +196,7 @@ export class ProjectilePool extends BaseEntity {
       gravity: flakCfg.gravity,
       drag: flakCfg.drag,
       maxLifeTime: flakCfg.maxLifeTime,
-      damage: flakCfg.damage,
+      damage: damage !== undefined ? damage : flakCfg.damage,
       damageType: DamageType.KINETIC,
       source,
       excludeCollider
