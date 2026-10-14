@@ -22,7 +22,8 @@ For every component, you'll find:
 11. [Ship Stations & Guns (`BaseStation.js`, `HelmStation.js`, etc.)](#11-ship-stations--guns)
 12. [Smart Camera (`SpringArmCamera.js`)](#12-smart-camera-springarmcamerajs)
 13. [Player & Walking on Moving Decks](#13-player--walking-on-moving-decks)
-14. [Projectiles & Object Pooling](#14-projectiles--object-pooling)
+14. [Player Jet](#14-player-jet)
+15. [Projectiles & Object Pooling](#15-projectiles--object-pooling)
 
 ---
 
@@ -207,7 +208,19 @@ For every component, you'll find:
 
 ---
 
-## 14. Projectiles & Object Pooling
+## 14. Player Jet
+
+### [`src/entities/player-jet/PlayerJet.js`](../src/entities/player-jet/PlayerJet.js) and [`src/entities/models/PlayerJetModel.js`](../src/entities/models/PlayerJetModel.js)
+- **The Minimum:** A player-controlled aircraft with a procedural placeholder model, flight controls, a chase camera, and twin pooled guns; the jet sandbox also has a pursuing enemy aircraft.
+- **How It Works:**
+  - Moves and updates its kinematic Rapier body in Phase 2, using flight actions bound in `InputManager`; banking curves the flight path and the wings gently level when roll input is released.
+  - Fires through the existing flak projectile pool in Phase 5 and reads its tuning from `src/config.json`.
+  - [`EnemyJet.js`](../src/entities/enemies/EnemyJet.js) pursues and leads the player jet before firing, with damage and faction handling shared with the existing projectile system.
+  - The registered [`Level01JetTestLevel.js`](../src/levels/Level01JetTestLevel.js) provides open airspace, a ship landmark, a dogfighting opponent, and a controls card for testing.
+
+---
+
+## 15. Projectiles & Object Pooling
 
 ### [`src/entities/ProjectilePool.js`](../src/entities/ProjectilePool.js)
 - **The Minimum:** Pre-allocates and recycles projectile instances to avoid garbage collection stutter during intense combat.
@@ -238,6 +251,7 @@ flowchart TD
     subgraph Level Actors
         Level --> Ship[Battleship]
         Level --> Ply[Player]
+        Level --> Jet[PlayerJet]
         Level --> Pool[ProjectilePool]
     end
 

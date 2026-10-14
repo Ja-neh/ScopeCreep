@@ -44,6 +44,15 @@ export class InputManager {
       steerLeft: ['KeyA', 'ArrowLeft'],
       steerRight: ['KeyD', 'ArrowRight'],
 
+      throttleUp: ['KeyW'],
+      throttleDown: ['KeyS'],
+      pitchUp: ['ArrowDown'],
+      pitchDown: ['ArrowUp'],
+      rollLeft: ['KeyA'],
+      rollRight: ['KeyD'],
+      yawLeft: ['KeyQ'],
+      yawRight: ['KeyE'],
+
       aimLeft: ['KeyA', 'ArrowLeft'],
       aimRight: ['KeyD', 'ArrowRight'],
       aimUp: ['KeyW', 'ArrowUp'],

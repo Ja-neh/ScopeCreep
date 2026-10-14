@@ -3,8 +3,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BaseLevel } from './BaseLevel.js';
 import { Ocean } from '../rendering/Ocean.js';
 import { Battleship } from '../entities/Battleship.js';
-import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
+import { PlayerJet } from '../entities/player-jet/PlayerJet.js';
+import { EnemyJet } from '../entities/enemies/EnemyJet.js';
 
 /**
  * Level01JetTestLevel
@@ -20,8 +21,8 @@ export class Level01JetTestLevel extends BaseLevel {
     super(gameWorld, 'Level 1: Jet Test Level');
     this.water = null;
     this.battleship = null;
-    this.player = null;
     this.playerJet = null;
+    this.enemyJet = null;
     this.projectilePool = null;
 
     // Dev Tools Camera System
@@ -29,6 +30,17 @@ export class Level01JetTestLevel extends BaseLevel {
     this.aerialCamera = null;
     this.orbitControls = null;
     this._onKeyDown = null;
+  }
+
+  get controls() {
+    return [
+      { actions: ['throttleUp', 'throttleDown'], label: 'Throttle up / down' },
+      { actions: ['pitchUp', 'pitchDown'], label: 'Pitch up / down' },
+      { actions: ['rollLeft', 'rollRight'], label: 'Roll left / right' },
+      { actions: ['yawLeft', 'yawRight'], label: 'Yaw left / right' },
+      { actions: ['firePrimary'], label: 'Fire guns' },
+      { actions: ['pause'], label: 'Pause and options' }
+    ];
   }
 
   async init() {
@@ -84,15 +96,18 @@ export class Level01JetTestLevel extends BaseLevel {
     this.gameWorld.addEntity(this.battleship);
     this.battleship.initPhysics(this.gameWorld.physics);
 
-    // 6. Default Player Avatar (Spawned on deck)
-    this.player = new Player(this.gameWorld, {
-      walkSpeed: 8.0,
-      sprintSpeed: 14.0,
-      jumpForce: 10.0
+    // 6. Spawn Player Jet in Open Airspace (Hovering 80m above the ocean)
+    this.playerJet = new PlayerJet(this.gameWorld, {
+      position: new THREE.Vector3(0, 80, -200)
     });
-    this.player.setPosition(0.46, 6.2, -14.0);
-    this.player.yaw = 0;
-    this.gameWorld.addEntity(this.player);
+    this.gameWorld.addEntity(this.playerJet);
+
+    // 7. Enemy aircraft starts behind the player and engages in a pursuit.
+    this.enemyJet = new EnemyJet(this.gameWorld, {
+      position: new THREE.Vector3(0, 95, -380),
+      target: this.playerJet
+    });
+    this.gameWorld.addEntity(this.enemyJet);
 
     // 7. Initialize Aerial Dev Camera & OrbitControls
     this._initAerialCamera();
@@ -135,10 +150,6 @@ export class Level01JetTestLevel extends BaseLevel {
         document.exitPointerLock();
       }
 
-      if (this.player) {
-        this.player.isDevSuspended = true;
-      }
-
       if (this.orbitControls) {
         this.orbitControls.enabled = true;
         if (this.playerJet && this.playerJet.mesh) {
@@ -156,10 +167,6 @@ export class Level01JetTestLevel extends BaseLevel {
     } else {
       if (this.orbitControls) {
         this.orbitControls.enabled = false;
-      }
-
-      if (this.player) {
-        this.player.isDevSuspended = false;
       }
 
       this.gameWorld.setActiveCamera(null);
@@ -246,8 +253,8 @@ export class Level01JetTestLevel extends BaseLevel {
       this.gameWorld.projectilePool = null;
     }
     this.projectilePool = null;
-    this.player = null;
     this.playerJet = null;
+    this.enemyJet = null;
     this.battleship = null;
 
     super.dispose();
