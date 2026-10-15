@@ -77,11 +77,13 @@ export class Level01 extends BaseLevel {
   async init() {
     await super.init();
 
-    // 1. Island, Coastal Terrain, Sea, Sky & Lighting
+    // 1. Island, Coastal Terrain, Sea, Sky & Lighting (Optimized for Level 1 open sea approach)
     this.environment = this.trackDisposable(new BeachEnvironment(this.gameWorld, {
       look: 'daylight',
       layout: 'beach',
       waveScale: 0.5,
+      cellSize: 8,           // Lower ground mesh detail (8m grid vs 2m grid: 94% polygon reduction)
+      createCollider: false, // Player stays aboard/in jet; no ground collision needed
       shadowCentre: new THREE.Vector3(0, 0, 300),
       shadowHalfExtent: 400,
       shadowFollowsCamera: true
@@ -89,8 +91,14 @@ export class Level01 extends BaseLevel {
     this.environment.build();
     this.water = this.environment.ocean;
 
-    // 2. Island Cover (palms along the shore, jungle trees on hills, boulders)
-    this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment));
+    // 2. Island Cover: significantly fewer trees, no rocks, no bushes, no scenery colliders
+    this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, [], {
+      includeRocks: false,   // No rocks
+      includeBushes: false,  // No bushes
+      treeDensity: 0.15,     // Significantly less trees
+      palmDensity: 0.20,     // Light palm fringe along shore
+      createColliders: false // Zero physics overhead for distant scenery
+    }));
     this.cover.build();
 
     // 3. High-Performance Projectile Object Pool

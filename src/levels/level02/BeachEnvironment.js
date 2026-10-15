@@ -133,7 +133,7 @@ export class BeachEnvironment {
   constructor(gameWorld, {
     look = 'sunset', layout = 'beach', shadowCentre = DEFAULT_SHADOW_CENTRE,
     shadowHalfExtent = DEFAULT_SHADOW_HALF_EXTENT, shadowFollowsCamera = false,
-    waveScale = 0.3
+    waveScale = 0.3, cellSize = null, createCollider = true
   } = {}) {
     this.gameWorld = gameWorld;
     this.layout = LAYOUTS[layout] || LAYOUTS.beach;
@@ -144,6 +144,8 @@ export class BeachEnvironment {
     this.shadowHalfExtent = shadowHalfExtent;
     this.shadowFollowsCamera = shadowFollowsCamera;
     this.waveScale = waveScale;
+    this.cellSize = cellSize;
+    this.createCollider = createCollider;
     this.sun = null;
     this.hemi = null;
     this._direction = this.look.direction.clone(); // Towards the sun or moon (moves in blendLook)
@@ -222,16 +224,19 @@ export class BeachEnvironment {
 
     // 4. Terrain mesh and its matching heightfield collider
     const terrain = this.layout.terrain;
+    const actualCellSize = this.cellSize ?? (terrain.cellSize ?? TERRAIN_CELL);
     this.terrain = new Terrain({
       width: terrain.width,
       depth: terrain.depth,
-      cellSize: terrain.cellSize ?? TERRAIN_CELL,
+      cellSize: actualCellSize,
       center: { x: TERRAIN_GRID_SHIFT, z: terrain.centreZ + TERRAIN_GRID_SHIFT },
       heightAt: (x, z) => this._islandHeight(x, z),
       colorAt: (x, z, h, slope, out) => this._islandColor(x, z, h, slope, out)
     });
     group.add(this.terrain.mesh);
-    this.terrain.createCollider(this.gameWorld.physics);
+    if (this.createCollider && this.gameWorld.physics) {
+      this.terrain.createCollider(this.gameWorld.physics);
+    }
     this.cloudShadows.applyToMaterial(this.terrain.material);
 
     // 5. Named spots other systems place things at
