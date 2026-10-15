@@ -27,6 +27,18 @@
       "maxLifeTime": 3.0,
       "damage": 8,
       "damageType": "KINETIC"
+    },
+    "grenade": {
+      "capacity": 12,
+      "speed": 16.0,
+      "gravity": -20.0,
+      "drag": 0.0,
+      "maxLifeTime": 5.0,
+      "damage": 55,
+      "blastRadius": 6.5,
+      "impulseSpeed": 6.5,
+      "minFlightSeconds": 0.55,
+      "maxFlightSeconds": 2.0
     }
   },
   "playerJet": {
@@ -199,7 +211,14 @@
       "maxRange": 30,
       "flankAfterSeconds": 6,
       "searchSeconds": 6,
-      "corpseSeconds": 4
+      "corpseSeconds": 4,
+      "grenade": {
+        "chance": 0.35,
+        "cooldownSeconds": 14,
+        "minRange": 8,
+        "maxRange": 32,
+        "aimError": 2.4
+      }
     },
     "brute": {
       "maxHealth": 400,
@@ -298,6 +317,11 @@
       "spawnIntervalSeconds": 0.8,
       "objectiveRadius": 10,
       "maxAliveAliens": 18,
+      "destructibleCover": {
+        "bush": { "health": 24 },
+        "tree": { "health": 110 },
+        "rock": { "health": 420 }
+      },
       "shipPressure": {
         "warnAfterSeconds": 10,
         "callOutIntervalSeconds": 40

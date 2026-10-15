@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { IslandLevel, CREW_NAMES } from './IslandLevel.js';
 import { LandingZone } from './level02/LandingZone.js';
 import { BeachWreckage } from './level02/BeachWreckage.js';
+import { DestructibleCover } from './level02/DestructibleCover.js';
 import { ObjectiveBeacon } from './level02/ObjectiveBeacon.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
 import { LandingCinematic } from './level02/LandingCinematic.js';
@@ -53,7 +54,9 @@ const RALLY_POSTS = [
  * Level 2: The Beach. The squad lands from the anchored warship and holds the island's south
  * beach against three waves of aliens pushing down from the village, then pushes inland to the
  * jungle path. Introduces on-foot combat (see IslandLevel): machine gun and knife, cover,
- * hiding in bushes, downed and revive.
+ * hiding in bushes, downed and revive. Firefights eat into the scenery: bushes are shot away
+ * fast, trees take a burst, rocks last longest, and alien flush grenades blow cover apart
+ * (see DestructibleCover).
  *
  * Opening: a camera sweep while the AI crew file down the gangway and the two helicopters fly
  * in and land; their pilots climb out and guard them. In a solo game the player leads 4 AI
@@ -75,6 +78,7 @@ export class Level02 extends IslandLevel {
 
     this.landingZone = null;
     this.wreckage = null;
+    this.destructibleCover = null;
     this.waves = null;
     this.ambush = null;
     this.ambushTriggered = false;
@@ -107,6 +111,22 @@ export class Level02 extends IslandLevel {
     return [...this.landingZone.clearings, ...this._extraClearings()];
   }
 
+  /** Once the scenery stands: give it health so firefights eat into it (see DestructibleCover). */
+  _coverBuilt() {
+    this.destructibleCover = this.trackDisposable(new DestructibleCover(this.gameWorld, this.cover));
+    this.destructibleCover.build();
+  }
+
+  /**
+   * The machine gun reports each shot that lands so bushes (which have no collider) can be cut
+   * down; trees and rocks take damage directly through their own colliders.
+   */
+  _weaponOptions() {
+    return {
+      onBulletImpact: (origin, point) => this.destructibleCover.bulletImpact(origin, point)
+    };
+  }
+
   /** The top of the gangway, behind the crew, facing the beach. */
   _playerSpawn() {
     return { position: this.landingZone.spawnPoints.gangwayTop, yaw: 0 };
@@ -121,10 +141,14 @@ export class Level02 extends IslandLevel {
       isSuppressed: () => this._reviveCandidate() !== null
     });
     this.gameWorld.addEntity(this.supplyCrate);
+
+    // An alien flush grenade's blast eats into the scenery as well as anyone caught in it
+    this.projectilePool.onExplosion = (point, radius, damage) => this.destructibleCover.explosionDamage(point, radius, damage);
   }
 
   _updateWorld(delta) {
     this.landingZone.update(delta);
+    if (this.destructibleCover) this.destructibleCover.update(delta);
     this._sendCrewAshore();
 
     // The crew wait on the sand until the player is ashore, then fall in behind them
@@ -500,9 +524,10 @@ export class Level02 extends IslandLevel {
     this.waves = null;
     this.ambush = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them
-    super.dispose(); // Also the landing zone, the wreckage and the beacon (tracked)
+    super.dispose(); // Also the destructible cover, the landing zone, the wreckage and the beacon (tracked)
     this.beacon = null;
     this.landingZone = null;
     this.wreckage = null;
+    this.destructibleCover = null;
   }
 }

@@ -13,6 +13,7 @@ Run it before every commit. If a test fails, either your change broke something 
 | `landingZone.test.mjs` | Walking off the ship to the beach, no hopping downhill, parked helicopters |
 | `wreckage.test.mjs` | Level 2's beach wreckage: two burned boats with fallen soldiers around them, crates as chest-high cover, everything off the landings and the walk inland, clean teardown |
 | `cover.test.mjs` | Tree, rock and bush placement rules, rock cover, triangle budget, scenery tiles (low detail far away, nothing in the fog), hiding in bushes, AI cover spots |
+| `coverDamage.test.mjs` | Destructible cover: health pooled by kind (bush < tree < rock), shots through a bush cut it down and stop hiding anyone, the machine gun fells trees in about seven hits and rocks in about two dozen, explosions shred only what is inside their radius, a thrown grenade arcs and detonates where it lands (heard, busy cover torn, figures nearby hurt), a trooper flushes a watched player with a grenade and never hurts its own side |
 | `weapons.test.mjs` | Machine gun, reload, recoil climbing and settling back, knife and backstab, quick knife, aim zoom, cleanup |
 | `aliens.test.mjs` | Trooper sight, damage, concealment, hearing, call-outs, no friendly fire, death |
 | `brute.test.mjs` | Brute charge and slam, outrunning it, double damage to its back |

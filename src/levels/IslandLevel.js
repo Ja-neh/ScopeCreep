@@ -74,14 +74,17 @@ export class IslandLevel extends BaseLevel {
     // 3. Trees, rocks and bushes, leaving those places open
     this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, this._clearings(), this._coverOptions()));
     this.cover.build();
+    this._coverBuilt();
 
     // 4. Player
     this._createPlayer();
 
     // 5. Machine gun and knife (after the player, so its camera work runs after the player's).
-    //    Every shot is a noise the aliens can hear.
+    //    Every shot is a noise the aliens can hear, and every landing shot is reported back to
+    //    the level through _weaponOptions() (destructible scenery listens there).
     this.weapons = new WeaponController(this.gameWorld, this.player, {
-      onGunshot: (position) => this.squad.reportNoise(position)
+      onGunshot: (position) => this.squad.reportNoise(position),
+      ...this._weaponOptions()
     });
     this.gameWorld.addEntity(this.weapons);
 
@@ -128,6 +131,14 @@ export class IslandLevel extends BaseLevel {
   }
 
   _coverOptions() {
+    return {};
+  }
+
+  /** Called once the scenery is built and solid: levels with destructible cover build it here. */
+  _coverBuilt() { }
+
+  /** Extra options for the player's WeaponController (e.g. onBulletImpact). */
+  _weaponOptions() {
     return {};
   }
 

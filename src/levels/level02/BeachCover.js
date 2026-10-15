@@ -163,6 +163,40 @@ export class BeachCover {
   }
 
   /**
+   * A bush that was destroyed: it stops hiding anyone and AI loses it as a hiding spot.
+   * @param {Object} bush - The same placement object passed to Vegetation
+   */
+  removeBush(bush) {
+    const bushIndex = this.bushes.indexOf(bush);
+    if (bushIndex >= 0) this.bushes.splice(bushIndex, 1);
+    const cell = this._bushGrid.get(cellKey(Math.floor(bush.x / BUSH_CELL), Math.floor(bush.z / BUSH_CELL)));
+    if (cell) {
+      const cellIndex = cell.indexOf(bush);
+      if (cellIndex >= 0) cell.splice(cellIndex, 1);
+    }
+  }
+
+  /**
+   * A rock that was destroyed: AI loses it as standing cover.
+   * @param {{x: number, z: number}} rock - The entry in `this.rocks` (matched by position)
+   */
+  removeRock(rock) {
+    const index = this.rocks.indexOf(rock);
+    if (index >= 0) this.rocks.splice(index, 1);
+  }
+
+  /**
+   * A rock or trunk that was destroyed: its footprint is open again, so spawns and placement
+   * are free to use it. Matches the solid at the same (x, z) recorded when it was placed.
+   */
+  removeSolidAt(x, z) {
+    for (let i = this._solids.length - 1; i >= 0; i--) {
+      const solid = this._solids[i];
+      if (Math.abs(solid.x - x) < 0.05 && Math.abs(solid.z - z) < 0.05) this._solids.splice(i, 1);
+    }
+  }
+
+  /**
    * Finds a spot behind a tall rock, on the side away from `threat`, at a distance from the
    * threat between minRange and maxRange, preferring spots close to `from`.
    * @returns {boolean} Whether a spot was found (written to `out`)

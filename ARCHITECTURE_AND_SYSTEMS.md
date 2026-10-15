@@ -245,12 +245,13 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 - `BeachEnvironment`: the island. Procedural terrain mesh plus a matching Rapier heightfield (the grid is shifted 0.173 m off round coordinates, because a vertical ray through an exact grid corner can slip between heightfield triangles), a calm sea, a sunset or night sky and clouds, and fog. It has two layouts: `'beach'` for Level 2 and `'village'` for Level 3, which has a bigger north end. Public helpers: `heightAt`, `slopeAt`, `pathCentreX`, `pathDistance`, `sunDirection`, `village`, `isInVillage` (where Level 3's houses go) and `scatterBounds`.
 - `LandingZone`: the battleship anchored offshore (`AnchoredShip`, a static copy of Level 1's ship), the boarding ramp and gangway (ramps, not steps; solid handrails), the two helicopter bays, and spawn points (`gangwayTop`, `gangwayFoot`, `supplyCrate`). `flyInHelicopters()` sends the helicopters back out to sea and lands them (`HelicopterArrival` flight path plus `RotorWash` sand and spray); their cover colliders only switch on at touchdown.
 - `BeachWreckage`: the first escape attempt's remains on the south beach — a burned landing craft and a broken patrol boat (static box colliders, usable as cover), spilled supply crates (solid), and fallen soldiers (`SoldierModel.setFallen`, no colliders). Seeded placement (`createRandom(5150)`) along the sand band, clear of the landing clearings, the jungle path and the waterline.
-- `BeachCover`: instanced trees, rocks and bushes with convex-hull rock colliders and trunk cylinders. The scenery is split into 120 m map tiles (`THREE.LOD` each). Tiles off screen are culled, tiles beyond 170 m use low-detail models, and tiles beyond 720 m (lost in the fog) are not drawn. AI helpers: `findCover(from, threat, ...)` (the edge of a tall rock, so a shooter in cover still has a line of fire), `isInBush`, `updateConcealment(actor)`, `isClearOfSolids`.
+- `BeachCover`: instanced trees, rocks and bushes with convex-hull rock colliders and trunk cylinders. The scenery is split into 120 m map tiles (`THREE.LOD` each). Tiles off screen are culled, tiles beyond 170 m use low-detail models, and tiles beyond 720 m (lost in the fog) are not drawn. AI helpers: `findCover(from, threat, ...)` (the edge of a tall rock, so a shooter in cover still has a line of fire), `isInBush`, `updateConcealment(actor)`, `isClearOfSolids`; `removeBush`, `removeRock` and `removeSolidAt` take destroyed scenery back out of those lookups.
+- `DestructibleCover`: puts a `HealthComponent` on the scenery, sized by kind (`levels.level02.destructibleCover`: a bush falls to two rifle hits, a tree to about seven, a rock to about two dozen). Bullets bite through cover: the level hands `WeaponController.onBulletImpact` to `bulletImpact(origin, point)`, which walks the flight line against the bush list. Explosions sweep it through `ProjectilePool.onExplosion` into `explosionDamage(point, radius, damage)`, one falloff-scaled hit per prop. Destroying a bush drops it from the shoot-through list; a tree or rock also loses its collider (`Vegetation.removePlacementCollider`) and its footprint in the AI's solid and rock-cover lists. The instance itself shrink-fades away over 0.35 s (`Vegetation.setPlacementScale`, then `hidePlacement`).
 - `ObjectiveBeacon`, `SupplyCrate` (hold [E] to channel a patch-up — full ammo and health; ammo alone is a quick press), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
 
 **Combatants (`src/entities/`)**
 - `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model. Death hands the body to a `Ragdoll` (see [2.6](#26-physics-architecture)), and `applyKnockback(direction, speed)` layers blast shoves over its steering.
-- `enemies/AlienCombatant` (shared patrol, investigate and search states, hearing, squad call-outs, `assault(point)`; subclasses may add states and pick the first one), `AlienTrooper` (fights from the edges of cover, flanks a target that stays dug in, plasma bursts), `AlienBrute` (charge and overhead slam; its back pack takes double damage through `damageMultiplierAt`), and Level 3's boss `AlienWarden` (see 2.9).
+- `enemies/AlienCombatant` (shared patrol, investigate and search states, hearing, squad call-outs, `assault(point)`; subclasses may add states and pick the first one), `AlienTrooper` (fights from the edges of cover, flanks a target that stays dug in, plasma bursts; some carry a flush grenade — `_updateGrenade` lobs it at a target in throwing range when its cooldown is up, tearing up the cover they hide behind), `AlienBrute` (charge and overhead slam; its back pack takes double damage through `damageMultiplierAt`), and Level 3's boss `AlienWarden` (see 2.9).
 - `allies/SquadMate`: our AI soldier. Orders are `walkRoute(points)`, `follow()` (a place in formation) and `hold(point, facing)`. A follower with a wall in the way follows the leader's trail around it, and runs to catch up when far behind. It fights from cover near its post without straying beyond `leashRadius`, and turns on whoever shoots it.
 - Models: `AlienModel`, `SoldierModel`, `HelicopterModel`. Character models merge each rigid piece into one solid and one glow mesh (`rendering/MeshMerge.js`), about 6 to 8 draw calls per character. Only an alien's body casts a shadow (limbs and rifle do not), which keeps big waves cheaper in the shadow pass.
 
@@ -266,7 +267,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 **UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class), `GraphicsSettings` (the Graphics section of the Options menu) and, for Level 3, `BossHealthBar` (a boss's name and health under the objective, blue while shielded) and `Credits` (the end credits rolling up the screen; the HUD hides through `ui-credits-active`). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
 
-**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`), `levels.level02` (wave list, the `finalAmbush` group, `maxAliveAliens`, timings, radii) and `physicsJuice` (ragdoll kick/damping/mass, knockback decay, explosion radius and impulse).
+**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `projectiles.grenade` (blast-only damage, falloff radius, ballistic flight-time clamp), `enemies.trooper` (including the `grenade` flush: carry chance, cooldown, throwing range and aim scatter), `enemies.brute`, `allies` (`crewSize`, `squadMate`), `levels.level02` (wave list, the `finalAmbush` group, `maxAliveAliens`, timings, radii, `destructibleCover` health per kind) and `physicsJuice` (ragdoll kick/damping/mass, knockback decay, explosion radius and impulse).
 
 **Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad, and in the Level 3 sandbox [F6] starts the fight with the Warden.
 
@@ -427,7 +428,7 @@ ScopeCreep/
 │   │   │   └── SpringArmCamera.js # 1st/3rd person camera, occlusion raycasting, arm compression
 │   │   ├── projectile-components/
 │   │   │   └── Projectile.js      # Ballistic trajectory, gravity arc, CCD raycast sweep
-│   │   ├── ProjectilePool.js  # Zero-allocation pool (Flak, Artillery, Plasma)
+│   │   ├── ProjectilePool.js  # Zero-allocation pool (Flak, Artillery, Plasma, Grenade)
 │   │   └── ship-components/# Specialized naval stations and subsystems
 │   │       ├── BaseStation.js     # Abstract station lifecycle (mount, dismount, proximity, deck return)
 │   │       ├── ShipBuoyancy.js    # 5-probe wave sampling, pitch/roll/heave damping
@@ -441,7 +442,7 @@ ScopeCreep/
 │   │   ├── Level01.js      # Operation Retake: Open ocean combat mission stage
 │   │   ├── Level02.js      # The Beach: landing, three alien waves, objective
 │   │   ├── Level02TestLevel.js # Level 2 sandbox: dummies, respawning aliens, dev keys
-│   │   ├── level02/        # Island, landing zone, cover, opening sweep, helicopters, crate, beacon
+│   │   ├── level02/        # Island, landing zone, destructible cover, opening sweep, helicopters, crate, beacon
 │   │   ├── IslandLevel.js  # Base class for the on-foot island levels (Level 2 and 3)
 │   │   ├── SandboxTools.js # Dev tools shared by the island test levels (F1/F3/F4, respawn)
 │   │   ├── Level03.js      # The Village: the night finale (in progress)
@@ -577,11 +578,12 @@ ScopeCreep/
 
 ### `ProjectilePool` (`src/entities/ProjectilePool.js`)
 - High-performance, zero-allocation object pool for rapid-fire ballistics.
-- Pre-allocates 100 Flak tracers, 30 heavy Artillery shells and the Plasma bolts upfront in `gameWorld.projectilesGroup`.
+- Pre-allocates 100 Flak tracers, 30 heavy Artillery shells, the Plasma bolts and the aliens' flush grenades upfront in `gameWorld.projectilesGroup`.
 - `gameplayUpdate(delta, gameWorld)`: Runs in **Phase 5**, advancing all active trajectories and executing $O(1)$ swap-and-pop recycling upon impact or lifetime expiration.
 - `fireFlak({ origin, direction, spread, source })`: Spawns high-velocity kinetic tracer ($460\text{ m/s}$, slight spread, 2.4s lifetime).
 - `fireArtillery({ origin, direction, source })`: Spawns heavy explosive shell ($240\text{ m/s}$, gravity arc $-18\text{ m/s}^2$, 6.5s lifetime).
-- `_onHit(hit)`: Resolves the impact: friendly fire is skipped but the shell still detonates. An artillery shell (`_blast`) plays the fireball, drops a scorch decal when it lands on a fixed surface, and shoves every entity within `physicsJuice.explosion.radius` — corpses via `Ragdoll.blastFrom`, the living via `applyKnockback`.
+- `fireGrenade({ origin, target, source, excludeCollider })`: Solves the ballistic arc to `target` (a flight time from the horizontal gap, clamped between `minFlightSeconds` and `maxFlightSeconds`) and lobs the flush grenade. It carries `damage: 0`: all of its harm comes from the blast.
+- `_onHit(hit)`: Resolves the impact: friendly fire is skipped but the projectile still detonates. An artillery shell (`_blast`) plays the fireball, drops a scorch decal when it lands on a fixed surface, and shoves every entity within `physicsJuice.explosion.radius` — corpses via `Ragdoll.blastFrom`, the living via `applyKnockback`. A grenade (`_grenadeBlast`) plays a smaller fireball, then lands one falloff-scaled explosive hit on everything inside `projectiles.grenade.blastRadius` — never the thrower's own side — plus a shove, and sweeps destructible scenery through the level's `onExplosion` hook.
 
 ### `Projectile` (`src/entities/projectile-components/Projectile.js`)
 - Single physical projectile instance managing position, velocity, ballistic gravity, and drag.

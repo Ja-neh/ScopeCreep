@@ -7,7 +7,8 @@ import config from '../config.json';
 
 /**
  * ProjectilePool
- * High-performance, zero-allocation object pool for high-frequency ballistics (Flak & Artillery).
+ * High-performance, zero-allocation object pool for high-frequency ballistics
+ * (Flak, Artillery, Plasma & alien Grenades).
  * Pre-allocates meshes and handles continuous collision detection in gameplayUpdate (Phase 5).
  */
 export class ProjectilePool extends BaseEntity {
@@ -20,6 +21,7 @@ export class ProjectilePool extends BaseEntity {
     this.flakCapacity = options.flakCapacity || projConfig.flak.capacity;
     this.artilleryCapacity = options.artilleryCapacity || projConfig.artillery.capacity;
     this.plasmaCapacity = options.plasmaCapacity || projConfig.plasma.capacity;
+    this.grenadeCapacity = options.grenadeCapacity || projConfig.grenade.capacity;
 
     // Root Three.js container
     this.mesh = new THREE.Group();
@@ -29,14 +31,16 @@ export class ProjectilePool extends BaseEntity {
     this.flakPool = [];
     this.artilleryPool = [];
     this.plasmaPool = [];
+    this.grenadePool = [];
     this.activeProjectiles = [];
-    this._poolsByType = { FLAK: this.flakPool, ARTILLERY: this.artilleryPool, PLASMA: this.plasmaPool };
+    this._poolsByType = { FLAK: this.flakPool, ARTILLERY: this.artilleryPool, PLASMA: this.plasmaPool, GRENADE: this.grenadePool };
 
     // Math scratchpads for spread calculation
     this._spreadDir = new THREE.Vector3();
     this._spreadUp = new THREE.Vector3();
     this._spreadRight = new THREE.Vector3();
     this._blastDir = new THREE.Vector3();
+    this._grenadeVelocity = new THREE.Vector3();
 
     this._onHit = this._onHit.bind(this);
 
@@ -50,6 +54,9 @@ export class ProjectilePool extends BaseEntity {
 
     // Artillery detonation VFX: fireballs (flashLight off: no extra permanent light in the scene)
     this.effects = new WeaponEffects((this.gameWorld && this.gameWorld.effectsGroup) || this.mesh, { flashLight: false });
+
+    // Levels with destructible scenery hook this to hurt their cover in an alien grenade's blast
+    this.onExplosion = null;
   }
 
   /**
@@ -149,7 +156,27 @@ export class ProjectilePool extends BaseEntity {
       this.plasmaPool.push(p);
     }
 
-    console.log(`ProjectilePool: Initialized with ${this.flakCapacity} Flak, ${this.artilleryCapacity} Artillery and ${this.plasmaCapacity} Plasma.`);
+    // -------------------------------------------------------------
+    // 4. GRENADES (the aliens' flush device: a low-poly orb that arcs in)
+    // -------------------------------------------------------------
+    const grenadeGeo = new THREE.IcosahedronGeometry(0.2, 0);
+    const grenadeMat = new THREE.MeshBasicMaterial({
+      color: 0x9dff6d,
+      toneMapped: false
+    });
+
+    for (let i = 0; i < this.grenadeCapacity; i++) {
+      const mesh = new THREE.Mesh(grenadeGeo, grenadeMat);
+      mesh.name = `Grenade_${i}`;
+      mesh.visible = false;
+      mesh.position.set(0, -9999, 0);
+      this.mesh.add(mesh);
+
+      const p = new Projectile(mesh, 'GRENADE', RAPIER);
+      this.grenadePool.push(p);
+    }
+
+    console.log(`ProjectilePool: Initialized with ${this.flakCapacity} Flak, ${this.artilleryCapacity} Artillery, ${this.plasmaCapacity} Plasma and ${this.grenadeCapacity} Grenades.`);
   }
 
   /**
@@ -305,11 +332,67 @@ export class ProjectilePool extends BaseEntity {
   }
 
   /**
+   * Throws a grenade in a ballistic arc that lands on `target` (the aim point, already scattered
+   * by the thrower). All of its damage comes from the blast: see `_grenadeBlast`.
+   */
+  fireGrenade({
+    origin,
+    target,
+    source = null,
+    excludeCollider = null
+  } = {}) {
+    const cfg = config.projectiles.grenade;
+
+    let p = this.grenadePool.pop();
+
+    // If pool empty, recycle oldest active grenade
+    if (!p) {
+      for (let i = 0; i < this.activeProjectiles.length; i++) {
+        if (this.activeProjectiles[i].type === 'GRENADE') {
+          p = this.activeProjectiles.splice(i, 1)[0];
+          break;
+        }
+      }
+    }
+
+    if (!p) return null;
+
+    // Ballistic solve: a flight time from the horizontal gap, then the velocity that lands there
+    const dx = target.x - origin.x;
+    const dy = target.y - origin.y;
+    const dz = target.z - origin.z;
+    const horizontal = Math.hypot(dx, dz);
+    const flight = THREE.MathUtils.clamp(horizontal / cfg.speed, cfg.minFlightSeconds, cfg.maxFlightSeconds);
+    this._grenadeVelocity.set(dx / flight, dy / flight - 0.5 * cfg.gravity * flight, dz / flight);
+
+    p.spawn({
+      origin,
+      direction: this._grenadeVelocity,
+      speed: this._grenadeVelocity.length(),
+      gravity: cfg.gravity,
+      drag: cfg.drag,
+      maxLifeTime: cfg.maxLifeTime,
+      damage: 0, // Blast only: everyone nearby takes the one falloff-scaled hit
+      damageType: DamageType.EXPLOSIVE,
+      source,
+      excludeCollider
+    });
+
+    this.activeProjectiles.push(p);
+
+    // The throw is heard: aliens in the area look up
+    if (this.gameWorld && this.gameWorld.audio) this.gameWorld.audio.play('plasma', origin);
+    return p;
+  }
+
+  /**
    * Internal hit resolver: applies damage to target entity if it possesses a HealthComponent.
    */
   _onHit(hit) {
-    // Artillery shells announce their detonation wherever they land (terrain, actors or water)
-    if (hit.projectile && hit.projectile.type === 'ARTILLERY' && this.gameWorld && this.gameWorld.audio) {
+    const type = hit.projectile ? hit.projectile.type : null;
+
+    // Artillery shells and grenades announce their detonation wherever they land (terrain, actors or water)
+    if ((type === 'ARTILLERY' || type === 'GRENADE') && this.gameWorld && this.gameWorld.audio) {
       this.gameWorld.audio.play('explosion', hit.point);
     }
 
@@ -337,13 +420,15 @@ export class ProjectilePool extends BaseEntity {
 
       if (!friendly && targetEntity && targetEntity.health && typeof targetEntity.health.takeDamage === 'function') {
         const dealt = targetEntity.health.takeDamage(hit.damageInfo);
-        console.log(`Projectile Hit: ${targetEntity.name} took ${dealt} ${hit.damageInfo.type} damage.`);
+        if (dealt > 0) console.log(`Projectile Hit: ${targetEntity.name} took ${dealt} ${hit.damageInfo.type} damage.`);
       }
     }
 
     // Artillery shells detonate: fireball, scorch mark and a shove for everything nearby
-    if (hit.projectile && hit.projectile.type === 'ARTILLERY' && hit.point) {
+    if (type === 'ARTILLERY' && hit.point) {
       this._blast(hit);
+    } else if (type === 'GRENADE' && hit.point) {
+      this._grenadeBlast(hit);
     }
   }
 
@@ -379,6 +464,59 @@ export class ProjectilePool extends BaseEntity {
       this._blastDir.set(dx / distance, 0, dz / distance);
       entity.applyKnockback(this._blastDir, cfg.impulseSpeed * falloff);
     }
+  }
+
+  /**
+   * An alien grenade went off: a smaller fireball than an artillery shell, scorch on static
+   * ground, then one falloff-scaled explosive hit for everything inside the radius (never the
+   * thrower's own side) plus a shove. Scenery cover is swept through the level's onExplosion hook:
+   * unlike artillery shells, cover props are plain objects outside `gameWorld.entities`.
+   */
+  _grenadeBlast(hit) {
+    const cfg = config.projectiles.grenade;
+    const point = hit.point;
+    const info = hit.damageInfo; // Reused per victim: the projectile despawns right after
+    const source = info.source;
+
+    this.effects.blast(point, 0.55);
+
+    // Scorch only on fixed surfaces: decks and characters move out from under a decal
+    const surface = hit.collider && hit.collider.rigidBody;
+    if (this.gameWorld.decals && surface && typeof surface.isFixed === 'function' && surface.isFixed() && hit.normal) {
+      this.gameWorld.decals.spawn(point, hit.normal, 'scorch');
+    }
+
+    if (this.gameWorld.entities) {
+      for (const entity of this.gameWorld.entities) {
+        if (entity === this) continue;
+        if (entity.ragdoll) {
+          entity.ragdoll.blastFrom(point);
+          continue;
+        }
+        if (!entity.health || entity.health.isDead) continue;
+        // No friendly fire: a blast never hurts the thrower's own side
+        if (source && entity.faction && entity.faction === source.faction) continue;
+        // Fighters carry a feet position; prop-like entities only their mesh
+        const pos = entity.position || (entity.mesh && entity.mesh.position);
+        if (!pos) continue;
+
+        const dx = pos.x - point.x;
+        const dz = pos.z - point.z;
+        const distance = Math.hypot(dx, dz);
+        if (distance >= cfg.blastRadius) continue;
+
+        const falloff = 1 - distance / cfg.blastRadius;
+        info.amount = cfg.damage * falloff;
+        entity.health.takeDamage(info);
+
+        if (distance > 0.05 && typeof entity.applyKnockback === 'function') {
+          this._blastDir.set(dx / distance, 0, dz / distance);
+          entity.applyKnockback(this._blastDir, cfg.impulseSpeed * falloff);
+        }
+      }
+    }
+
+    if (this.onExplosion) this.onExplosion(point, cfg.blastRadius, cfg.damage);
   }
 
   /**
@@ -429,9 +567,14 @@ export class ProjectilePool extends BaseEntity {
       if (p.mesh && p.mesh.geometry) p.mesh.geometry.dispose();
       if (p.mesh && p.mesh.material) p.mesh.material.dispose();
     }
+    for (const p of this.grenadePool) {
+      if (p.mesh && p.mesh.geometry) p.mesh.geometry.dispose();
+      if (p.mesh && p.mesh.material) p.mesh.material.dispose();
+    }
     this.flakPool = [];
     this.artilleryPool = [];
     this.plasmaPool = [];
+    this.grenadePool = [];
     this.activeProjectiles = [];
 
     if (this.effects) {

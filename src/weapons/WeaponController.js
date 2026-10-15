@@ -37,12 +37,16 @@ export class WeaponController extends BaseEntity {
    * @param {Player} player
    * @param {Object} [options]
    * @param {(position: THREE.Vector3) => void} [options.onGunshot] - Called per shot (for AI hearing)
+   * @param {(origin: THREE.Vector3, point: THREE.Vector3) => void} [options.onBulletImpact] - Called
+   *   per shot that lands, with its flight line: lets levels damage thin scenery (bushes) that
+   *   has no collider to stop the bullet
    */
-  constructor(gameWorld, player, { onGunshot = null } = {}) {
+  constructor(gameWorld, player, { onGunshot = null, onBulletImpact = null } = {}) {
     super('WeaponController');
     this.gameWorld = gameWorld;
     this.player = player;
     this.onGunshot = onGunshot;
+    this.onBulletImpact = onBulletImpact;
 
     this.gunCfg = config.weapons.machineGun;
     this.knifeCfg = config.weapons.knife;
@@ -230,6 +234,8 @@ export class WeaponController extends BaseEntity {
     this._recoilPitch += climb;
     this._recoil = RECOIL_KICK;
 
+    // The shot's flight line: thin scenery with no collider (a bush) is told what crossed it
+    if (this.onBulletImpact && result.hit) this.onBulletImpact(this._origin, result.point);
     if (this.onGunshot) this.onGunshot(this._origin);
   }
 

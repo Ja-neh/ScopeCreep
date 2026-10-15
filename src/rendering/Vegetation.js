@@ -23,6 +23,10 @@ const LOD_HYSTERESIS = 0.1;      // Fraction of a switch distance to wait before
  *
  * Each placement is { x, y, z, rotation, scale } where y is the ground height at the base,
  * rotation is about Y in radians, and scale is a number (or { x, y, z } for rocks).
+ *
+ * Placements stay addressable after the build, so gameplay can take props away again:
+ * `setPlacementScale` / `hidePlacement` (a destroyed prop shrinks to nothing, without a
+ * separate mesh) and `removePlacementCollider` (its collider goes with it).
  */
 export class Vegetation {
   /**
@@ -74,6 +78,10 @@ export class Vegetation {
       bush: createBushGeometry({ lumps: 2, detail: 0 })
     } : null;
 
+    // Placement object -> { meshes: InstancedMesh[], index, origin } so instances can be
+    // addressed again (hidden, scaled) after the build
+    this._instances = new Map();
+
     for (const [kind, list, tint] of [['palmTrunk', palms, 0.12], ['palmFronds', palms, 0.15], ['treeTrunk', trees, 0.12],
       ['treeCanopy', trees, 0.2], ['rock', rocks, 0.15], ['bush', bushes, 0.2]]) {
       if (tileSize > 0) this._addTiles(kind, list, tint);
@@ -105,6 +113,14 @@ export class Vegetation {
       instanced.setMatrixAt(i, matrix);
       const shade = 1 + (valueNoise2D(placement.x * 0.7, placement.z * 0.7, 11) - 0.5) * 2 * tintVariation;
       instanced.setColorAt(i, color.setScalar(shade));
+
+      // The same placement appears in the full-detail and low-detail levels: collect them both
+      let record = this._instances.get(placement);
+      if (!record) {
+        record = { meshes: [], index: i, origin };
+        this._instances.set(placement, record);
+      }
+      record.meshes.push(instanced);
     });
     instanced.instanceMatrix.needsUpdate = true;
     instanced.instanceColor.needsUpdate = true;
@@ -153,6 +169,8 @@ export class Vegetation {
 
   /**
    * Static colliders: palm and tree trunks as upright cylinders, rocks as convex hulls.
+   * Each collider is remembered on its placement (`placement.collider`), so gameplay can
+   * pair a collider back to the prop that owns it, and take it away again later.
    * @param {PhysicsWorld} physicsWorld
    */
   createColliders(physicsWorld) {
@@ -163,20 +181,24 @@ export class Vegetation {
     const offset = new THREE.Vector3();
     const rotation = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
-    const add = (collider) => { if (collider) this.colliders.push(collider); };
+    const add = (collider, placement) => {
+      if (!collider) return;
+      placement.collider = collider;
+      this.colliders.push(collider);
+    };
 
     // Palm trunks: a cylinder centred halfway up the leaning trunk
     for (const p of this.placements.palms) {
       const s = uniformScale(p.scale);
       offset.set(PALM_BEND * (PALM_HEIGHT * 0.5) ** 2 * s, PALM_HEIGHT * 0.5 * s, 0).applyAxisAngle(up, p.rotation);
       position.set(p.x, p.y, p.z).add(offset);
-      add(physicsWorld.createStaticCylinder(PALM_HEIGHT * 0.5 * s, PALM_TRUNK_RADIUS * s, position));
+      add(physicsWorld.createStaticCylinder(PALM_HEIGHT * 0.5 * s, PALM_TRUNK_RADIUS * s, position), p);
     }
 
     for (const t of this.placements.trees) {
       const s = uniformScale(t.scale);
       position.set(t.x, t.y + TREE_TRUNK_HEIGHT * 0.5 * s, t.z);
-      add(physicsWorld.createStaticCylinder(TREE_TRUNK_HEIGHT * 0.5 * s, TREE_TRUNK_RADIUS * s, position));
+      add(physicsWorld.createStaticCylinder(TREE_TRUNK_HEIGHT * 0.5 * s, TREE_TRUNK_RADIUS * s, position), t);
     }
 
     // Rocks: the hull of the rock's own (scaled) vertices, so shots and players hit what they see
@@ -190,8 +212,48 @@ export class Vegetation {
         points[i * 3 + 2] = basePoints.getZ(i) * scale.z;
       }
       rotation.setFromAxisAngle(up, r.rotation);
-      add(physicsWorld.createStaticConvexHull(points, position.set(r.x, r.y, r.z), rotation));
+      add(physicsWorld.createStaticConvexHull(points, position.set(r.x, r.y, r.z), rotation), r);
     }
+  }
+
+  /**
+   * Rescales one placement's instance (both detail levels) away from its built scale.
+   * A multiplier of 0 (see `hidePlacement`) collapses it to nothing.
+   * @returns {boolean} Whether the placement was found
+   */
+  setPlacementScale(placement, multiplier) {
+    const record = this._instances.get(placement);
+    if (!record) return false;
+    composePlacement(placement, _matrix, multiplier);
+    if (record.origin) {
+      _matrix.elements[12] -= record.origin.x;
+      _matrix.elements[13] -= record.origin.y;
+      _matrix.elements[14] -= record.origin.z;
+    }
+    for (const mesh of record.meshes) {
+      mesh.setMatrixAt(record.index, _matrix);
+      mesh.instanceMatrix.needsUpdate = true;
+    }
+    return true;
+  }
+
+  /** Takes one placement's instance out of the draw completely (a destroyed prop). */
+  hidePlacement(placement) {
+    return this.setPlacementScale(placement, 0);
+  }
+
+  /**
+   * Removes the collider of one placement (its prop was destroyed: the space is open now).
+   * @returns {boolean} Whether a collider was removed
+   */
+  removePlacementCollider(placement) {
+    const collider = placement.collider;
+    if (!collider) return false;
+    placement.collider = null;
+    const index = this.colliders.indexOf(collider);
+    if (index >= 0) this.colliders.splice(index, 1);
+    if (this.physicsWorld) this.physicsWorld.removeRigidBody(collider.rigidBody);
+    return true;
   }
 
   dispose() {
@@ -202,6 +264,7 @@ export class Vegetation {
     }
     this.colliders = [];
     this.physicsWorld = null;
+    this._instances.clear();
 
     for (const instanced of this.instancedMeshes) instanced.dispose();
     for (const geometry of Object.values(this.geometries)) geometry.dispose();
@@ -219,6 +282,7 @@ const _position = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
+const _matrix = new THREE.Matrix4();
 
 function uniformScale(scale) {
   return typeof scale === 'number' ? scale : 1;
@@ -229,10 +293,10 @@ function vectorScale(scale) {
   return _scale.set(scale.x, scale.y, scale.z);
 }
 
-function composePlacement(placement, out) {
+function composePlacement(placement, out, scaleMultiplier = 1) {
   _position.set(placement.x, placement.y, placement.z);
   _quaternion.setFromAxisAngle(_up, placement.rotation || 0);
-  return out.compose(_position, _quaternion, vectorScale(placement.scale ?? 1));
+  return out.compose(_position, _quaternion, vectorScale(placement.scale ?? 1).multiplyScalar(scaleMultiplier));
 }
 
 /**

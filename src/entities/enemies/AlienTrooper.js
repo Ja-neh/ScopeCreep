@@ -16,6 +16,8 @@ const CHEST_HEIGHT = 1.2;
  * gunshot, or a squadmate calls one out) it moves to the edge of cover at fighting range and
  * fires plasma in bursts. If the target stays dug in behind cover it flanks; if it loses the
  * target it searches the last known position, then returns to patrolling.
+ * Some troopers carry a flush grenade (`config.enemies.trooper.grenade`) and lob it at a target
+ * in throwing range, to dig them out of cover (the blast eats into bushes, trees and rocks too).
  * Balance values come from config.json (`enemies.trooper`).
  */
 export class AlienTrooper extends AlienCombatant {
@@ -41,6 +43,11 @@ export class AlienTrooper extends AlienCombatant {
     this._burstLeft = 0;
     this._shotTimer = 0;
     this._pauseTimer = Math.random() * cfg.burstPause;
+
+    // Flush grenade: only some troopers carry one, on their own cooldown
+    this._grenadeCfg = cfg.grenade || null;
+    this._hasGrenade = !!this._grenadeCfg && Math.random() < this._grenadeCfg.chance;
+    this._grenadeTimer = this._grenadeCfg ? this._grenadeCfg.cooldownSeconds * (0.5 + Math.random() * 0.5) : 0;
 
     // Engagement state
     this._repositionTimer = 0;
@@ -75,11 +82,42 @@ export class AlienTrooper extends AlienCombatant {
       return;
     }
 
+    this._updateGrenade(delta, target);
+
     this._pauseTimer -= delta;
     if (this._pauseTimer <= 0) {
       this._burstLeft = this.cfg.burstShots;
       this._shotTimer = 0;
     }
+  }
+
+  /**
+   * The flush grenade: while the target is in throwing range and the cooldown is up, lob one
+   * where they are. Unlike the plasma fire it does not need line of sight to hurt: the blast
+   * digs into whatever cover the target is hiding behind.
+   */
+  _updateGrenade(delta, target) {
+    if (!this._hasGrenade) return;
+    const cfg = this._grenadeCfg;
+    this._grenadeTimer -= delta;
+    if (this._grenadeTimer > 0) return;
+
+    const distance = this.position.distanceTo(target.position);
+    if (distance < cfg.minRange || distance > cfg.maxRange) return;
+
+    const pool = this.gameWorld.projectilePool;
+    if (pool && typeof pool.fireGrenade === 'function') {
+      this.model.muzzle.getWorldPosition(this._muzzle);
+      // Lob at the target's chest, scattered inside the aim-error cone
+      this._aimDir.set(target.position.x, target.position.y + CHEST_HEIGHT, target.position.z);
+      if (cfg.aimError > 0) {
+        this._aimDir.x += (Math.random() - 0.5) * 2 * cfg.aimError;
+        this._aimDir.y += (Math.random() - 0.5) * cfg.aimError;
+        this._aimDir.z += (Math.random() - 0.5) * 2 * cfg.aimError;
+      }
+      pool.fireGrenade({ origin: this._muzzle, target: this._aimDir, source: this, excludeCollider: this.collider });
+    }
+    this._grenadeTimer = cfg.cooldownSeconds * (0.8 + Math.random() * 0.4);
   }
 
   _fireAt(target) {
