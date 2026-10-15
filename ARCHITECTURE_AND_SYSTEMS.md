@@ -87,6 +87,7 @@ flowchart TD
         SC --> SBY[ShipBuoyancy]
         BS --> AT[ArtilleryTurret]
         BS --> FT[FlakTurret]
+        BS --> CAI[ShipCrewAI]
         BST[BaseStation] -.->|Extends| SC
         BST -.->|Extends| AT
         BST -.->|Extends| FT
@@ -422,7 +423,8 @@ ScopeCreep/
 │   │       ├── ShipBuoyancy.js    # 5-probe wave sampling, pitch/roll/heave damping
 │   │       ├── HelmStation.js     # Maritime physics, bridge helm, chase camera
 │   │       ├── ArtilleryTurret.js # Forward heavy twin naval artillery turret
-│   │       └── FlakTurret.js      # Aft anti-air quad rapid-fire flak turret
+│   │       ├── FlakTurret.js      # Aft anti-air quad rapid-fire flak turret
+│   │       └── ShipCrewAI.js      # Invisible crew: orders, helmsmanship, gunnery
 │   ├── ai/                 # Level 2 AI: StateMachine, Perception, AlienSquad, HumanSquad, WaveDirector
 │   ├── weapons/            # Infantry weapons: WeaponController, HitscanWeapon, MeleeWeapon, effects, models
 │   ├── levels/             # Playable environments and stage logic
@@ -510,9 +512,11 @@ ScopeCreep/
 - `dispose()`: Recursively traverses `this.mesh`, disposing all geometries, materials, and textures from GPU memory.
 
 ### `Battleship` (`src/entities/Battleship.js`)
-- Composite naval vessel composed of `BattleshipModel`, `ArtilleryTurret`, `FlakTurret`, and `HelmStation`.
+- Composite naval vessel composed of `BattleshipModel`, `ArtilleryTurret`, `FlakTurret`, `HelmStation`, and `ShipCrewAI`.
 - `initPhysics(physicsWorld)`: Generates compound cuboid colliders ($3.5\text{m}$ deck slabs, ramps, bridge walls) from model bounds.
 - `prePhysicsUpdate(delta)`: Delegates wave buoyancy and propulsion to `HelmStation`, and syncs Rapier rigid body transforms *before* physics step.
+- `gameplayUpdate(delta, gameWorld)`: Phase 5 hook. Delegates to `ShipCrewAI.updateGunnery` so the AI crew aims and fires the mounts the player is not manning.
+- `crewAI`: `ShipCrewAI` instance, enabled by the `crewAI` construction option (the test levels pass it; `Level 1`-style missions do not).
 - `getPlatformDisplacement(pos, out)`: Computes exact 6-DOF world delta for standing characters to prevent deck slipping.
 - `setColliderDebugVisible(bool)`: Toggles green wireframe box meshes.
 
@@ -549,14 +553,29 @@ ScopeCreep/
 ### `HelmStation` (`src/entities/ship-components/HelmStation.js`)
 - Extends `BaseStation`.
 - Owns `ShipBuoyancy` instance for vessel water interaction.
-- `update(delta)`: Computes naval engine propulsion, rudder turn rate, water drag, and ship sway.
+- `update(delta, water, gameWorld)`: Computes naval engine propulsion, rudder turn rate, water drag, and ship sway while the player is at the wheel.
+- `_applyMotion(delta, mesh, gameWorld)`: Shared locomotion for both paths. Builds the forward vector from `heading`, resolves ship-vs-ship penetration, then commits position and yaw. The player-driven and the AI/coast paths both call it so they can never disagree about how the hull moves.
+- While unmounted, hands the wheel to `battleship.crewAI.updateHelm` when a crew is aboard, and otherwise leaves the ship to coast on drag.
 - Provides third-person naval chase camera mounted behind bridge.
+
+### `ShipCrewAI` (`src/entities/ship-components/ShipCrewAI.js`)
+- Invisible crew that mans every station the player is not occupying. It never calls `mount()`/`dismount()`, which would teleport the player and hijack the active camera and HUD unconditionally; occupancy is read from `BaseStation.isMounted` and a manned station is left alone.
+- Split across two phases by design. `updateHelm` runs in **Phase 2** from `HelmStation`'s unmounted branch, because hull motion has to land before colliders are synced and Rapier steps. `updateGunnery` runs in **Phase 5** from `Battleship.gameplayUpdate`, alongside every other weapon in the game.
+- Orders cycle HOLD -> ENGAGE -> FOLLOW on the `cycleShipOrder` action (`[G]`), reported to the player through `ui.showToast`. The key is only read while the helm is unmanned, so it can never fire while the player is at the wheel.
+- `hold`: bleeds off way and keeps the current heading. `engage`: runs at the target until inside `preferredRange`, then turns out to `broadsideBearing` - the main mounts face the bow with a $\pm135^\circ$ arc, so the ship has to bring its own arc onto a target that would otherwise be unreachable. The side it turns out to is latched per target, otherwise the rudder flips as the target crosses the bow and the ship weaves. `follow`: keeps station on the nearest friendly warship.
+- `_turnTowards` caps the crew's helm rate below the hull's own `turnRate`, so turret traverse always out-runs hull yaw and the guns can settle inside their aim tolerance.
+- Target acquisition is a throttled full rescan of `gameWorld.entities`, classifies naval vs air by duck-type (`getPlatformDisplacement` + `isPointOnPlatform`, the same test `PlatformTracker` uses) rather than entity name, and revalidates every pass instead of holding a sticky target that would keep firing at wrecks.
+- `_solveLead(target, muzzlePos, iterations, out)`: iterative intercept solution for anti-air fire. Flight time depends on where the target will be, which depends on flight time, so a single pass aims short against a receding aircraft - far enough to fall outside the flak spread cone at range and miss outright. Each pass shrinks the error by roughly (target speed / round speed); a handful of iterations converge. Ballistic drop for the resulting flight time is folded in afterwards.
 
 ### `ArtilleryTurret` & `FlakTurret` (`src/entities/ship-components/`)
 - Extend `BaseStation`.
 - `ArtilleryTurret`: Forward twin heavy naval cannon with azimuth traverse and optical gun-sight camera ($40^\circ$ zoom).
 - `FlakTurret`: Aft quad rapid-fire anti-aircraft battery with high-angle elevation.
 - `update(delta)`: Handles station proximity detection, mouse aiming, crosshair HUD display, and dismount inputs.
+- `aimTowards(targetWorldPos, delta, turnSpeed, elevationSpeed)`: shared AI aiming entry point. Returns `{ onTarget, angleDiff }` and leaves the mount inside its `aimTolerance`.
+- `fireAI()`: AI trigger that fires when the reload cooldown has elapsed.
+- **Yaw conventions differ between the two mounts.** Artillery barrels run down the pitch group's local $+Z$, so its yaw is $operatorname{atan2}(-dx, -dz)$ - the same angle `HelmStation` calls `heading`. Flak barrels run down local $-Z$, so its yaw is $operatorname{atan2}(dx, dz)$. Both pivot groups are children of the imported hull root, which carries a $180^\circ$ turn, so the world axis each one ends up on is the reverse of the other's. Elevation is positive-up for both.
+- Both mounts pass `excludeCollider` **and** `excludeRigidBody` when firing. A ship's hull trimesh and its gun mounts all hang off one kinematic body, so excluding only the hull collider would still let a low round strike the mount it came out of.
 
 ### `ProjectilePool` (`src/entities/projectiles/ProjectilePool.js`)
 - High-performance, zero-allocation object pool for rapid-fire ballistics.
