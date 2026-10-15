@@ -371,6 +371,7 @@
       "maxYaw": 3.1415,
       "minPitch": -0.087,
       "maxPitch": 1.309,
+      "aimTolerance": 0.20,
       "defaultRoundsPerSecond": 12.0
     }
   },
