@@ -30,6 +30,7 @@ export class EnemyJet extends BaseEntity {
     this.health.onDeath = () => {
       this.isDestroyed = true;
       this.mesh.visible = false;
+      this.velocity.set(0, 0, 0);
     };
 
     this.speed = settings.cruiseSpeed;
@@ -42,6 +43,9 @@ export class EnemyJet extends BaseEntity {
     this.projectileDamage = settings.projectileDamage;
     this.spread = settings.spread;
     this._fireCooldown = 0;
+
+    /** Public so anti-air gunnery can lead this aircraft. Mirrors PlayerJet.velocity. */
+    this.velocity = new THREE.Vector3();
 
     this._targetPosition = new THREE.Vector3();
     this._aimPosition = new THREE.Vector3();
@@ -95,7 +99,10 @@ export class EnemyJet extends BaseEntity {
   }
 
   prePhysicsUpdate(delta) {
-    if (this.isDestroyed || !this._getTargetPosition()) return;
+    if (this.isDestroyed || !this._getTargetPosition()) {
+      this.velocity.set(0, 0, 0);
+      return;
+    }
 
     const distance = this.mesh.position.distanceTo(this._targetPosition);
     const flightTime = distance / this.projectileSpeed;
@@ -111,6 +118,7 @@ export class EnemyJet extends BaseEntity {
     this._targetRotation.setFromUnitVectors(FORWARD, this._desiredDirection);
     this.mesh.quaternion.rotateTowards(this._targetRotation, this.turnRate * delta);
     this._forward.copy(FORWARD).applyQuaternion(this.mesh.quaternion);
+    this.velocity.copy(this._forward).multiplyScalar(this.speed);
     this.mesh.position.addScaledVector(this._forward, this.speed * delta);
 
     if (this.rigidBody) {

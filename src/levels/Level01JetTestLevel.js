@@ -39,6 +39,7 @@ export class Level01JetTestLevel extends BaseLevel {
       { actions: ['rollLeft', 'rollRight'], label: 'Roll left / right' },
       { actions: ['yawLeft', 'yawRight'], label: 'Yaw left / right' },
       { actions: ['firePrimary'], label: 'Fire guns' },
+      { actions: ['cycleShipOrder'], label: 'Cycle AI crew order (battleship)' },
       { actions: ['pause'], label: 'Pause and options' }
     ];
   }
@@ -90,7 +91,8 @@ export class Level01JetTestLevel extends BaseLevel {
     // 5. Battleship (serves as a naval target and ocean landmark)
     this.battleship = new Battleship(this.gameWorld, {
       position: new THREE.Vector3(0, 0, 0),
-      water: this.water
+      water: this.water,
+      crewAI: true
     });
     await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);
