@@ -29,6 +29,47 @@
       "damageType": "KINETIC"
     }
   },
+  "playerJet": {
+    "health": 300,
+    "minSpeed": 30,
+    "maxSpeed": 120,
+    "defaultSpeed": 60,
+    "acceleration": 25,
+    "pitchRate": 1.2,
+    "rollRate": 1.8,
+    "yawRate": 0.6,
+    "maxPitch": 1.35,
+    "maxBank": 1.05,
+    "bankTurnRate": 0.9,
+    "bankLevelingRate": 1.8,
+    "cameraFollowSpeed": 5,
+    "collider": {
+      "halfHeight": 1.4,
+      "radius": 0.7
+    },
+    "weapon": {
+      "roundsPerSecond": 8,
+      "projectileSpeed": 650,
+      "spread": 0.002,
+      "convergenceDistance": 180
+    }
+  },
+  "enemyJet": {
+    "health": 220,
+    "cruiseSpeed": 76,
+    "turnRate": 1.1,
+    "attackRange": 300,
+    "minimumAttackRange": 18,
+    "aimToleranceDegrees": 12,
+    "fireCadence": 0.65,
+    "projectileSpeed": 560,
+    "projectileDamage": 8,
+    "spread": 0.006,
+    "collider": {
+      "halfHeight": 1.4,
+      "radius": 0.7
+    }
+  },
   "player": {
     "vitals": {
       "maxHealth": 100,
