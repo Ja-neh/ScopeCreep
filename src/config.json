@@ -158,6 +158,49 @@
       "drag": 0.8,
       "turnRate": 0.45
     },
+    "crewAI": {
+      "orders": {
+        "default": "hold",
+        "hold": {
+          "targetSpeed": 0.0,
+          "brakeRate": 1.2
+        },
+        "engage": {
+          "approachSpeed": 8.0,
+          "preferredRange": 320.0,
+          "rangeTolerance": 60.0,
+          "broadsideBearing": 1.05,
+          "aiTurnRate": 0.30
+        },
+        "follow": {
+          "followDistance": 160.0,
+          "followSpeed": 6.0,
+          "catchUpSpeed": 11.0,
+          "catchUpThreshold": 220.0,
+          "aiTurnRate": 0.35
+        }
+      },
+      "gunnery": {
+        "gunneryRequiresEngageOrder": false,
+        "turretTurnSpeed": 1.2,
+        "turretElevationSpeed": 0.8,
+        "artillery": {
+          "maxEngagementDistance": 600.0,
+          "minEngagementDistance": 60.0,
+          "aimHeightOffset": 3.0
+        },
+        "flak": {
+          "maxEngagementDistance": 800.0,
+          "minSlantRange": 40.0,
+          "leadIterations": 3
+        }
+      },
+      "perception": {
+        "rescanInterval": 0.5,
+        "navalScanRadius": 1600.0,
+        "airScanRadius": 2000.0
+      }
+    },
     "buoyancy": {
       "draft": 1.0,
       "heaveScale": 0.06,
@@ -408,6 +451,7 @@
       "maxYaw": 2.356,
       "minPitch": 0.0,
       "maxPitch": 0.523,
+      "aimTolerance": 0.08,
       "defaultReloadCadence": 1.8
     },
     "flak": {
@@ -416,6 +460,7 @@
       "maxYaw": 3.1415,
       "minPitch": -0.087,
       "maxPitch": 1.309,
+      "aimTolerance": 0.20,
       "defaultRoundsPerSecond": 12.0
     }
   },

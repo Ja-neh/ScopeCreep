@@ -62,6 +62,7 @@ export class HelmStation extends BaseStation {
     this.maxPitch = options.maxPitch !== undefined ? options.maxPitch : 0.85;
 
     this._forwardVec = new THREE.Vector3();
+    this._candPos = { x: 0, z: 0 };
 
     // 1. Vehicle Chase Camera with SpringArm
     this._createVehicleCamera(options);
@@ -199,16 +200,7 @@ export class HelmStation extends BaseStation {
           this.heading += this.rudderAngle * this.turnRate * (Math.abs(this.speed) / this.maxForwardSpeed) * turnDirection * delta;
         }
 
-        // Forward locomotion along current heading
-        this._forwardVec.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
-        const candPos = {
-          x: mesh.position.x + this._forwardVec.x * this.speed * delta,
-          z: mesh.position.z + this._forwardVec.z * this.speed * delta
-        };
-        this._resolveShipCollisions(candPos, gameWorld);
-        mesh.position.x = candPos.x;
-        mesh.position.z = candPos.z;
-        mesh.rotation.y = this.heading;
+        this._applyMotion(delta, mesh, gameWorld);
 
         // Update HUD readouts
         if (gameWorld && gameWorld.ui) {
@@ -234,19 +226,16 @@ export class HelmStation extends BaseStation {
       }
     } else {
       // -------------------------------------------------------------
-      // B. UNMOUNTED: NATURAL DRAG & PROXIMITY DETECTION
+      // B. UNMOUNTED: AI HELM IF CREWED, OTHERWISE NATURAL DRAG
       // -------------------------------------------------------------
-      if (Math.abs(this.speed) > 0.05) {
+      const crew = this.battleship?.crewAI;
+      if (crew && crew.enabled && !this.battleship.isDestroyed) {
+        crew.updateHelm(delta, gameWorld, this);
+      } else if (Math.abs(this.speed) > 0.05) {
         this.speed *= Math.max(0.0, 1.0 - this.drag * 1.5 * delta);
-        const candPos = {
-          x: mesh.position.x + this._forwardVec.x * this.speed * delta,
-          z: mesh.position.z + this._forwardVec.z * this.speed * delta
-        };
-        this._resolveShipCollisions(candPos, gameWorld);
-        mesh.position.x = candPos.x;
-        mesh.position.z = candPos.z;
       }
 
+      this._applyMotion(delta, mesh, gameWorld);
       this.checkProximity(delta, gameWorld);
     }
 
@@ -255,6 +244,22 @@ export class HelmStation extends BaseStation {
     // -------------------------------------------------------------
     mesh.rotation.x = 0;
     mesh.rotation.z = 0;
+  }
+
+  /**
+   * Advances the hull along `heading` at `speed`, resolves ship-vs-ship penetration and
+   * commits position + yaw. Shared by the player-driven and unmounted paths so the two
+   * can never disagree about how the ship moves.
+   */
+  _applyMotion(delta, mesh, gameWorld) {
+    this._forwardVec.set(-Math.sin(this.heading), 0, -Math.cos(this.heading));
+    const candPos = this._candPos;
+    candPos.x = mesh.position.x + this._forwardVec.x * this.speed * delta;
+    candPos.z = mesh.position.z + this._forwardVec.z * this.speed * delta;
+    this._resolveShipCollisions(candPos, gameWorld);
+    mesh.position.x = candPos.x;
+    mesh.position.z = candPos.z;
+    mesh.rotation.y = this.heading;
   }
 
   /**

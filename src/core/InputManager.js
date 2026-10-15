@@ -65,6 +65,7 @@ export class InputManager {
 
       firePrimary: ['Mouse0', 'KeyF'],
       specialAction: ['KeyE'],
+      cycleShipOrder: ['KeyG'],
 
       // Infantry weapons (wheel "buttons" are single-frame presses)
       reload: ['KeyR'],
