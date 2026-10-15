@@ -342,15 +342,17 @@ npm test
 
 This checkout is developed on an Android phone under Termux, not a desktop. It has roughly **3.8 GB of RAM and no swap**, and when memory runs out Android kills the **whole Termux app** — every session at once, not just the offending process. The rules below are not style preferences; ignoring them closes your terminal mid-command.
 
-### `npm test` is pinned to a single worker — leave it that way
+### `npm test` caps itself to one worker on Android — do not bypass it
 
 ```bash
-npm test   # node --import ./tests/support/register.mjs --test --test-concurrency=1 "tests/**/*.test.mjs"
+npm test   # -> node tests/run.mjs
 ```
 
-Node's default file concurrency is one worker per core, so on this 8-core device it runs **7 test files in parallel**. Each worker is a separate process that compiles the 2 MB Rapier WASM into its own memory, and a single test file peaks around **250 MB**. Seven at once needs **1.0–1.8 GB** against roughly 550 MB of free memory, so the suite is SIGKILLed partway through and takes Termux down with it — repeatedly observed dying at 19 of 24 files. Capped, the peak is ~265 MB and the suite completes.
+`tests/run.mjs` adds `--test-concurrency=1` when `process.platform === 'android'` and passes no concurrency flag at all anywhere else, so desktops keep Node's full parallelism and only phones are throttled. The platform is detected in Node rather than in the shell so that a `$()` conditional cannot break Windows.
 
-The cost is wall-clock: the full suite takes **~17 minutes** here, not the ~30 seconds `tests/README.md` quotes for a desktop. Budget for it, do not run it in a loop, and check `awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo` if unsure.
+Node's default file concurrency is one worker per core, so unthrottled this 8-core device runs **7 test files in parallel**. Each worker is a separate process that compiles the 2 MB Rapier WASM into its own memory, and a single test file peaks around **250 MB**. Seven at once needs **1.0–1.8 GB** against roughly 550 MB of free memory, so the suite is SIGKILLed partway through and takes Termux down with it — repeatedly observed dying at 19 of 24 files. Throttled, the peak is ~265 MB and the suite completes.
+
+So run `npm test` and not `node --test` by hand. The cost is wall-clock: the full suite takes **~17 minutes** here, not the ~30 seconds `tests/README.md` quotes for a desktop. Budget for it, do not run it in a loop, and check `awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo` if unsure.
 
 ### Never run the test suite and the build at the same time
 
