@@ -65,6 +65,11 @@ function spawn(x, z, faceTowards = null) {
 test('a trooper spots a player in the open, engages and wears them down', () => {
   placePlayer(0, 150);
   const trooper = spawn(0, 120, player.position);
+  // The trooper's own sight check, run once now: a patrol turn before its first timed check
+  // (whose phase is arbitrary) can face it away for seconds, so the engagement is measured
+  // from the sighting itself rather than from one particular timer draw.
+  trooper.perception.update(trooper.perception.checkInterval, squad.targets, world.physics);
+  assert.ok(trooper.perception.target === player, 'the player in the open is seen');
   let spottedAt = null;
   run(12, (frame) => {
     if (spottedAt === null && trooper.brain.is('engage')) spottedAt = frame / 60;

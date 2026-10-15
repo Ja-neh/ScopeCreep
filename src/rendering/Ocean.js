@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import oceanVert from './shaders/ocean.vert.glsl';
 import oceanFrag from './shaders/ocean.frag.glsl';
 
+// A black 1x1 tile stands in until a CloudShadows system shares its real map,
+// so the shader always has something to sample and the sea starts unshaded.
+const NEUTRAL_CLOUD_SHADOW_TEXTURE = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, THREE.RGBAFormat);
+NEUTRAL_CLOUD_SHADOW_TEXTURE.needsUpdate = true;
+
 /**
  * Ocean
  * Custom WebGL Ocean Surface driven by a GPU Gerstner wave displacement shader.
@@ -45,6 +50,11 @@ export class Ocean {
       uSunColor: { value: new THREE.Color(0xfff5e6) },
       uSunDirection: { value: this.sunDirection },
       uFoamThreshold: { value: 1.25 },
+      // Cloud shade: neutral until a CloudShadows system shares its uniforms here
+      uCloudShadowMap: { value: NEUTRAL_CLOUD_SHADOW_TEXTURE },
+      uCloudShadowScale: { value: new THREE.Vector2(1, 1) },
+      uCloudShadowOffset: { value: new THREE.Vector2(0, 0) },
+      uCloudShadowStrength: { value: 0.0 },
       fogColor: { value: new THREE.Color(0x87ceeb) },
       fogDensity: { value: 0.0010 }
     };

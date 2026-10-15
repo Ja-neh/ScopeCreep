@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BaseLevel } from './BaseLevel.js';
 import { Ocean } from '../rendering/Ocean.js';
+import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 import { Battleship } from '../entities/Battleship.js';
 import { EnemyBattleship } from '../entities/enemies/EnemyBattleship.js';
 import { Player } from '../entities/Player.js';
@@ -51,14 +52,9 @@ export class Level01TestLevel extends BaseLevel {
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 1200;
-    const d = 400;
-    sunLight.shadow.camera.left = -d;
-    sunLight.shadow.camera.right = d;
-    sunLight.shadow.camera.top = d;
-    sunLight.shadow.camera.bottom = -d;
     sunLight.shadow.bias = -0.0005;
+    // The shadow square follows the player: fitted depth range, snapped to shadow-map texels
+    this.sunShadow = new ShadowFrustum(sunLight, { halfExtent: 400 });
     this.gameWorld.environmentGroup.add(sunLight);
     this.trackDisposable(sunLight);
 
@@ -226,6 +222,9 @@ export class Level01TestLevel extends BaseLevel {
 
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     super.gameplayUpdate(delta, gameWorld);
+
+    // Keep the sun's shadow square on the player
+    if (this.sunShadow) this.sunShadow.update(this.player || null);
 
     if (this.water) {
       this.water.update(delta);

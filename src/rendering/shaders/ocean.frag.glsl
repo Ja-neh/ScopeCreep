@@ -7,6 +7,10 @@ uniform vec3 uSunDirection;
 uniform vec3 uSunColor;
 uniform vec3 uSkyColor;
 uniform float uFoamThreshold;
+uniform sampler2D uCloudShadowMap;
+uniform vec2 uCloudShadowScale;
+uniform vec2 uCloudShadowOffset;
+uniform float uCloudShadowStrength;
 uniform vec3 fogColor;
 uniform float fogDensity;
 
@@ -82,7 +86,11 @@ void main() {
   vec3 finalColor = mix(waterColor, reflectedSky, fresnel * 0.72);
   finalColor += uSunColor * specular;
 
-  // 6. Distance Fog blending (for smooth horizon transition)
+  // 6. Cloud shade drifting over the sea (neutral until a CloudShadows shares its uniforms)
+  float cloudShade = texture2D(uCloudShadowMap, vWorldPosition.xz * uCloudShadowScale + uCloudShadowOffset).r;
+  finalColor *= 1.0 - uCloudShadowStrength * cloudShade;
+
+  // 7. Distance Fog blending (for smooth horizon transition)
   #ifdef USE_FOG
     float depth = length(vViewPosition);
     float fogFactor = 1.0 - exp(-fogDensity * fogDensity * depth * depth);
@@ -90,4 +98,7 @@ void main() {
   #endif
 
   gl_FragColor = vec4(finalColor, 0.96);
+
+  // 8. Output encoding (a no-op when the frame renders into the post stack's target)
+  #include <colorspace_fragment>
 }

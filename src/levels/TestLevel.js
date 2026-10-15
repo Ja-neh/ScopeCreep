@@ -3,6 +3,7 @@ import { BaseLevel } from './BaseLevel.js';
 import { Player } from '../entities/Player.js';
 import { Battleship } from '../entities/Battleship.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
+import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 
 /**
  * TestLevel
@@ -30,14 +31,9 @@ export class TestLevel extends BaseLevel {
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 2048;
     sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.camera.near = 10;
-    sunLight.shadow.camera.far = 600;
-    const d = 250;
-    sunLight.shadow.camera.left = -d;
-    sunLight.shadow.camera.right = d;
-    sunLight.shadow.camera.top = d;
-    sunLight.shadow.camera.bottom = -d;
     sunLight.shadow.bias = -0.0005;
+    // The shadow square follows the player: fitted depth range, snapped to shadow-map texels
+    this.sunShadow = new ShadowFrustum(sunLight, { halfExtent: 250 });
     this.gameWorld.environmentGroup.add(sunLight);
     this.trackDisposable(sunLight);
 
@@ -94,6 +90,9 @@ export class TestLevel extends BaseLevel {
 
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     super.gameplayUpdate(delta, gameWorld);
+
+    // Keep the sun's shadow square on the player
+    if (this.sunShadow) this.sunShadow.update(this.player || null);
   }
 
   dispose() {

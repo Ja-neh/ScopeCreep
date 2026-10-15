@@ -49,6 +49,49 @@ export function fbm2D(x, z, octaves = 4, seed = 0) {
 }
 
 /**
+ * Value noise on a lattice that wraps every `cells` steps, so the result tiles
+ * seamlessly (f(x, z) == f(x + cells, z + cells)). Used for cloud shade tiles.
+ */
+export function periodicValueNoise2D(x, z, cells, seed = 0) {
+  const ix = Math.floor(x);
+  const iz = Math.floor(z);
+  const fx = x - ix;
+  const fz = z - iz;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uz = fz * fz * (3 - 2 * fz);
+
+  const x0 = ((ix % cells) + cells) % cells;
+  const z0 = ((iz % cells) + cells) % cells;
+  const x1 = (x0 + 1) % cells;
+  const z1 = (z0 + 1) % cells;
+
+  const a = hash2(x0, z0, seed);
+  const b = hash2(x1, z0, seed);
+  const c = hash2(x0, z1, seed);
+  const d = hash2(x1, z1, seed);
+
+  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
+}
+
+/**
+ * Fractal sum of periodicValueNoise2D that still tiles: doubling at exact powers
+ * of two keeps every octave's period on the same lattice (cells * 2^i steps).
+ */
+export function periodicFbm2D(x, z, octaves, cells, seed = 0) {
+  let sum = 0;
+  let amplitude = 0.5;
+  let frequency = 1;
+  let norm = 0;
+  for (let i = 0; i < octaves; i++) {
+    sum += amplitude * periodicValueNoise2D(x * frequency, z * frequency, cells * frequency, seed + i * 17);
+    norm += amplitude;
+    amplitude *= 0.5;
+    frequency *= 2; // exact, so cells * frequency stays a whole number of lattice steps
+  }
+  return sum / norm;
+}
+
+/**
  * Seeded pseudo-random generator (mulberry32). Returns a function giving floats in [0, 1).
  */
 export function createRandom(seed = 1) {

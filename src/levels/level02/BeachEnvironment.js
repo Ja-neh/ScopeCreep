@@ -3,6 +3,8 @@ import { Ocean } from '../../rendering/Ocean.js';
 import { Terrain } from '../../rendering/Terrain.js';
 import { SkyDome } from '../../rendering/SkyDome.js';
 import { Clouds } from '../../rendering/Clouds.js';
+import { CloudShadows } from '../../rendering/CloudShadows.js';
+import { shadowDepthRadius } from '../../rendering/ShadowFrustum.js';
 import { valueNoise2D, fbm2D, smoothstep } from '../../rendering/Noise.js';
 
 // Island layouts (meters). The island runs north from the landing beach (south waterline at
@@ -46,7 +48,7 @@ const LOOKS = {
     light: 0xff9a5a, lightIntensity: 2.0, direction: new THREE.Vector3(-0.96, 0.24, -0.12).normalize(),
     hemiSky: 0xffc59a, hemiGround: 0x3a4a3a, hemiIntensity: 0.6,
     glow: 0xff9a5c, upper: 0xc58aa0, zenith: 0x4a4f86, disc: 0xffe3b0, stars: 0,
-    cloud: 0xf6dccf, cloudGlow: 0x6e4f63
+    cloud: 0xf6dccf, cloudGlow: 0x6e4f63, cloudShadow: 0.32
   },
   // Level 3: moonlight from high in the south-east, behind the squad as it heads north through
   // the village (so the house fronts and the hall face the light), a deep blue sky full of
@@ -56,7 +58,7 @@ const LOOKS = {
     light: 0xa9bde0, lightIntensity: 1.0, direction: new THREE.Vector3(0.4, 0.7, 0.6).normalize(),
     hemiSky: 0x4a5d88, hemiGround: 0x1a2018, hemiIntensity: 0.8,
     glow: 0x2c3d63, upper: 0x162139, zenith: 0x060a16, disc: 0xeef2ff, stars: 1,
-    cloud: 0x55617d, cloudGlow: 0x0d1322
+    cloud: 0x55617d, cloudGlow: 0x0d1322, cloudShadow: 0.2
   },
   // Level 3's ending: the sun coming up in the east over the freed village, a rose and gold
   // horizon, the last stars fading
@@ -65,18 +67,32 @@ const LOOKS = {
     light: 0xffc58a, lightIntensity: 1.7, direction: new THREE.Vector3(0.9, 0.2, -0.38).normalize(),
     hemiSky: 0xffd8b8, hemiGround: 0x48503e, hemiIntensity: 0.75,
     glow: 0xffa36e, upper: 0xa58fb8, zenith: 0x4f5f9c, disc: 0xfff0c8, stars: 0,
-    cloud: 0xf3d2c2, cloudGlow: 0x6f4e5c
+    cloud: 0xf3d2c2, cloudGlow: 0x6f4e5c, cloudShadow: 0.28
   }
 };
 const _colorA = new THREE.Color();
 const _colorB = new THREE.Color();
 const DEFAULT_SHADOW_CENTRE = new THREE.Vector3(0, 0, 140); // Covers the beach and the jungle edge
 const DEFAULT_SHADOW_HALF_EXTENT = 170;
+const SHADOW_LIGHT_DISTANCE = 400; // How far the sun sits from the middle of its shadow area, in metres
 const _forward = new THREE.Vector3();     // Scratchpads for the camera-following shadow
 const _centre = new THREE.Vector3();
 const _lightRight = new THREE.Vector3();
 const _lightUp = new THREE.Vector3();
 const _worldUp = new THREE.Vector3(0, 1, 0);
+
+/**
+ * Fits the sun's shadow range around its fixed light distance so a square of `halfExtent`
+ * costs as little depth as it can. A directional light's shadow camera never refreshes its
+ * own projection, so the explicit update here is required whenever the range changes.
+ */
+function fitShadowDepth(light, halfExtent, direction) {
+  const radius = shadowDepthRadius(halfExtent, direction);
+  const camera = light.shadow.camera;
+  camera.near = Math.max(1, SHADOW_LIGHT_DISTANCE - radius);
+  camera.far = SHADOW_LIGHT_DISTANCE + radius;
+  camera.updateProjectionMatrix();
+}
 
 // Terrain palette
 const SEABED = new THREE.Color(0xb59c6c);
@@ -125,6 +141,7 @@ export class BeachEnvironment {
     this.ocean = null;
     this.sky = null;
     this.clouds = null;
+    this.cloudShadows = null;
     this.lights = [];
     this.spawnPoints = {};
     // Where Level 3's houses go: an oval plateau (radius: its smaller half-size)
@@ -162,6 +179,8 @@ export class BeachEnvironment {
     group.add(this.sky.mesh);
     this.clouds = new Clouds({ color: look.cloud, glow: look.cloudGlow });
     group.add(this.clouds.mesh);
+    this.cloudShadows = new CloudShadows({ strength: look.cloudShadow });
+    this.cloudShadows.update(0, this._direction);
 
     // 2. The sun (or moon) and a sky / ground fill
     const hemi = new THREE.HemisphereLight(look.hemiSky, look.hemiGround, look.hemiIntensity);
@@ -169,16 +188,15 @@ export class BeachEnvironment {
     this.hemi = hemi;
 
     const sun = new THREE.DirectionalLight(look.light, look.lightIntensity);
-    sun.position.copy(this.shadowCentre).addScaledVector(look.direction, 400);
+    sun.position.copy(this.shadowCentre).addScaledVector(look.direction, SHADOW_LIGHT_DISTANCE);
     sun.target.position.copy(this.shadowCentre);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.near = 1;
-    sun.shadow.camera.far = 900;
     sun.shadow.camera.left = -this.shadowHalfExtent;
     sun.shadow.camera.right = this.shadowHalfExtent;
     sun.shadow.camera.top = this.shadowHalfExtent;
     sun.shadow.camera.bottom = -this.shadowHalfExtent;
+    fitShadowDepth(sun, this.shadowHalfExtent, this._direction);
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.03;
     this._addLight(sun);
@@ -189,6 +207,7 @@ export class BeachEnvironment {
     this.ocean = new Ocean({ size: 2600, segments: 200, sunDirection: look.direction.clone(), waveScale: 0.3 });
     this.ocean.uniforms.uSkyColor.value.set(look.sky);
     this.ocean.uniforms.uSunColor.value.set(look.light);
+    this.cloudShadows.applyToOcean(this.ocean.uniforms);
     group.add(this.ocean.mesh);
 
     // 4. Terrain mesh and its matching heightfield collider
@@ -203,6 +222,7 @@ export class BeachEnvironment {
     });
     group.add(this.terrain.mesh);
     this.terrain.createCollider(this.gameWorld.physics);
+    this.cloudShadows.applyToMaterial(this.terrain.material);
 
     // 5. Named spots other systems place things at
     this.spawnPoints.beach = this._pointOnGround(0, 178);
@@ -293,7 +313,8 @@ export class BeachEnvironment {
     if (this.sun) {
       mix('light', this.sun.color);
       this.sun.intensity = lerp('lightIntensity');
-      this.sun.position.copy(this.sun.target.position).addScaledVector(this._direction, 400);
+      this.sun.position.copy(this.sun.target.position).addScaledVector(this._direction, SHADOW_LIGHT_DISTANCE);
+      fitShadowDepth(this.sun, this.shadowHalfExtent, this._direction);
     }
     if (this.hemi) {
       mix('hemiSky', this.hemi.color);
@@ -303,6 +324,10 @@ export class BeachEnvironment {
     if (this.clouds && this.clouds.material) {
       mix('cloud', this.clouds.material.color);
       mix('cloudGlow', this.clouds.material.emissive);
+    }
+    if (this.cloudShadows) {
+      this.cloudShadows.uniforms.uCloudShadowStrength.value = lerp('cloudShadow');
+      this.cloudShadows.update(0, this._direction);
     }
     if (this.ocean) {
       mix('sky', this.ocean.uniforms.uSkyColor.value);
@@ -318,6 +343,7 @@ export class BeachEnvironment {
     if (this.ocean) this.ocean.update(delta);
     const camera = this.gameWorld.getActiveCamera ? this.gameWorld.getActiveCamera() : this.gameWorld.camera;
     if (this.clouds) this.clouds.update(delta, camera ? camera.position : null);
+    if (this.cloudShadows) this.cloudShadows.update(delta, this._direction);
     if (this.shadowFollowsCamera && this.sun && camera) this._followShadow(camera);
   }
 
@@ -343,7 +369,7 @@ export class BeachEnvironment {
     _centre.copy(_lightRight).multiplyScalar(u).addScaledVector(_lightUp, v).addScaledVector(toLight, w);
 
     this.sun.target.position.copy(_centre);
-    this.sun.position.copy(_centre).addScaledVector(toLight, 400);
+    this.sun.position.copy(_centre).addScaledVector(toLight, SHADOW_LIGHT_DISTANCE);
   }
 
   _pointOnGround(x, z) {
@@ -448,6 +474,10 @@ export class BeachEnvironment {
     if (this.clouds) {
       this.clouds.dispose();
       this.clouds = null;
+    }
+    if (this.cloudShadows) {
+      this.cloudShadows.dispose();
+      this.cloudShadows = null;
     }
     if (this.terrain) {
       this.terrain.dispose();

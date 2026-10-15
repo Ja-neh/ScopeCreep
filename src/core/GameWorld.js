@@ -6,6 +6,7 @@ import { RenderQuality } from './RenderQuality.js';
 import { AudioManager } from './AudioManager.js';
 import { MusicDirector } from './MusicDirector.js';
 import { UIManager } from '../ui/UIManager.js';
+import { PostStack } from '../rendering/PostStack.js';
 
 /**
  * GameWorld
@@ -65,6 +66,10 @@ export class GameWorld {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Graphics settings (resolution, shadows): the player's choice, with a recommendation for this computer
     this.quality = new RenderQuality(this.renderer, this.scene, { software: gpu.software, gpuName: gpu.renderer });
+
+    // The image pipeline: the frame renders through the post stack (bloom, tone mapping, grade).
+    // Software rasterizers skip it - they are slow enough as they are.
+    this.postStack = gpu.software ? null : new PostStack(this.renderer);
 
     // 4. Master Camera
     this.camera = new THREE.PerspectiveCamera(
@@ -278,6 +283,19 @@ export class GameWorld {
   }
 
   /**
+   * Draws one frame through the post stack when there is one (bloom and the
+   * tone mapping / grade tail), straight onto the canvas otherwise.
+   */
+  _renderFrame() {
+    const camera = this.getActiveCamera();
+    if (this.postStack) {
+      this.postStack.render(this.scene, camera);
+    } else {
+      this.renderer.render(this.scene, camera);
+    }
+  }
+
+  /**
    * Add a game entity to the world
    * @param {Object} entity - Entity implementing phased lifecycle methods (prePhysicsUpdate, postPhysicsUpdate, gameplayUpdate, lateUpdate)
    */
@@ -398,7 +416,7 @@ export class GameWorld {
 
     // When paused, render the frozen scene and flush inputs without advancing physics or gameplay
     if (this.isPaused) {
-      this.renderer.render(this.scene, this.getActiveCamera());
+      this._renderFrame();
       if (this.fpsTracker) {
         this.fpsTracker.update(this);
       }
@@ -460,7 +478,7 @@ export class GameWorld {
     // =========================================================================
     // PHASE 7: WEBGL RENDER
     // =========================================================================
-    this.renderer.render(this.scene, this.getActiveCamera());
+    this._renderFrame();
     if (this.currentLevel && !this.isLevelLoading) this.quality.update(); // Measures gameplay frames only
 
     // Update on-screen FPS & performance diagnostics
@@ -547,6 +565,12 @@ export class GameWorld {
     }
 
     this.physics.dispose();
+
+    if (this.postStack) {
+      this.postStack.dispose();
+      this.postStack = null;
+    }
+
     this.renderer.dispose();
 
     if (this.fpsTracker) {

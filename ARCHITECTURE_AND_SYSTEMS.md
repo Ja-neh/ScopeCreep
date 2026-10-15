@@ -162,7 +162,10 @@ Levels represent isolated game stages that extend the abstract `BaseLevel` class
 
 - **Renderer:** `THREE.WebGLRenderer` configured with antialiasing, high-performance power preference, and soft PCF shadow maps (`PCFSoftShadowMap`).
 - **Gerstner Wave Ocean (`WaterMesh`):** Rather than flat geometric planes, the ocean surface is a $2400 \times 2400\text{m}$ subdivided plane ($200 \times 200$ segments) displaced dynamically on the GPU via custom GLSL shaders (`ocean.vert.glsl`).
-- **Optical Shading (`ocean.frag.glsl`):** Computes Fresnel reflection equations to blend luminous deep cobalt (`#1a4b6e`) into shallow cyan crests (`#2ca0b8`), applies Blinn-Phong specular sun reflections, overlays procedural foam on wave crests exceeding threshold height, and blends into atmospheric horizon fog.
+- **Optical Shading (`ocean.frag.glsl`):** Computes Fresnel reflection equations to blend luminous deep cobalt (`#1a4b6e`) into shallow cyan crests (`#2ca0b8`), applies Blinn-Phong specular sun reflections, overlays procedural foam on wave crests exceeding threshold height, multiplies in drifting cloud shade (see below), and blends into atmospheric horizon fog before the shared output encode (`colorspace_fragment`, a no-op when the frame renders into the post stack's target).
+- **Post Stack (`rendering/PostStack.js`):** The whole frame renders into an HDR target (MSAA, half-float when the GPU offers `EXT_color_buffer_float`), blooms through a bright pass and two separable Gaussian blurs at a quarter resolution, then composites to the canvas with bloom, ACES tone mapping (a replica of Three's curve, driven by `renderer.toneMappingExposure`), a small saturation/contrast grade, a vignette and the sRGB encode. Rendering into a target makes Three skip tone mapping and output encoding on its own, so the target holds raw linear light and the stack owns the pipeline tail. `GameWorld._renderFrame()` is the single render funnel; software rasterizers skip the stack (straight `renderer.render`).
+- **Cloud Shadows (`rendering/CloudShadows.js`):** Sunlight broken up by the cloud layer without a second shadow map (the clouds stay `castShadow = false`): one seamless 256x256 noise tile (periodic fbm on a wrapping lattice — `periodicValueNoise2D` / `periodicFbm2D` in `Noise.js` — baked once into a `DataTexture`) is projected down the sun direction (floored under low suns) and drifts downwind. The four shading uniforms are shared by reference into the `Ocean` shader (`applyToOcean`) and injected into lit terrain materials (`applyToMaterial`, world-XZ lookup via `onBeforeCompile`). `BeachEnvironment` owns one per island and blends its strength with the look (`LOOKS[look].cloudShadow`).
+- **Shadow Frustums (`rendering/ShadowFrustum.js`):** A focus-following, texel-snapped directional shadow rig: the sun keeps its fixed offset and angle, and the orthographic shadow camera only slides with its focus in whole shadow-map texels, so the map around the player stays sharp and edges stop crawling. The depth range is fitted via the shared `shadowDepthRadius(halfExtent, direction)` (square diagonal + world height span + margin); a `DirectionalLightShadow` never refreshes its own projection, so refits call `updateProjectionMatrix` themselves. The four Level 1-era levels follow their player with it; `BeachEnvironment` reuses the depth helper for its camera-following sun.
 
 ---
 
@@ -447,12 +450,16 @@ ScopeCreep/
 │   ├── rendering/          # Visual WebGL components
 │   │   ├── Ocean.js        # Subdivided ocean plane driving custom GPU shaders
 │   │   ├── Decals.js       # Pooled bullet holes and scorch marks (data-texture quads)
+│   │   ├── PostStack.js    # Frame pipeline: HDR target, bloom, ACES tone mapping, grade
+│   │   ├── CloudShadows.js # Projected cloud shade drifting over terrain and sea
+│   │   ├── ShadowFrustum.js # Player-following, texel-snapped directional shadow rig
 │   │   ├── Terrain.js, Vegetation.js, Noise.js # Island terrain, instanced scatter, noise
 │   │   ├── SkyDome.js, Clouds.js # Sunset sky and clouds
 │   │   ├── MeshMerge.js    # Merges a model's rigid parts into a few vertex-coloured meshes
 │   │   └── shaders/        # GPU shader programs (GLSL)
 │   │       ├── ocean.vert.glsl # Vertex displacement shader (Gerstner wave math)
 │   │       ├── ocean.frag.glsl # Fragment shader (Fresnel reflections, foam, depth colors)
+│   │       ├── post.vert.glsl, postBright.frag.glsl, postBlur.frag.glsl, post.frag.glsl # Post pipeline passes
 │   │       └── sky.vert.glsl, sky.frag.glsl # Sky dome at infinity, sunset gradient and sun
 │   ├── ui/                 # Centralized HTML/DOM HUD overlay subsystem
 │   │   ├── UIManager.js    # Central UI orchestrator attached to GameWorld.ui
@@ -594,11 +601,25 @@ ScopeCreep/
 ### `Ocean` (`src/rendering/Ocean.js`)
 - `update(delta)`: Advances shader `uTime` uniform.
 - `getWaveHeight(x, z, time)`: Computes CPU wave height at world coordinates matching GPU shader math for vessel buoyancy.
+- Cloud shade: four `uCloudShadow*` uniforms sample a projected cloud tile; neutral (a 1x1 black tile, strength 0) until a `CloudShadows` shares its uniforms, so every level's sea is ready-made.
 
 ### `Decals` (`src/rendering/Decals.js`)
 - The physics juice's marks on the world: bullet holes and artillery scorch marks, one `BaseEntity` with a fixed pool of flat quads (one shared plane geometry, per-decal material so each fades on its own).
 - `spawn(point, normal, kind, scale)`: lays a mark over the surface along its normal (slightly offset to avoid z-fighting) and recycles the oldest once the pool is full.
 - `lateUpdate(delta)`: Phase 6 — ages marks and fades them out; retired marks hide until recycled. Fixed surfaces only.
+
+### `PostStack` (`src/rendering/PostStack.js`)
+- `render(scene, camera)`: the frame funnel (see `GameWorld._renderFrame`) — scene into the HDR target, a bright pass and two separable Gaussian blurs at a quarter resolution, then a composite pass onto the canvas (bloom, ACES tone mapping from `renderer.toneMappingExposure`, saturation/contrast grade, vignette, sRGB encode). Targets track the drawing buffer.
+- `setBloomEnabled(enabled)` toggles just the bloom composite; `dispose()` frees every target and pass material.
+
+### `CloudShadows` (`src/rendering/CloudShadows.js`)
+- `update(delta, sunDirection)`: drifts the baked tile downwind and re-projects it for the current sun (with a floor under low suns so the projection stays finite).
+- `applyToOcean(uniforms)` / `applyToMaterial(material)`: share the four shading uniforms (map, scale, offset, strength) by reference; the material patch samples the tile at world XZ through `onBeforeCompile`.
+- `dispose()` frees the `DataTexture`.
+
+### `ShadowFrustum` (`src/rendering/ShadowFrustum.js`)
+- `new ShadowFrustum(light, { halfExtent, height })`: takes over a directional light's shadow camera — the square's bounds and a near/far fit around the light's fixed distance (`shadowDepthRadius`), keeping the sun's angle.
+- `update(focus)`: slides the rig onto a `Vector3`, an entity with `position`, or an object exposing `mesh`, snapped to whole shadow-map texels; a null focus is a no-op. The four Level 1-era levels call it from `gameplayUpdate`; `BeachEnvironment` reuses the depth helper for its camera-following sun.
 
 ---
 
