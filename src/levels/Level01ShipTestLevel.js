@@ -32,6 +32,17 @@ export class Level01TestLevel extends BaseLevel {
     this._onKeyDown = null;
   }
 
+  get controls() {
+    return [
+      { actions: ['forward', 'backward'], label: 'Walk forward / back' },
+      { actions: ['steerLeft', 'steerRight'], label: 'Walk left / right' },
+      { actions: ['jump'], label: 'Jump' },
+      { actions: ['specialAction'], label: 'Mount / leave a station' },
+      { actions: ['cycleShipOrder'], label: 'Cycle AI crew order' },
+      { actions: ['pause'], label: 'Pause and options' },
+    ];
+  }
+
   async init() {
     await super.init();
 
@@ -79,7 +90,8 @@ export class Level01TestLevel extends BaseLevel {
     // 4. Instantiate Modern Battleship with Ocean Buoyancy
     this.battleship = new Battleship(this.gameWorld, {
       position: new THREE.Vector3(0, 0, 0),
-      water: this.water
+      water: this.water,
+      crewAI: true
     });
     await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);

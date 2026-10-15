@@ -3,6 +3,7 @@ import { BaseEntity } from './BaseEntity.js';
 import { ArtilleryTurret } from './ship-components/ArtilleryTurret.js';
 import { FlakTurret } from './ship-components/FlakTurret.js';
 import { HelmStation } from './ship-components/HelmStation.js';
+import { ShipCrewAI } from './ship-components/ShipCrewAI.js';
 import { loadBattleshipModel } from './models/BattleshipModel.js';
 import { HealthComponent } from './components/HealthComponent.js';
 import { BattleshipColliders } from './ship-components/BattleshipColliders.js';
@@ -28,6 +29,7 @@ export class Battleship extends BaseEntity {
     this.health.onDeath = () => {
       this.isDestroyed = true;
       if (this.shipController) this.shipController.speed = 0;
+      if (this.crewAI) this.crewAI.enabled = false;
       if (this.mesh) this.mesh.visible = false;
       this._updateHealth();
     };
@@ -91,6 +93,9 @@ export class Battleship extends BaseEntity {
       draft: 1.0,
       input: options.input || null
     });
+
+    // 3.5 AI crew: man whichever stations the player is not currently occupying
+    this.crewAI = new ShipCrewAI(this, { enabled: !!options.crewAI });
 
     // 4. Collider & Physics Rigging Subsystem
     this.colliders = new BattleshipColliders(this);
@@ -312,6 +317,15 @@ export class Battleship extends BaseEntity {
   }
 
   /**
+   * Phase 5 (Gameplay): the AI crew aims and fires every gun mount nobody is manning.
+   */
+  gameplayUpdate(delta, gameWorld) {
+    if (this.crewAI) {
+      this.crewAI.updateGunnery(delta, gameWorld);
+    }
+  }
+
+  /**
    * Phase 6 (Late Update): Updates camera positioning and spring-arm obstacle raycasting
    * after physical movements and platform displacements are complete.
    */
@@ -324,6 +338,11 @@ export class Battleship extends BaseEntity {
   dispose() {
     // Disposes hull collider, rigid body, dynamic gun colliders, and all wireframe meshes
     this.colliders.dispose();
+
+    if (this.crewAI) {
+      this.crewAI.dispose();
+      this.crewAI = null;
+    }
 
     if (this.shipController) {
       this.shipController.dispose();
