@@ -179,6 +179,9 @@ export class GameWorld {
           this.ui.showPauseButton(() => this.togglePause());
           const controls = this.currentLevel.controls;
           this.ui.showControlsHelper(controls ? controls.map(({ actions, label }) => ({ keys: this.input.describeActions(actions), label })) : null);
+          // Stages with a chart (the island family) pin it to the corner from the first frame
+          const chart = this.currentLevel.getMapTerrain ? this.currentLevel.getMapTerrain() : null;
+          if (chart) this.ui.showMinimap(chart);
           this.ui.hideFade(); // Built: the curtain lifts onto the new stage
         }
       }
@@ -247,9 +250,10 @@ export class GameWorld {
   }
 
   /**
-   * Opens or closes the island map ([M]). The chart comes from the level's own terrain sampler
-   * (`getMapTerrain`); the cursor is freed while it is open so clicks never fire the weapons,
-   * and the pointer locks again on close so looking and shooting resume in place.
+   * Expands or collapses the full island chart ([M]) — the corner chart is always on. The chart
+   * comes from the level's own terrain sampler (`getMapTerrain`); the cursor is freed while the
+   * full chart is out so clicks never fire the weapons, and the pointer locks again on close so
+   * looking and shooting resume in place.
    */
   toggleMap() {
     if (!this.currentLevel || this.isLevelLoading || this.isPaused) return;
@@ -257,10 +261,17 @@ export class GameWorld {
     if (player && player.isDevSuspended) return; // Cinematics and the downed state own the screen
     if (!this.ui) return;
 
+    // Key ghosting and double-taps must not flicker the full chart closed the frame it opens
+    const now = performance.now();
+    if (now - (this._lastMapToggleAt || 0) < 250) return;
+    this._lastMapToggleAt = now;
+
     if (this.ui.isMapOpen) {
       this.ui.hideMap();
+      this.ui.showMinimap(null); // The corner chart returns with the cached island
       this.input.requestPointerLock(this.canvas);
     } else {
+      this.ui.hideMinimap(); // The full chart replaces the corner one while it is out
       this.ui.showMap(this.currentLevel.getMapTerrain());
       this.input.exitPointerLock();
     }

@@ -722,6 +722,7 @@ export class Level02 extends IslandLevel {
       ui.hideObjective();
       ui.hideStatusIndicator();
       ui.hideMap();
+      ui.hideMinimap(); // The ending owns the whole screen, corner chart included
     }
 
     const player = this.player;

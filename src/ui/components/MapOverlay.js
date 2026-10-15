@@ -1,10 +1,12 @@
 /**
  * MapOverlay.js
- * The island map ([M]): a north-up chart of the stage, drawn from the level's own terrain
- * sampler, with the player, the squad, the zone lines, the objective pins, the intel spots and
- * the aliens alive on the island (unaware ones dimmer, the ones hunting you bright red). Levels
- * feed it through `BaseLevel.getMapTerrain` / `BaseLevel.getMapData`; this component only draws.
- * The island backdrop is sampled once and cached, so an open map redraws cheap.
+ * The island chart: a north-up map of the stage, drawn from the level's own terrain sampler, with
+ * the player, the squad, the zone lines, the objective pins, the intel spots and the aliens alive
+ * on the island (unaware ones dimmer, the ones hunting you bright red). It lives two ways: a small
+ * chart pinned to the top-right corner from the first frame of the stage, always on, and the full
+ * [M] chart over the middle of the screen for the detail (labels and the legend). Levels feed both
+ * through `BaseLevel.getMapTerrain` / `BaseLevel.getMapData`; this component only draws. The island
+ * backdrop is sampled once and cached, so either chart redraws cheap.
  * Visual only: colours and glyph sizes live here, not in config.json.
  */
 
@@ -12,6 +14,7 @@ const CANVAS_SCALE = 0.55;   // Map pixels per meter of island
 const GRID_SPACING = 7;      // Terrain sampled every this many meters
 const PATH_DISTANCE = 4.5;   // The jungle path reads this many meters wide on the map
 const MIN_CANVAS = 240;      // Never build a smaller chart than this (px)
+const MINI_WIDTH = 168;      // The corner chart is this many pixels wide (height follows the island)
 
 /**
  * Chart data for a level's island: world bounds plus the environment's own height and path
@@ -114,10 +117,28 @@ export class MapOverlay {
     this.canvas = this.element.querySelector('.ui-map-canvas');
     this.ctx = this.canvas.getContext('2d');
     this.parent.appendChild(this.element);
+
+    // The always-on corner chart: the same island, small, no key needed. The stage brings it up
+    // as it loads (GameWorld calls ui.showMinimap); the full [M] chart hides it while it is out.
+    this.miniElement = document.createElement('div');
+    this.miniElement.className = 'ui-minimap ui-hidden';
+    this.miniElement.innerHTML = `
+      <canvas class="ui-minimap-canvas"></canvas>
+      <div class="ui-minimap-hint">[M] FULL CHART</div>
+    `;
+    this.miniCanvas = this.miniElement.querySelector('.ui-minimap-canvas');
+    this.miniCtx = this.miniCanvas.getContext('2d');
+    this.parent.appendChild(this.miniElement);
+
+    this._compact = false;
   }
 
   get isOpen() {
     return this.element ? !this.element.classList.contains('ui-hidden') : false;
+  }
+
+  get isMinimapVisible() {
+    return this.miniElement ? !this.miniElement.classList.contains('ui-hidden') : false;
   }
 
   /**
@@ -135,17 +156,40 @@ export class MapOverlay {
   }
 
   /**
-   * Redraws the markers over the cached island: the level's state from `getMapData`.
+   * Brings the corner chart up. Pass the level's chart data to paint the island; pass null to
+   * keep the backdrop already cached (the stage painted it when it loaded).
+   * @param {Object|null} terrain - See `mapTerrainFromEnvironment`
+   */
+  showMinimap(terrain) {
+    if (!this.miniElement) return;
+    this.miniElement.classList.remove('ui-hidden');
+    if (terrain) this._paintTerrain(terrain);
+  }
+
+  /**
+   * Hides the corner chart (the full chart is out, or the stage owns the whole screen).
+   */
+  hideMinimap() {
+    if (this.miniElement) this.miniElement.classList.add('ui-hidden');
+  }
+
+  /**
+   * Redraws whichever charts are on screen over the cached island: the level's state from
+   * `getMapData`. The corner chart draws the same picture compact — the blips, not the labels.
    * @param {Object|null} state - { player, mates, enemies, markers, zones, intel }
    */
   update(state) {
-    if (!this.isOpen || !this.bounds) return;
-    const ctx = this.ctx;
-    const width = this.canvas.width;
-    const height = this.canvas.height;
+    if (!this.bounds) return;
+    if (this.isOpen) this._drawChart(this.ctx, this.canvas.width, this.canvas.height, state, false);
+    if (this.isMinimapVisible) this._drawChart(this.miniCtx, this.miniCanvas.width, this.miniCanvas.height, state, true);
+  }
+
+  /** One chart pass: the cached island scaled onto the canvas, then the live glyphs over it. */
+  _drawChart(ctx, width, height, state, compact) {
     ctx.clearRect(0, 0, width, height);
-    if (this._background) ctx.drawImage(this._background, 0, 0);
+    if (this._background) ctx.drawImage(this._background, 0, 0, width, height);
     if (!state) return;
+    this._compact = compact;
 
     this._drawZones(ctx, state.zones || [], width, height);
     this._drawIntel(ctx, state.intel || [], width, height);
@@ -172,6 +216,13 @@ export class MapOverlay {
       this._background = document.createElement('canvas');
       this._background.width = width;
       this._background.height = height;
+    }
+
+    // The corner chart shares this backdrop, drawn small: size it to the island's shape
+    const miniHeight = Math.max(1, Math.round(MINI_WIDTH * height / width));
+    if (this.miniCanvas.width !== MINI_WIDTH || this.miniCanvas.height !== miniHeight) {
+      this.miniCanvas.width = MINI_WIDTH;
+      this.miniCanvas.height = miniHeight;
     }
 
     // Sample the island on a coarse grid, then scale it up onto the chart
@@ -221,7 +272,7 @@ export class MapOverlay {
       ctx.moveTo(0, p.y);
       ctx.lineTo(width, p.y);
       ctx.stroke();
-      if (zone.name) ctx.fillText(zone.name.toUpperCase(), 6, p.y - 5);
+      if (zone.name && !this._compact) ctx.fillText(zone.name.toUpperCase(), 6, p.y - 5);
     }
     ctx.restore();
   }
@@ -247,7 +298,7 @@ export class MapOverlay {
         ctx.beginPath();
         ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
         ctx.fill();
-        if (spot.label) {
+        if (spot.label && !this._compact) {
           ctx.fillStyle = 'rgba(154, 208, 107, 0.85)';
           ctx.fillText(spot.label, p.x, p.y + 12);
         }
@@ -278,7 +329,7 @@ export class MapOverlay {
       ctx.lineTo(p.x - 7, p.y);
       ctx.closePath();
       ctx.fill();
-      if (marker.label) {
+      if (marker.label && !this._compact) {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
         ctx.fillText(marker.label, p.x, p.y + 19);
       }
@@ -325,6 +376,7 @@ export class MapOverlay {
   /** The player: a white arrow with a view cone, turned to the facing. */
   _drawPlayer(ctx, player, width, height) {
     const p = projectPoint(this.bounds, width, height, player.x, player.z, this._point);
+    const s = this._compact ? 0.6 : 1; // The corner chart's arrow and view cone shrink to fit
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(headingAngle(player.yaw || 0));
@@ -332,17 +384,17 @@ export class MapOverlay {
     ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.lineTo(-16, -30);
-    ctx.lineTo(16, -30);
+    ctx.lineTo(-16 * s, -30 * s);
+    ctx.lineTo(16 * s, -30 * s);
     ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.moveTo(0, -10);
-    ctx.lineTo(7, 8);
-    ctx.lineTo(0, 4);
-    ctx.lineTo(-7, 8);
+    ctx.moveTo(0, -10 * s);
+    ctx.lineTo(7 * s, 8 * s);
+    ctx.lineTo(0, 4 * s);
+    ctx.lineTo(-7 * s, 8 * s);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -352,9 +404,15 @@ export class MapOverlay {
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
+    if (this.miniElement && this.miniElement.parentNode) {
+      this.miniElement.parentNode.removeChild(this.miniElement);
+    }
     this.element = null;
     this.canvas = null;
     this.ctx = null;
+    this.miniElement = null;
+    this.miniCanvas = null;
+    this.miniCtx = null;
     this._background = null;
     this.bounds = null;
   }

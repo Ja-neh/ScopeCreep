@@ -228,10 +228,10 @@ export class IslandLevel extends BaseLevel {
     };
   }
 
-  /** Keeps an open map fed: fresh markers a few times a second are plenty. */
+  /** Keeps the on-screen charts fed: fresh markers a few times a second are plenty. */
   _updateMap(delta) {
     const ui = this.gameWorld.ui;
-    if (!ui || !ui.isMapOpen) return;
+    if (!ui || (!ui.isMapOpen && !ui.isMinimapVisible)) return;
     this._mapRefreshTimer -= delta;
     if (this._mapRefreshTimer > 0) return;
     this._mapRefreshTimer = 0.12;
@@ -317,7 +317,7 @@ export class IslandLevel extends BaseLevel {
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['reload'], label: 'Reload' },
       { actions: ['weaponPrimary', 'weaponMelee', 'weaponBomb', 'quickMelee'], label: 'Gun, knife, bomb, quick knife' },
-      { actions: ['toggleMap'], label: 'Island map' },
+      { actions: ['toggleMap'], label: 'Expand island chart' },
       { actions: ['specialAction'], label: 'Hold: revive, patch up' },
       { actions: ['toggleCamera'], label: '1st / 3rd person' },
       { actions: ['pause'], label: 'Pause and options' }

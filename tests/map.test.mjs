@@ -1,5 +1,6 @@
-// The island map ([M]): the chart a level feeds (terrain sampler, projection, colours) and the
-// live intel it draws — the player, the squad, the objective pins and the aliens still alive.
+// The island chart: the chart a level feeds (terrain sampler, projection, colours) and the live
+// intel it draws — the player, the squad, the objective pins and the aliens still alive. The chart
+// rides always-on in the top-right corner; [M] expands it to the full one.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -136,7 +137,7 @@ test('Level 2 feeds the map: the player, the crew, the beacon pin and exactly th
   assert.equal(data.enemies.length, 1, 'the dead trooper is off the chart');
   assert.equal(data.enemies[0].big, true);
 
-  // An open map is fed a few times a second, not every frame (the test UI reports it open)
+  // The on-screen charts are fed a few times a second, not every frame (the test UI reports them up)
   stepWorld(world, 1, { level });
   const feeds = world.ui.callsTo('updateMap');
   assert.ok(feeds.length >= 4 && feeds.length < 30, `fed ${feeds.length} times in a second`);
@@ -147,7 +148,19 @@ test('Level 2 feeds the map: the player, the crew, the beacon pin and exactly th
   assert.equal(bodyCount(world), 0, 'no physics bodies left');
 });
 
-test('the map overlay starts hidden until [M] is pressed', () => {
+test('the full chart opens on [M]; the corner chart is its own always-on element', () => {
   const source = read('../src/ui/components/MapOverlay.js');
-  assert.match(source, /className = 'ui-map-overlay ui-hidden'/, 'the chart must start hidden');
+  assert.match(source, /className = 'ui-map-overlay ui-hidden'/, 'the full chart must start hidden');
+  assert.match(source, /className = 'ui-minimap ui-hidden'/, 'the corner chart starts hidden until the level shows it');
+  assert.match(source, /showMinimap\(terrain\)/, 'the corner chart paints from the level terrain');
+  assert.match(source, /this\.isMinimapVisible\) this\._drawChart/, 'the corner chart redraws with the live state');
+});
+
+test('a stage load pins the corner chart; the full chart and the corner swap, never stack', () => {
+  const world = read('../src/core/GameWorld.js');
+  assert.match(world, /if \(chart\) this\.ui\.showMinimap\(chart\)/, 'a stage with a chart brings the corner chart up');
+  assert.match(world, /this\.ui\.hideMinimap\(\); \/\/ The full chart replaces the corner one/, 'the full chart takes the corner while it is out');
+  assert.match(world, /now - \(this\._lastMapToggleAt \|\| 0\) < 250\) return/, 'a double-fired [M] cannot blink the full chart closed');
+  const css = read('../src/ui/ui.css');
+  assert.match(css, /\.ui-minimap\s*\{[^}]*pointer-events:\s*none/, 'the corner chart never eats the game\'s clicks');
 });

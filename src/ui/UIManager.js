@@ -423,10 +423,35 @@ export class UIManager {
   }
 
   /**
+   * Bring the corner chart up (pass the level's terrain, or null to reuse the cached island)
+   */
+  showMinimap(terrain) {
+    if (this.mapOverlay) {
+      this.mapOverlay.showMinimap(terrain);
+    }
+  }
+
+  /**
+   * Hide the corner chart (the full chart is out, or the stage owns the whole screen)
+   */
+  hideMinimap() {
+    if (this.mapOverlay) {
+      this.mapOverlay.hideMinimap();
+    }
+  }
+
+  /**
    * True while the island map is on screen
    */
   get isMapOpen() {
     return !!(this.mapOverlay && this.mapOverlay.isOpen);
+  }
+
+  /**
+   * True while the corner chart is on screen
+   */
+  get isMinimapVisible() {
+    return !!(this.mapOverlay && this.mapOverlay.isMinimapVisible);
   }
 
   // =========================================================================
@@ -658,6 +683,7 @@ export class UIManager {
     this.hideStatusIndicator();
     this.hideWeaponHUD();
     this.hideMap();
+    this.hideMinimap();
     this.hidePlayerHealth();
     this.hideBossHealth();
     this.hideCredits();
