@@ -7,6 +7,7 @@ import { ObjectiveBeacon } from './level02/ObjectiveBeacon.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
 import { IntelTrail } from './level02/IntelTrail.js';
 import { VillageSmoke } from './level02/VillageSmoke.js';
+import { BeachGulls } from './level02/BeachGulls.js';
 import { LandingCinematic } from './level02/LandingCinematic.js';
 import { VillageGate } from './level02/VillageGate.js';
 import { Level03 } from './Level03.js';
@@ -183,6 +184,7 @@ export class Level02 extends IslandLevel {
     this.supplyCrate = null;
     this.intel = null;
     this.villageSmoke = null;
+    this.gulls = null;
 
     this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> gate -> clear -> ending (hands over to Level 3) | lost
     this._holdoutsTotal = 0;
@@ -229,6 +231,8 @@ export class Level02 extends IslandLevel {
     this.gate.build();
     // The village burns beyond the ridge; the columns fade in over the last stretch of the push
     this.villageSmoke = this.trackDisposable(new VillageSmoke(this.gameWorld.environmentGroup, this.environment));
+    // ...and the gulls keep working the bay behind the squad the whole way in
+    this.gulls = this.trackDisposable(new BeachGulls(this.gameWorld.environmentGroup, this.environment));
   }
 
   _clearings() {
@@ -287,6 +291,7 @@ export class Level02 extends IslandLevel {
     this._updateZones();
     this._updateAmbientLife(delta);
     if (this.villageSmoke) this.villageSmoke.update(delta, this.player); // The intel trail updates as an entity (Phase 5)
+    if (this.gulls) this.gulls.update(delta); // Birds over the bay: pure ambience
 
     // The crew wait on the sand until the player is ashore, then fall in behind them
     if (!this._crewFollowing && this._isPlayerAshore()) {
