@@ -6,7 +6,10 @@ import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 import { Battleship } from '../entities/Battleship.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { PlayerJet } from '../entities/player-jet/PlayerJet.js';
-import { EnemyJet } from '../entities/enemies/EnemyJet.js';
+import { JetDefenseMission } from './JetDefenseMission.js';
+import { AirStrikeMission } from './AirStrikeMission.js';
+import { CoastalTarget } from '../entities/CoastalTarget.js';
+import config from '../config.json';
 
 /**
  * Level01JetTestLevel
@@ -18,12 +21,15 @@ import { EnemyJet } from '../entities/enemies/EnemyJet.js';
  * - Open airspace for testing aerodynamics, flight controls, and chase camera
  */
 export class Level01JetTestLevel extends BaseLevel {
-  constructor(gameWorld) {
-    super(gameWorld, 'Level 1: Jet Test Level');
+  constructor(gameWorld, { missionMode = 'defense' } = {}) {
+    super(gameWorld, missionMode === 'airstrike' ? 'Air Strike: Coastal Assault' : 'Level 1: Jet Test Level');
+    this.missionMode = missionMode;
     this.water = null;
     this.battleship = null;
     this.playerJet = null;
-    this.enemyJet = null;
+    this.defenseMission = null;
+    this.airStrikeMission = null;
+    this.coastalTargets = [];
     this.projectilePool = null;
 
     // Dev Tools Camera System
@@ -39,7 +45,8 @@ export class Level01JetTestLevel extends BaseLevel {
       { actions: ['pitchUp', 'pitchDown'], label: 'Pitch up / down' },
       { actions: ['rollLeft', 'rollRight'], label: 'Roll left / right' },
       { actions: ['yawLeft', 'yawRight'], label: 'Yaw left / right' },
-      { actions: ['firePrimary'], label: 'Fire guns' },
+      { actions: ['firePrimary'], label: this.missionMode === 'airstrike' ? 'Fire guns and destroy enemy targets' : 'Fire guns and defend the battleship' },
+      { actions: ['cycleShipOrder'], label: 'Cycle AI crew order (battleship)' },
       { actions: ['pause'], label: 'Pause and options' }
     ];
   }
@@ -86,7 +93,8 @@ export class Level01JetTestLevel extends BaseLevel {
     // 5. Battleship (serves as a naval target and ocean landmark)
     this.battleship = new Battleship(this.gameWorld, {
       position: new THREE.Vector3(0, 0, 0),
-      water: this.water
+      water: this.water,
+      crewAI: true
     });
     await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);
@@ -97,13 +105,25 @@ export class Level01JetTestLevel extends BaseLevel {
       position: new THREE.Vector3(0, 80, -200)
     });
     this.gameWorld.addEntity(this.playerJet);
-
-    // 7. Enemy aircraft starts behind the player and engages in a pursuit.
-    this.enemyJet = new EnemyJet(this.gameWorld, {
-      position: new THREE.Vector3(0, 95, -380),
-      target: this.playerJet
-    });
-    this.gameWorld.addEntity(this.enemyJet);
+    if (this.missionMode === 'airstrike') {
+      this.coastalTargets = config.airStrike.targets.map((target) => {
+        const entity = new CoastalTarget(this.gameWorld, {
+          ...target,
+          position: new THREE.Vector3(...target.position)
+        });
+        this.gameWorld.addEntity(entity);
+        return entity;
+      });
+      this.airStrikeMission = new AirStrikeMission(this.gameWorld, this.playerJet, this.coastalTargets);
+      this.airStrikeMission.start();
+    } else {
+      this.defenseMission = new JetDefenseMission(this.gameWorld, this.battleship);
+      this.defenseMission.start(this.playerJet);
+    }
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showPlayerHealth();
+      this.gameWorld.ui.updatePlayerHealth(this.playerJet.health.currentHealth, this.playerJet.health.maxHealth);
+    }
 
     // 7. Initialize Aerial Dev Camera & OrbitControls
     this._initAerialCamera();
@@ -218,6 +238,9 @@ export class Level01JetTestLevel extends BaseLevel {
       this.water.update(delta);
     }
 
+    if (this.defenseMission) this.defenseMission.update(delta);
+    if (this.airStrikeMission) this.airStrikeMission.update(delta);
+
     if (this.orbitControls && this.cameraMode === 'AERIAL') {
       this.orbitControls.update();
       if (this.playerJet && this.playerJet.mesh) {
@@ -240,7 +263,19 @@ export class Level01JetTestLevel extends BaseLevel {
     }
     if (this.gameWorld && this.gameWorld.ui) {
       this.gameWorld.ui.hideDevTools();
+      this.gameWorld.ui.hideObjective();
+      this.gameWorld.ui.hideMissionResult();
+      this.gameWorld.ui.hidePlayerHealth();
     }
+    if (this.defenseMission) {
+      this.defenseMission.dispose();
+      this.defenseMission = null;
+    }
+    if (this.airStrikeMission) {
+      this.airStrikeMission.dispose();
+      this.airStrikeMission = null;
+    }
+    this.coastalTargets = [];
     if (this.orbitControls) {
       this.orbitControls.dispose();
       this.orbitControls = null;
@@ -253,7 +288,6 @@ export class Level01JetTestLevel extends BaseLevel {
     }
     this.projectilePool = null;
     this.playerJet = null;
-    this.enemyJet = null;
     this.battleship = null;
 
     super.dispose();

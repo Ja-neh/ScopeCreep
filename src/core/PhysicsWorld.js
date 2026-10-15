@@ -123,10 +123,14 @@ export class PhysicsWorld {
 
   /**
    * Casts a ray through the physics world and returns the closest hit.
+   * @param {RAPIER.Collider|null} [excludeCollider] - Single collider to ignore
+   * @param {RAPIER.RigidBody|null} [excludeRigidBody] - Ignore every collider on this body. Needed
+   *   for compound bodies: a ship's hull trimesh and its gun colliders share one rigid body, so
+   *   excluding only the hull collider still lets the ship's own shells strike its gun mounts.
    */
-  castRay(ray, maxToi = 100, solid = true, flags, groups, excludeCollider) {
+  castRay(ray, maxToi = 100, solid = true, flags, groups, excludeCollider, excludeRigidBody) {
     if (!this.world) return null;
-    return this.world.castRay(ray, maxToi, solid, flags, groups, excludeCollider);
+    return this.world.castRay(ray, maxToi, solid, flags, groups, excludeCollider, excludeRigidBody);
   }
 
   /**
@@ -157,9 +161,9 @@ export class PhysicsWorld {
   /**
    * Casts a ray and returns the impact normal along with the hit info.
    */
-  castRayAndGetNormal(ray, maxToi = 100, solid = true, flags, groups, excludeCollider) {
+  castRayAndGetNormal(ray, maxToi = 100, solid = true, flags, groups, excludeCollider, excludeRigidBody) {
     if (!this.world) return null;
-    return this.world.castRayAndGetNormal(ray, maxToi, solid, flags, groups, excludeCollider);
+    return this.world.castRayAndGetNormal(ray, maxToi, solid, flags, groups, excludeCollider, excludeRigidBody);
   }
 
   /**

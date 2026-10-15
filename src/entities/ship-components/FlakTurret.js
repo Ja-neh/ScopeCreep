@@ -31,6 +31,7 @@ export class FlakTurret extends BaseStation {
     // Turret orientation angles
     this.yaw = 0;
     this.pitch = Math.PI / 6; // Default ~30 deg upward anti-air posture
+    this._faction = options.faction || null;
     this.health = new HealthComponent(options.maxHealth ?? config.turrets.flak.maxHealth);
     this.isDestroyed = false;
     this.health.onDeath = () => {
@@ -41,11 +42,14 @@ export class FlakTurret extends BaseStation {
 
     this.minPitch = -Math.PI / 18; // -10 deg
     this.maxPitch = Math.PI / 2.1; // ~85 deg high-angle flak fire
+    this.aimTolerance = options.aimTolerance ?? config.turrets.flak.aimTolerance;
 
     // --- Card 2.2: Firing state ---
     // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
     this._muzzleWorldPos = new THREE.Vector3();
     this._barrelWorldDir = new THREE.Vector3();
+    this._targetLocalPos = new THREE.Vector3();
+    this._turretLocalPos = new THREE.Vector3();
 
     // Rate of fire (rapid anti-air battery)
     const flakCfg = config.turrets.flak;
@@ -71,6 +75,9 @@ export class FlakTurret extends BaseStation {
     // 1. Build the station detection field
     this._createMesh();
 
+    if (!this.yawGroup) this.yawGroup = this.mesh;
+    if (!this.pitchGroup) this.pitchGroup = this.mesh;
+
     // 2. Dedicated Anti-Air Camera
     this._createCamera();
 
@@ -79,11 +86,19 @@ export class FlakTurret extends BaseStation {
     }
   }
 
+  get faction() {
+    return this._faction || this.battleship?.faction || 'humans';
+  }
+
+  set faction(val) {
+    this._faction = val;
+  }
+
   attachTurretNodes(turretMesh, barrelMesh) {
     this.turretMesh = turretMesh;
     this.barrelMesh = barrelMesh;
-    this.yawGroup = turretMesh;
-    this.pitchGroup = barrelMesh;
+    this.yawGroup = turretMesh || this.mesh;
+    this.pitchGroup = barrelMesh || this.mesh;
     if (this.turretMesh) this.turretMesh.userData.entity = this;
     if (this.barrelMesh) this.barrelMesh.userData.entity = this;
 
@@ -171,6 +186,87 @@ export class FlakTurret extends BaseStation {
   }
 
   /**
+   * AI aiming routine: slews the mount towards a world-space aim point.
+   *
+   * Applies no ballistics of its own. The caller (ShipCrewAI) has already solved the intercept
+   * point for a moving aircraft and folded in the drop, so this only converts that point into
+   * mount angles. Flak barrels lie along the yaw group's local -Z and setAim pitches with
+   * rotation.x = +pitch, so the desired yaw is atan2(dx, dz) - the mirror image of the artillery
+   * turret's atan2(-dx, -dz).
+   * @param {THREE.Vector3} aimPointWorld - Predicted intercept position, not the target's current one
+   * @param {number} delta
+   * @param {number} turnSpeed - Yaw traversal speed (rad/s)
+   * @param {number} elevationSpeed - Pitch elevation speed (rad/s)
+   * @returns {{ onTarget: boolean, angleDiff: number }}
+   */
+  aimTowards(aimPointWorld, delta, turnSpeed = 1.2, elevationSpeed = 0.8) {
+    if (!this.yawGroup || !this.pitchGroup || this.isDestroyed) {
+      return { onTarget: false, angleDiff: Math.PI };
+    }
+
+    const shipMesh = this.battleship?.mesh || this.mesh;
+    if (!shipMesh) return { onTarget: false, angleDiff: Math.PI };
+
+    this.yawGroup.getWorldPosition(this._turretLocalPos);
+    shipMesh.worldToLocal(this._turretLocalPos);
+
+    this._targetLocalPos.copy(aimPointWorld);
+    shipMesh.worldToLocal(this._targetLocalPos);
+
+    const dx = this._targetLocalPos.x - this._turretLocalPos.x;
+    const dy = this._targetLocalPos.y - this._turretLocalPos.y;
+    const dz = this._targetLocalPos.z - this._turretLocalPos.z;
+
+    const horizDist = Math.hypot(dx, dz);
+    if (horizDist < 0.1) return { onTarget: false, angleDiff: Math.PI };
+
+    const desiredYaw = Math.atan2(dx, dz);
+    const desiredPitch = THREE.MathUtils.clamp(
+      Math.atan2(dy, horizDist),
+      this.minPitch,
+      this.maxPitch
+    );
+
+    // This is a full-traverse mount, so there is no yaw limit to clamp against. Take the short way
+    // round instead: the mouse-look path accumulates yaw without bound, so a raw delta can be tens
+    // of radians and the turret would spin for seconds before settling.
+    const yawDiff = Math.atan2(Math.sin(desiredYaw - this.yaw), Math.cos(desiredYaw - this.yaw));
+    const pitchDiff = desiredPitch - this.pitch;
+
+    const maxStepYaw = turnSpeed * delta;
+    const maxStepPitch = elevationSpeed * delta;
+
+    if (Math.abs(yawDiff) <= maxStepYaw) {
+      this.yaw = desiredYaw;
+    } else {
+      this.yaw += Math.sign(yawDiff) * maxStepYaw;
+    }
+
+    if (Math.abs(pitchDiff) <= maxStepPitch) {
+      this.pitch = desiredPitch;
+    } else {
+      this.pitch += Math.sign(pitchDiff) * maxStepPitch;
+    }
+
+    this.setAim(this.yaw, this.pitch);
+
+    const totalAngleDiff = Math.hypot(yawDiff, pitchDiff);
+    return { onTarget: totalAngleDiff < this.aimTolerance, angleDiff: totalAngleDiff };
+  }
+
+  /**
+   * AI weapon trigger: fires when the cycling cooldown has elapsed.
+   */
+  fireAI() {
+    if (this.fireCooldown <= 0 && !this.isDestroyed) {
+      this.fireCooldown = this.fireRate;
+      this._fireWeapon();
+      return true;
+    }
+    return false;
+  }
+
+  /**
    * Called automatically by BaseStation.mount
    */
   onMounted(player, gameWorld) {
@@ -184,6 +280,8 @@ export class FlakTurret extends BaseStation {
    * pre-allocated scratchpads (no per-frame allocations).
    */
   _updateMuzzleTransform() {
+    this.pitchGroup.updateWorldMatrix(true, false);
+
     // In AntiAirBarrels local coordinates, the 4 barrels point along local -Z.
     // Transform (0, 0, -1) to world space to obtain the true forward firing vector.
     this._barrelWorldDir.set(0, 0, -1).transformDirection(this.pitchGroup.matrixWorld);
@@ -204,7 +302,9 @@ export class FlakTurret extends BaseStation {
     pool.fireFlak({
       origin: this._muzzleWorldPos,
       direction: this._barrelWorldDir,
-      source: this
+      source: this,
+      excludeCollider: this.battleship?.colliders?.collider || null,
+      excludeRigidBody: this.battleship?.colliders?.rigidBody || null
     });
 
     this._triggerRecoil();

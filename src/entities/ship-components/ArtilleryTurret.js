@@ -45,9 +45,11 @@ export class ArtilleryTurret extends BaseStation {
     };
 
     // Limits
-    this.maxYaw = Math.PI * 0.75; // 135 degrees arc to port and starboard
-    this.minPitch = 0.0;
-    this.maxPitch = Math.PI / 6;  // ~30 degrees max elevation
+    const limits = config.turrets.artillery;
+    this.maxYaw = limits.maxYaw;   // arc to port and starboard
+    this.minPitch = limits.minPitch;
+    this.maxPitch = limits.maxPitch;
+    this.aimTolerance = options.aimTolerance ?? limits.aimTolerance;
 
     // --- Card 2.2: Firing state ---
     // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
@@ -210,7 +212,9 @@ export class ArtilleryTurret extends BaseStation {
       origin: this._muzzleWorldPos,
       direction: this._barrelWorldDir,
       damage: this.damage,
-      source: this
+      source: this,
+      excludeCollider: this.battleship?.colliders?.collider || null,
+      excludeRigidBody: this.battleship?.colliders?.rigidBody || null
     });
 
     this._triggerRecoil();
@@ -323,7 +327,7 @@ export class ArtilleryTurret extends BaseStation {
 
     const totalAngleDiff = Math.hypot(yawDiff, pitchDiff);
     const mechanicalYawMatch = Math.abs(desiredYaw - targetYaw) < 0.08;
-    const onTarget = (totalAngleDiff < 0.08) && mechanicalYawMatch;
+    const onTarget = (totalAngleDiff < this.aimTolerance) && mechanicalYawMatch;
 
     return { onTarget, angleDiff: totalAngleDiff };
   }

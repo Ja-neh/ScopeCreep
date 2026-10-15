@@ -27,6 +27,7 @@ export class Projectile {
     this.damageInfo = new DamageInfo(25, DamageType.KINETIC);
     this.source = null; // Firing entity/mesh to avoid self-collision
     this.excludeCollider = null;
+    this.excludeRigidBody = null;
 
     // Preallocated math scratchpads (eliminating GC)
     this._prevPos = new THREE.Vector3();
@@ -54,7 +55,8 @@ export class Projectile {
     damage = 25,
     damageType = DamageType.KINETIC,
     source = null,
-    excludeCollider = null
+    excludeCollider = null,
+    excludeRigidBody = null
   } = {}) {
     this.position.copy(origin);
     this._prevPos.copy(origin);
@@ -67,6 +69,7 @@ export class Projectile {
     this.lifeTime = 0;
     this.source = source;
     this.excludeCollider = excludeCollider;
+    this.excludeRigidBody = excludeRigidBody;
 
     this.damageInfo.amount = damage;
     this.damageInfo.type = damageType;
@@ -142,7 +145,8 @@ export class Projectile {
           true,
           undefined,
           undefined,
-          this.excludeCollider
+          this.excludeCollider,
+          this.excludeRigidBody
         );
 
         if (hit && hit.timeOfImpact <= stepDist) {
@@ -212,6 +216,7 @@ export class Projectile {
     this.mesh.visible = false;
     this.mesh.position.set(0, -9999, 0); // Hide far offscreen
     this.excludeCollider = null;
+    this.excludeRigidBody = null;
     this.source = null;
   }
 }

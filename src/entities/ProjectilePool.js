@@ -189,7 +189,8 @@ export class ProjectilePool extends BaseEntity {
     speed,
     damage,
     source = null,
-    excludeCollider = null
+    excludeCollider = null,
+    excludeRigidBody = null
   } = {}) {
     const flakCfg = config.projectiles.flak;
     const finalSpeed = speed !== undefined ? speed : flakCfg.speed;
@@ -231,7 +232,8 @@ export class ProjectilePool extends BaseEntity {
       damage: damage !== undefined ? damage : flakCfg.damage,
       damageType: DamageType.KINETIC,
       source,
-      excludeCollider
+      excludeCollider,
+      excludeRigidBody
     });
 
     this.activeProjectiles.push(p);
@@ -247,7 +249,8 @@ export class ProjectilePool extends BaseEntity {
     speed,
     damage,
     source = null,
-    excludeCollider = null
+    excludeCollider = null,
+    excludeRigidBody = null
   } = {}) {
     const artCfg = config.projectiles.artillery;
     const finalSpeed = speed !== undefined ? speed : artCfg.speed;
@@ -277,7 +280,8 @@ export class ProjectilePool extends BaseEntity {
       damage: finalDamage,
       damageType: DamageType.EXPLOSIVE,
       source,
-      excludeCollider
+      excludeCollider,
+      excludeRigidBody
     });
 
     this.activeProjectiles.push(p);
@@ -293,7 +297,8 @@ export class ProjectilePool extends BaseEntity {
     speed,
     damage,
     source = null,
-    excludeCollider = null
+    excludeCollider = null,
+    excludeRigidBody = null
   } = {}) {
     const plasmaCfg = config.projectiles.plasma;
     const finalSpeed = speed !== undefined ? speed : plasmaCfg.speed;
@@ -322,7 +327,8 @@ export class ProjectilePool extends BaseEntity {
       damage: damage !== undefined ? damage : plasmaCfg.damage,
       damageType: DamageType.KINETIC,
       source,
-      excludeCollider
+      excludeCollider,
+      excludeRigidBody
     });
 
     this.activeProjectiles.push(p);
