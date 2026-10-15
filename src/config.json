@@ -362,6 +362,7 @@
       "maxYaw": 2.356,
       "minPitch": 0.0,
       "maxPitch": 0.523,
+      "aimTolerance": 0.08,
       "defaultReloadCadence": 1.8
     },
     "flak": {
