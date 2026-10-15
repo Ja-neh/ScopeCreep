@@ -43,6 +43,7 @@
     "bankTurnRate": 0.9,
     "bankLevelingRate": 1.8,
     "cameraFollowSpeed": 5,
+    "lowSpeedControlAuthority": 0.45,
     "collider": {
       "halfHeight": 1.4,
       "radius": 0.7
@@ -68,7 +69,51 @@
     "collider": {
       "halfHeight": 1.4,
       "radius": 0.7
+    },
+    "burstSize": 3,
+    "breakawaySeconds": 2.8,
+    "weaveAmplitude": 34,
+    "weaveFrequency": 0.9,
+    "breakawaySideStrength": 0.55,
+    "repositionAltitude": 55,
+    "targetHeight": 5,
+    "waves": [
+      { "fighters": 2, "aces": 0 },
+      { "fighters": 2, "aces": 1 },
+      { "fighters": 2, "aces": 2 }
+    ],
+    "defense": {
+      "firstWaveDelaySeconds": 3,
+      "spawnIntervalSeconds": 4,
+      "betweenWavesSeconds": 8,
+      "spawnRadius": 420,
+      "spawnAltitude": 85
+    },
+    "preflightDefense": {
+      "fighters": 2,
+      "fighterHealth": 105,
+      "firstWaveDelaySeconds": 15,
+      "spawnRadius": 360,
+      "spawnAltitude": 75
+    },
+    "ace": {
+      "health": 320,
+      "cruiseSpeed": 92,
+      "turnRate": 1.65,
+      "fireCadence": 0.48,
+      "projectileDamage": 10,
+      "spread": 0.003
     }
+  },
+  "airStrike": {
+    "targetHealth": 180,
+    "targets": [
+      { "kind": "radar", "name": "Radar Station", "position": [-55, 0, 350] },
+      { "kind": "gun", "name": "Coastal Gun Battery", "position": [50, 0, 450] },
+      { "kind": "ship", "name": "Enemy Patrol Ship", "position": [0, 0, 560] },
+      { "kind": "fuel", "name": "Fuel Depot", "position": [-45, 0, 670] },
+      { "kind": "ship", "name": "Enemy Supply Ship", "position": [55, 0, 780] }
+    ]
   },
   "player": {
     "vitals": {

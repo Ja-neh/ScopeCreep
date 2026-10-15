@@ -215,8 +215,8 @@ For every component, you'll find:
 - **How It Works:**
   - Moves and updates its kinematic Rapier body in Phase 2, using flight actions bound in `InputManager`; banking curves the flight path and the wings gently level when roll input is released.
   - Fires through the existing flak projectile pool in Phase 5 and reads its tuning from `src/config.json`.
-  - [`EnemyJet.js`](../src/entities/enemies/EnemyJet.js) pursues and leads the player jet before firing, with damage and faction handling shared with the existing projectile system.
-  - The registered [`Level01JetTestLevel.js`](../src/levels/Level01JetTestLevel.js) provides open airspace, a ship landmark, a dogfighting opponent, and a controls card for testing.
+  - [`EnemyJet.js`](../src/entities/enemies/EnemyJet.js) attacks the battleship in pursuit passes, breaks away to reposition, and includes tougher, faster ace variants. Damage and factions use the existing projectile system.
+  - The registered [`Level01JetTestLevel.js`](../src/levels/Level01JetTestLevel.js) is a three-wave battleship-defense mission with player/enemy health feedback, score, ace-kill tracking, and a mission result screen. Destroy all attackers while protecting the ship; an undamaged battleship grants a perfect-defense bonus.
 
 ---
 

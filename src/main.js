@@ -28,6 +28,11 @@ const AVAILABLE_LEVELS = [
     create: (gw) => new Level01JetTestLevel(gw)
   },
   {
+    id: 'air_strike',
+    title: 'Air Strike: Coastal Assault',
+    create: (gw) => new Level01JetTestLevel(gw, { missionMode: 'airstrike' })
+  },
+  {
     id: 'level02',
     title: 'Level 2: The Beach',
     create: (gw) => new Level02(gw)
@@ -91,4 +96,3 @@ async function bootstrap() {
 }
 
 bootstrap().catch(console.error);
-
