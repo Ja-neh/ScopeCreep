@@ -174,7 +174,7 @@ export class IslandLevel extends BaseLevel {
   }
 
   _lowHealthHint() {
-    return 'Low health! Find a supply crate and press [E] to patch up.';
+    return 'Low health! Find a supply crate and hold [E] to patch up.';
   }
 
   /** Can a squadmate stand at (x, z)? Dry land, clear of rocks and trees. */
@@ -216,7 +216,7 @@ export class IslandLevel extends BaseLevel {
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['reload'], label: 'Reload' },
       { actions: ['weaponPrimary', 'weaponMelee', 'quickMelee'], label: 'Gun, knife, quick knife' },
-      { actions: ['specialAction'], label: 'Supply crate; hold to revive' },
+      { actions: ['specialAction'], label: 'Hold: revive, patch up' },
       { actions: ['toggleCamera'], label: '1st / 3rd person' },
       { actions: ['pause'], label: 'Pause and options' }
     ];

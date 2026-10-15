@@ -8,8 +8,9 @@ const PROMPT_COLOR = '#e9c46a';
 
 /**
  * SupplyCrate
- * A supply crate dropped on the beach. Stand next to it and press [E] (specialAction) to refill
- * the machine gun's reserve ammo and patch yourself up to full health. Low cover as well.
+ * A supply crate dropped on the beach. Stand next to it and hold [E] (specialAction) to channel a
+ * patch-up: it tops the machine gun's reserve ammo back up and heals you to full health. Letting
+ * go drains the channel. Ammo alone is still a quick press. Low cover as well.
  * Updated in Phase 5.
  */
 export class SupplyCrate extends BaseEntity {
@@ -19,10 +20,11 @@ export class SupplyCrate extends BaseEntity {
    * @param {THREE.Vector3} options.position - On the ground
    * @param {Player} options.player
    * @param {WeaponController} options.weapons - Whose rifle gets refilled
-   * @param {number} [options.radius] - Interaction distance (config.levels.level02.supplyCrateRadius)
+   * @param {Object} [options.cfg] - Hold-to-patch-up tuning (config.supplyCrate)
+   * @param {number} [options.radius] - Interaction distance (cfg.radius)
    * @param {() => boolean} [options.isSuppressed] - True while another interaction (a revive) owns [E]
    */
-  constructor(gameWorld, { position, player, weapons, radius = config.levels.level02.supplyCrateRadius, isSuppressed = null }) {
+  constructor(gameWorld, { position, player, weapons, cfg = config.supplyCrate, radius = cfg.radius, isSuppressed = null }) {
     super('SupplyCrate');
     this.gameWorld = gameWorld;
     this.physicsWorld = gameWorld.physics;
@@ -30,9 +32,11 @@ export class SupplyCrate extends BaseEntity {
     this.weapons = weapons;
     this.radius = radius;
     this.isSuppressed = isSuppressed;
+    this.cfg = cfg;
     this.position = position.clone();
     this.isPlayerNear = false;
     this.timesUsed = 0;
+    this.progress = 0; // Seconds channelled towards cfg.holdSeconds
     this._promptLabel = '';
 
     this.materials = {
@@ -108,7 +112,7 @@ export class SupplyCrate extends BaseEntity {
   }
 
   /**
-   * Phase 5: proximity prompt and [E] to resupply.
+   * Phase 5: proximity prompt, the [E] patch-up channel and the quick ammo press.
    */
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     const player = this.player;
@@ -119,17 +123,46 @@ export class SupplyCrate extends BaseEntity {
     const near = alive && !suppressed && !player.isDevSuspended &&
       Math.hypot(player.position.x - this.position.x, player.position.z - this.position.z) <= this.radius;
 
-    if (near) {
-      if (gameWorld.input.isActionJustPressed('specialAction') && this.resupply() && ui) {
-        ui.showToast('Resupplied: ammo and health topped up', 'success', 1500);
-      }
-      const label = this.isAmmoFull && this.isHealthFull ? 'FULLY SUPPLIED' : 'RESUPPLY (AMMO + HEALTH)';
-      if (ui && (label !== this._promptLabel || !this.isPlayerNear)) ui.showPrompt('E', label, PROMPT_COLOR, this);
-      this._promptLabel = label;
-    } else if (this.isPlayerNear && ui) {
-      ui.hidePrompt(this);
+    if (!near) {
+      if (this.isPlayerNear && ui) ui.hidePrompt(this);
+      this.isPlayerNear = false;
+      this.progress = 0;
+      this._promptLabel = '';
+      return;
     }
-    this.isPlayerNear = near;
+
+    const holding = gameWorld.input.isActionDown('specialAction');
+    let label;
+    if (!this.isHealthFull) {
+      // Patching up takes a held [E]: the channel builds while held and drains when released
+      this.progress = holding
+        ? Math.min(this.cfg.holdSeconds, this.progress + delta)
+        : Math.max(0, this.progress - delta * this.cfg.drainPerSecond);
+      if (this.progress >= this.cfg.holdSeconds) {
+        this.progress = 0;
+        if (this.resupply() && ui) ui.showToast('Resupplied: ammo and health topped up', 'success', 1500);
+      }
+      if (this.isHealthFull) {
+        label = 'FULLY SUPPLIED';
+      } else if (holding) {
+        const percent = Math.floor((10 * this.progress) / this.cfg.holdSeconds) * 10;
+        label = `PATCHING UP ${percent}%`;
+      } else {
+        label = `HOLD TO PATCH UP (${this.isAmmoFull ? 'HEALTH' : 'AMMO + HEALTH'})`;
+      }
+    } else if (!this.isAmmoFull) {
+      // Ammo alone is a quick press
+      if (gameWorld.input.isActionJustPressed('specialAction') && this.resupply() && ui) {
+        ui.showToast('Resupplied: ammo topped up', 'success', 1500);
+      }
+      label = this.isAmmoFull ? 'FULLY SUPPLIED' : 'RESUPPLY AMMO';
+    } else {
+      label = 'FULLY SUPPLIED';
+    }
+
+    if (ui && (label !== this._promptLabel || !this.isPlayerNear)) ui.showPrompt('E', label, PROMPT_COLOR, this);
+    this._promptLabel = label;
+    this.isPlayerNear = true;
   }
 
   dispose() {

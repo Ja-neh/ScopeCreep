@@ -284,7 +284,7 @@ export class Level03 extends IslandLevel {
   }
 
   _lowHealthHint() {
-    return 'Low health! Patch up at a supply crate [E]: by the village gate, or just inside the hall door.';
+    return 'Low health! Hold [E] at a supply crate to patch up: by the village gate, or just inside the hall door.';
   }
 
   /** Not inside a house, a wall, under a ship's leg or in the force field either. */

@@ -21,6 +21,11 @@ const LANES = {
 const SPAWN_SPREAD_X = 22;        // Meters of random scatter around a lane's spawn point, across...
 const SPAWN_SPREAD_Z = 10;        // ...and along the island
 const ASSAULT_JITTER = 20;
+// Ship-camping pressure: while the player holds back on the deck during the waves, wave aliens
+// make for the bottom of the gangway instead of the beach lanes, and the squad calls it out.
+const SHIP_ASSAULT_INSHORE = 8;   // Meters inland of the gangway foot the horde gathers at
+const SHIP_ASSAULT_SPREAD_X = 10; // Meters of scatter around that point, along the beach...
+const SHIP_ASSAULT_SPREAD_Z = 4;  // ...and inshore
 const OBJECTIVE_Z = 80;           // Where the jungle path enters the trees
 const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
 // The final ambush waits in the lanes that meet the jungle path and springs when the player
@@ -52,10 +57,12 @@ const RALLY_POSTS = [
  * Opening: a camera sweep while the AI crew file down the gangway and the two helicopters fly
  * in and land; their pilots climb out and guard them. In a solo game the player leads 4 AI
  * squadmates (the ship's crew is always 5), who wait on the sand, then follow the player in
- * formation and fight alongside them. A supply crate stands between the helicopters.
+ * formation and fight alongside them. A supply crate stands between the helicopters (hold [E] to
+ * patch up).
  *
  * Flow: landing (until the player is ashore or the timer runs out) -> waves -> objective (a last
- * group springs from the trees on the way in) -> won.
+ * group springs from the trees on the way in) -> won. Lingering aboard during the waves makes the
+ * aliens mass at the gangway instead of the beach, with call-outs to get ashore.
  * Losing: the player bleeds out, or goes down with nobody left standing to come.
  *
  * Level02TestLevel extends this with dummies, a respawning trio instead of waves, and dev tools.
@@ -76,6 +83,8 @@ export class Level02 extends IslandLevel {
     this._crewFollowing = false;
     this._crewRoutes = [];    // Crew waiting on the gangway: { mate, route, rally, facing }
     this._objectivePoint = new THREE.Vector3();
+    this._shipCampTimer = -1; // Seconds the player has stayed aboard during the waves (-1: reset)
+    this._shipCampNotices = 0;
   }
 
   // ---------------------------------------------------------------------------
@@ -132,7 +141,7 @@ export class Level02 extends IslandLevel {
   }
 
   _lowHealthHint() {
-    return 'Low health! Patch up at the supply crate between the helicopters [E].';
+    return 'Low health! Patch up at the supply crate between the helicopters — hold [E].';
   }
 
   // ---------------------------------------------------------------------------
@@ -191,6 +200,8 @@ export class Level02 extends IslandLevel {
         break;
 
       case 'waves': {
+        const ashore = this._isPlayerAshore();
+        this._updateShipPressure(ashore, delta);
         const waveBefore = this.waves.waveNumber;
         const stateBefore = this.waves.state;
         this.waves.update(delta);
@@ -201,9 +212,11 @@ export class Level02 extends IslandLevel {
           this.beacon.setVisible(true);
           if (this.gameWorld.ui) this.gameWorld.ui.showToast('The beach is ours. Push inland!', 'success', 3500);
         } else if (this.waves.state === 'between') {
-          this._showObjective(`WAVE ${this.waves.waveNumber + 1} INCOMING`, `Next wave in ${Math.ceil(this.waves.nextWaveInSeconds)}s — regroup and reload`);
+          const regroup = ashore ? 'regroup and reload' : 'regroup, reload and get ashore';
+          this._showObjective(`WAVE ${this.waves.waveNumber + 1} INCOMING`, `Next wave in ${Math.ceil(this.waves.nextWaveInSeconds)}s — ${regroup}`);
         } else {
-          this._showObjective(`HOLD THE BEACH — WAVE ${this.waves.waveNumber} OF ${this.waves.totalWaves}`, `Aliens left: ${this.waves.remaining}`);
+          const left = ashore ? `Aliens left: ${this.waves.remaining}` : `Aliens left: ${this.waves.remaining} — get ashore!`;
+          this._showObjective(`HOLD THE BEACH — WAVE ${this.waves.waveNumber} OF ${this.waves.totalWaves}`, left);
         }
         break;
       }
@@ -242,7 +255,8 @@ export class Level02 extends IslandLevel {
       : `from ${lanes.map((lane) => (LANES[lane] || LANES.centre).name).join(', ')}`;
     const count = (wave.trooper || 0) + (wave.brute || 0);
     const brutes = wave.brute ? ` — ${wave.brute} brute${wave.brute > 1 ? 's' : ''} among them` : '';
-    ui.showToast(`Wave ${this.waves.waveNumber}: ${count} aliens coming ${from}${brutes}!`, 'warning', 4000);
+    const massing = this._shipPressureActive() ? ' They are making for the gangway!' : '';
+    ui.showToast(`Wave ${this.waves.waveNumber}: ${count} aliens coming ${from}${brutes}!${massing}`, 'warning', 4000);
   }
 
   /** Tells the player a wave is broken and how long they have before the next one. */
@@ -351,22 +365,84 @@ export class Level02 extends IslandLevel {
   }
 
   // ---------------------------------------------------------------------------
+  // Ship-camping pressure
+  // ---------------------------------------------------------------------------
+
+  /** True while the player is holding back on the ship during the waves. */
+  _shipPressureActive() {
+    return this.state === 'waves' && !this._isPlayerAshore();
+  }
+
+  /**
+   * A dry spot on the sand just inland of the gangway foot: where the aliens mass while the
+   * player camps aboard, at the bottom of their own gangway.
+   * @returns {THREE.Vector3}
+   */
+  _shipAssaultPoint() {
+    const foot = this.landingZone.spawnPoints.gangwayFoot;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const x = foot.x + (Math.random() - 0.5) * 2 * SHIP_ASSAULT_SPREAD_X;
+      const z = foot.z - SHIP_ASSAULT_INSHORE + (Math.random() - 0.5) * 2 * SHIP_ASSAULT_SPREAD_Z;
+      const y = this.environment.heightAt(x, z);
+      if (y > 0.3) return new THREE.Vector3(x, y, z);
+    }
+    const z = foot.z - SHIP_ASSAULT_INSHORE;
+    return new THREE.Vector3(foot.x, this.environment.heightAt(foot.x, z), z);
+  }
+
+  /**
+   * Pressure to leave the ship: while the player stays aboard during the waves, the squad calls
+   * it out once after `warnAfterSeconds`, then every `callOutIntervalSeconds` after that.
+   */
+  _updateShipPressure(ashore, delta) {
+    if (ashore) {
+      this._shipCampTimer = -1;
+      this._shipCampNotices = 0;
+      return;
+    }
+    if (this._shipCampTimer < 0) this._shipCampTimer = 0;
+    this._shipCampTimer += delta;
+
+    const ui = this.gameWorld.ui;
+    if (!ui) return;
+    const pressure = this.cfg.shipPressure;
+    if (this._shipCampNotices === 0 && this._shipCampTimer >= pressure.warnAfterSeconds) {
+      this._shipCampNotices = 1;
+      ui.showToast('They are massing at the gangway — get ashore!', 'danger', 4000);
+    } else if (this._shipCampNotices > 0 && this._shipCampTimer >= pressure.warnAfterSeconds + this._shipCampNotices * pressure.callOutIntervalSeconds) {
+      this._shipCampNotices += 1;
+      ui.showToast('Get ashore — the aliens are still massing at the gangway!', 'warning', 3000);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Spawning waves
   // ---------------------------------------------------------------------------
 
   /**
-   * Spawns one alien in `laneName` and sends it at the beach (or at `assaultPoint`).
+   * Spawns one alien in `laneName` and sends it at the beach (or at `assaultPoint`; or, while the
+   * player camps aboard during the waves, at the bottom of the gangway).
    * @param {THREE.Vector3} [assaultPoint] - Where it should push to and hold (default: the lane's beach point)
    * @returns {AlienCombatant|null}
    */
   spawnAlien(type, laneName, assaultPoint = null) {
     const base = LANES[laneName] || LANES.centre;
-    // Ambushers hold the point they were sent to (the beacon), not the lane's beach point
-    const lane = { ...base, assault: assaultPoint || base.assault };
+    // Ambushers hold the point they were sent to (the beacon), not the lane's beach point; while
+    // the player is aboard, wave aliens make for the bottom of the gangway instead
+    const shipMassing = !assaultPoint && this._shipPressureActive();
+    let target = assaultPoint || base.assault;
+    if (shipMassing) target = this._shipAssaultPoint();
+    const lane = { ...base, assault: target };
     const spot = this._findSpawnSpot(lane.spawn);
     if (!spot) return null;
 
     const alien = this.createAlien(type, spot.x, spot.z);
+
+    // The gangway point carries its own scatter: no beach jitter stacked on top of it
+    if (shipMassing) {
+      alien.assault(target);
+      return alien;
+    }
 
     const assault = new THREE.Vector3(
       lane.assault.x + (Math.random() - 0.5) * 2 * ASSAULT_JITTER,

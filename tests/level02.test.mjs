@@ -310,10 +310,12 @@ test('Level 2: a downed squadmate beside the supply crate owns [E]; the crate co
   world.input.release('specialAction');
   assert.equal(mate.isDead, false, 'revived');
   stepWorld(world, 0.2, { level });
-  assert.match(world.ui.callsTo('showPrompt').at(-1).args[1], /RESUPPLY|FULLY SUPPLIED/, 'the crate prompt is back');
+  assert.match(world.ui.callsTo('showPrompt').at(-1).args[1], /PATCH UP|FULLY SUPPLIED/, 'the crate prompt is back');
 
-  world.input.press('specialAction');
-  stepWorld(world, 0.1, { level });
+  // The healed crate takes a held [E] now: hold it long enough and it resupplies
+  world.input.hold('specialAction');
+  stepWorld(world, config.supplyCrate.holdSeconds + 0.25, { level });
+  world.input.release('specialAction');
   assert.equal(level.weapons.rifle.reserve, level.weapons.rifle.cfg.reserveAmmo, 'the crate resupplied');
   assert.ok(world.ui.callsTo('showToast').some((call) => /Resupplied/.test(call.args[0])));
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
@@ -351,6 +353,53 @@ test('Level 2: the wave call-outs are heard, and the break between waves counts 
   // The break ends when the next wave arrives
   stepWorld(world, cfg.betweenWavesSeconds + 1, { level });
   assert.ok(world.ui.callsTo('showToast').some((call) => /^Wave 2: \d+ aliens/.test(call.args[0])), 'wave 2 is announced');
+  assert.equal(teardown(world, level), 0, 'no physics bodies left');
+});
+
+test('Level 2: camping aboard during the waves sends the aliens to the gangway, with call-outs', async () => {
+  const { world, level } = await loadLevel(Level02);
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+
+  // The player never leaves the ship: the first wave starts on its timer anyway
+  stepWorld(world, cfg.firstWaveTriggerSeconds + 12, { level });
+  assert.equal(level.state, 'waves');
+  assert.equal(level._isPlayerAshore(), false, 'the player is still aboard');
+  assert.ok(
+    world.ui.callsTo('showToast').some((call) => /massing at the gangway/.test(call.args[0])),
+    'the squad calls the massing out'
+  );
+  assert.ok(
+    world.ui.callsTo('showObjective').some((call) => /get ashore/i.test(String(call.args[1]))),
+    'the objective panel nudges too'
+  );
+
+  // Wave aliens spawn for the bottom of the gangway, not their lane's beach point
+  const camped = [];
+  for (let i = 0; i < 10; i++) {
+    const alien = level.spawnAlien('trooper', 'farWest');
+    if (alien) camped.push(alien);
+  }
+  assert.equal(camped.length, 10, 'every alien found a spawn spot');
+  assert.ok(
+    camped.every((alien) => Math.hypot(alien.home.x - foot.x, alien.home.z - foot.z) <= 20),
+    'while the player camps aboard, the aliens make for the gangway'
+  );
+
+  // Step ashore: fresh spawns go back to their lane's beach point
+  level.player.teleport(foot.x, foot.y, foot.z);
+  stepWorld(world, 0.2, { level });
+  assert.equal(level._isPlayerAshore(), true);
+  const ashore = [];
+  for (let i = 0; i < 10; i++) {
+    const alien = level.spawnAlien('trooper', 'farEast');
+    if (alien) ashore.push(alien);
+  }
+  assert.equal(ashore.length, 10);
+  assert.ok(
+    ashore.every((alien) => Math.hypot(alien.home.x - foot.x, alien.home.z - foot.z) > 30),
+    'once the player is ashore, the aliens push for the beach again'
+  );
+
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });
 
@@ -408,6 +457,27 @@ test('Level 2 test level: dummies, a respawning alien group including a brute, r
   stepWorld(world, 0.1, { level });
   assert.equal(level.allies.mates.length, squadSize);
   assert.ok(level.allies.mates.filter((mate) => mate.inFormation).every((mate) => mate.order === 'follow'), 'player is ashore: the new crew follow at once');
+  assert.equal(teardown(world, level), 0);
+});
+
+test('Level 2 test level: a fresh group marches on the gangway while the player stays aboard', async () => {
+  const { world, level } = await loadLevel(Level02TestLevel);
+  world.input.press('skipCutscene');
+  stepWorld(world, 0.5, { level });
+  assert.equal(level._isPlayerAshore(), false, 'the player never left the ship');
+
+  // Wipe the patrol out from the deck: the respawned group is the ship-camping pressure preview
+  for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+  stepWorld(world, 6, { level });
+  assert.equal(level.squad.aliveCount, 4, 'a fresh group arrived');
+
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+  for (const alien of level.squad.members) {
+    if (alien.isDead) continue; // A not-yet-pruned corpse keeps its old post
+    const distance = Math.hypot(alien.home.x - foot.x, alien.home.z - foot.z);
+    assert.ok(distance <= 20, `bound for the gangway, ${distance.toFixed(1)} m away`);
+  }
+
   assert.equal(teardown(world, level), 0);
 });
 
