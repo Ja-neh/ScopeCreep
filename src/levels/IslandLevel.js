@@ -6,12 +6,22 @@ import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
 import { AlienBrute } from '../entities/enemies/AlienBrute.js';
+import { AlienSniper } from '../entities/enemies/AlienSniper.js';
+import { AlienHeavy } from '../entities/enemies/AlienHeavy.js';
 import { SquadMate } from '../entities/allies/SquadMate.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
 import { HumanSquad } from '../ai/HumanSquad.js';
 import { WeaponController } from '../weapons/WeaponController.js';
 import { mapTerrainFromEnvironment } from '../ui/components/MapOverlay.js';
 import config from '../config.json';
+
+// The alien unit types createAlien() knows how to raise
+const ALIEN_TYPES = {
+  trooper: AlienTrooper,
+  brute: AlienBrute,
+  sniper: AlienSniper,
+  heavy: AlienHeavy
+};
 
 // The ship's crew besides the player (call signs for messages)
 export const CREW_NAMES = ['Okafor', 'Reyes', 'Novak', 'Chen'];
@@ -334,12 +344,14 @@ export class IslandLevel extends BaseLevel {
   }
 
   /**
-   * Creates one alien of `type` ('trooper' or 'brute') standing at (x, z), patrolling there.
+   * Creates one alien of `type` ('trooper', 'brute', 'sniper' or 'heavy') at (x, z), patrolling
+   * there — or standing at the exact `y` given, for units that start off the ground (a sniper's
+   * watchtower perch).
    * @returns {AlienCombatant}
    */
-  createAlien(type, x, z) {
-    const position = new THREE.Vector3(x, this.environment.heightAt(x, z) + 0.1, z);
-    const AlienType = type === 'brute' ? AlienBrute : AlienTrooper;
+  createAlien(type, x, z, y = null) {
+    const position = new THREE.Vector3(x, y === null ? this.environment.heightAt(x, z) + 0.1 : y, z);
+    const AlienType = ALIEN_TYPES[type] || AlienTrooper;
     return this.squad.add(new AlienType(this.gameWorld, { position, squad: this.squad }));
   }
 

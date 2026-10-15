@@ -28,15 +28,21 @@ export class AlienTrooper extends AlienCombatant {
    * @param {AlienSquad} options.squad - Supplies targets, cover and squad call-outs
    * @param {Object} [options.cfg] - Overrides config.enemies.trooper (e.g. tougher waves)
    * @param {AlienModel} [options.model]
+   * @param {string} [options.name='AlienTrooper'] - The unit's own name (subclasses rename)
+   * @param {Object} [options.states] - More brain states (e.g. a sniper's perch)
+   * @param {string} [options.initialState='patrol']
+   * @param {Object} [options.engageState] - Fighting style of its own (e.g. a sniper holds its post)
    */
-  constructor(gameWorld, { position, squad, cfg = config.enemies.trooper, model = null }) {
+  constructor(gameWorld, { position, squad, cfg = config.enemies.trooper, model = null, name = 'AlienTrooper', states = {}, initialState = 'patrol', engageState = TROOPER_ENGAGE }) {
     super(gameWorld, {
-      name: 'AlienTrooper',
+      name,
       position,
       squad,
       cfg,
       model: model || new AlienModel(),
-      engageState: TROOPER_ENGAGE
+      engageState,
+      states,
+      initialState
     });
 
     // Weapon state
@@ -134,7 +140,15 @@ export class AlienTrooper extends AlienCombatant {
     const radius = Math.sqrt(Math.random()) * this.cfg.aimError;
     this._aimDir.addScaledVector(this._right, Math.cos(angle) * radius).addScaledVector(this._up, Math.sin(angle) * radius).normalize();
 
-    pool.firePlasma({ origin: this._muzzle, direction: this._aimDir, source: this, excludeCollider: this.collider });
+    // cfg.damage / cfg.boltSpeed are optional: left out, the bolt is the standard plasma round
+    pool.firePlasma({
+      origin: this._muzzle,
+      direction: this._aimDir,
+      source: this,
+      excludeCollider: this.collider,
+      damage: this.cfg.damage,
+      speed: this.cfg.boltSpeed
+    });
   }
 
   // ---------------------------------------------------------------------------

@@ -23,16 +23,19 @@ export class AlienBrute extends AlienCombatant {
    * @param {THREE.Vector3} options.position
    * @param {AlienSquad} options.squad
    * @param {Object} [options.cfg] - Overrides config.enemies.brute
+   * @param {string} [options.name='AlienBrute'] - The unit's own name (subclasses rename)
+   * @param {AlienModel} [options.model] - A build of its own (e.g. the gate walker's)
+   * @param {{radius: number, halfHeight: number}} [options.capsule]
    */
-  constructor(gameWorld, { position, squad, cfg = config.enemies.brute }) {
+  constructor(gameWorld, { position, squad, cfg = config.enemies.brute, name = 'AlienBrute', model = null, capsule = null }) {
     super(gameWorld, {
-      name: 'AlienBrute',
+      name,
       position,
       squad,
       cfg,
-      model: new AlienModel({ armorColor: 0x8a3f3f, scale: BRUTE_SCALE, backpack: true }),
+      model: model || new AlienModel({ armorColor: 0x8a3f3f, scale: BRUTE_SCALE, backpack: true }),
       engageState: BRUTE_ENGAGE,
-      capsule: BRUTE_CAPSULE
+      capsule: capsule || BRUTE_CAPSULE
     });
 
     this.attackPhase = 'approach'; // approach -> charge -> windup -> recover

@@ -1,5 +1,6 @@
-// Level 2 end to end: landing, three waves, the final ambush, objective and victory; defeat; the
-// sandbox level; and clean teardown. Aliens are killed by the test so the flow runs quickly.
+// Level 2 end to end: landing, three waves, the hunt, the final ambush, the gate fight (its
+// snipers, garrison and walker) and victory; defeat; the sandbox level; and clean teardown.
+// Aliens are killed by the test so the flow runs quickly.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestWorld, stepWorld, bodyCount } from './support/testWorld.mjs';
@@ -26,7 +27,7 @@ function teardown(world, level) {
   return bodyCount(world);
 }
 
-test('Level 2: ashore -> three waves from the north -> hunt the holders -> objective -> victory', async () => {
+test('Level 2: ashore -> three waves -> the hunt -> the gate ambush -> the gate fight -> victory', async () => {
   const { world, level } = await loadLevel(Level02);
   stepWorld(world, 1, { level });
   assert.equal(level.state, 'landing', 'waits while the player is on the ship');
@@ -72,19 +73,47 @@ test('Level 2: ashore -> three waves from the north -> hunt the holders -> objec
   assert.equal(level.beacon.mesh.visible, true, 'objective beacon shown');
   assert.ok(world.ui.callsTo('showObjective').some((call) => call.args[0].startsWith('HOLD THE BEACH')));
 
-  // Walk into the beacon's ring: the group left in the trees springs on the way in, and breaking
-  // the ambush is what wins the beach
-  const goal = level.beacon.mesh.position;
-  level.player.teleport(goal.x + 3, goal.y + 0.1, goal.z);
+  // Walk into the beacon's ring at the gate: the last group springs from the rocks, and then the
+  // gate fight decides the beach (the snipers' and walker's own tests live in gate.test.mjs)
+  const goal = level._objectivePoint;
+  assert.ok(goal.z < -250, 'the push inland ends at the village gate');
+  level.player.teleport(goal.x + 3, level.environment.heightAt(goal.x + 3, goal.z) + 0.1, goal.z);
   stepWorld(world, 90, {
     level,
     onFrame: () => {
-      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
-      return level.state === 'won';
+      level.player.health.reset();
+      for (const alien of level.squad.members) {
+        if (alien.name === 'AlienSniper') continue; // The snipers take the perches: leave the rigs up
+        alien.health.takeDamage({ amount: 99999, source: level.player });
+      }
+      return level._heavyDown;
     }
   });
+  assert.equal(level.ambushTriggered, true, 'the rocks came alive on the way in');
+  assert.equal(level.state, 'gate', 'the fight is at the gate');
+  assert.equal(level._heavy.name, 'AlienHeavy');
+  assert.equal(level._heavy.isBoss, true);
+  assert.ok(world.ui.callsTo('showBossHealth').some((call) => call.args[0] === 'THE GATE WALKER'), 'the walker brings its bar');
+  assert.ok(world.ui.callsTo('updateBossHealth').length > 0, 'the bar tracks the fight');
+  assert.ok(world.ui.callsTo('hideBossHealth').length > 0, 'and comes down with the walker');
+  assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === 'The gate walker falls!'));
+
+  // The snipers are all that is left up there: fall back into the open, then cut them down
+  const snipers = level._gateUnits.filter((unit) => unit.name === 'AlienSniper');
+  assert.equal(snipers.length, cfg.gate.sniper, 'the watchtowers and the ridge kept their marksmen');
+  const open = level.environment.pathCentreX(-200);
+  level.player.teleport(open, level.environment.heightAt(open, -200) + 0.1, -200);
+  for (const sniper of snipers) sniper.health.takeDamage({ amount: 99999, source: level.player });
+  stepWorld(world, 0.5, { level, onFrame: () => level.player.health.reset() });
+  assert.equal(level.state, 'clear', 'the gate is clear');
+  assert.equal(world.ui.callsTo('showObjective').at(-1).args[0], 'THROUGH THE GATE');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /gate is clear/.test(call.args[0])));
+
+  // Walk through the opening: the beach is won
+  level.player.teleport(goal.x, level.environment.heightAt(goal.x, goal.z) + 0.1, goal.z);
+  stepWorld(world, 0.5, { level, onFrame: () => level.player.health.reset() });
   assert.equal(level.state, 'won');
-  assert.equal(world.music.callsTo('setState').at(-1).args[0], 'victory', 'the score resolves when the beach is won');
+  assert.equal(world.music.callsTo('setState').at(-1).args[0], 'victory', 'the score resolves when the gate is won');
 
   const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
   assert.equal(result.outcome, 'victory');
@@ -98,13 +127,13 @@ test('Level 2: ashore -> three waves from the north -> hunt the holders -> objec
   assert.equal(world.projectilePool, null);
 });
 
-test('Level 2: the push inland springs a final ambush, and the beach is won once it is broken', async () => {
+test('Level 2: the push inland springs a final ambush in the rocks at the gate', async () => {
   const { world, level } = await loadLevel(Level02);
   const foot = level.landingZone.spawnPoints.gangwayFoot;
   level.player.teleport(foot.x, foot.y, foot.z);
   stepWorld(world, 0.5, { level });
 
-  // Clear the three waves without going anywhere near the beacon
+  // Clear the three waves and the hunt without going anywhere near the gate
   stepWorld(world, 200, {
     level,
     onFrame: () => {
@@ -115,14 +144,15 @@ test('Level 2: the push inland springs a final ambush, and the beach is won once
   assert.equal(level.state, 'objective');
   assert.equal(level.ambushTriggered, false, 'nothing springs until the player pushes in');
 
-  // Step inside the ambush's reach (outside the beacon's ring): the trees come alive
-  const goal = level.beacon.mesh.position;
+  // Step inside the ambush's reach: the rocks around the gate come alive
+  const goal = level._objectivePoint;
   const ground = (x, z) => level.environment.heightAt(x, z) + 0.1;
   const triggerZ = goal.z + cfg.finalAmbush.triggerDistance - 5;
-  level.player.teleport(goal.x, ground(goal.x, triggerZ), triggerZ);
+  const triggerX = level.environment.pathCentreX(triggerZ);
+  level.player.teleport(triggerX, ground(triggerX, triggerZ), triggerZ);
 
-  // Track the arrivals by identity: dead wave aliens are pruned from `members` along the way, so
-  // indices and lengths lie; the first ambusher stands up while the trigger lands
+  // Track the arrivals by identity: the hunt's corpses linger in `members` for a few seconds, so
+  // indices and lengths lie; every new identity after the trigger is an ambusher
   const already = new Set(level.squad.members);
   const group = [];
   const arrivals = () => {
@@ -138,7 +168,7 @@ test('Level 2: the push inland springs a final ambush, and the beach is won once
   assert.ok(world.music.callsTo('stinger').some((call) => call.args[0] === 'ambush'), 'the ambush sting plays');
   assert.equal(world.ui.callsTo('showObjective').at(-1).args[0], 'AMBUSH');
 
-  // The whole group stands up, and it is headed for the beacon, not the beach
+  // The whole group stands up, and it closes on the gate approach, not the beach
   const total = cfg.finalAmbush.trooper + cfg.finalAmbush.brute;
   stepWorld(world, 12, {
     level,
@@ -150,32 +180,41 @@ test('Level 2: the push inland springs a final ambush, and the beach is won once
   });
   assert.equal(group.length, total, 'the whole ambush group arrived');
   assert.equal(group.filter((alien) => alien.name === 'AlienTrooper').length, cfg.finalAmbush.trooper);
-  assert.equal(group.filter((alien) => alien.name === 'AlienBrute').length, cfg.finalAmbush.brute, 'a brute waited in the trees too');
+  assert.equal(group.filter((alien) => alien.name === 'AlienBrute').length, cfg.finalAmbush.brute, 'a brute waited in the rocks too');
+  const approach = level.gate.approach;
   assert.ok(
-    group.every((alien) => Math.hypot(alien.home.x - goal.x, alien.home.z - goal.z) < 40),
-    'they hold the beacon, not the beach'
+    group.every((alien) => Math.hypot(alien.home.x - approach.x, alien.home.z - approach.z) < 30),
+    'they close on the gate approach, not the beach'
   );
 
-  // Reaching the beacon is not enough while the ambush stands; breaking it lets the push finish
-  level.player.teleport(goal.x + 3, goal.y + 0.1, goal.z);
+  // The beacon is not the goal any more while the ambush stands; breaking it opens the gate fight
+  level.player.teleport(goal.x + 3, ground(goal.x + 3, goal.z), goal.z);
   stepWorld(world, 0.3, { level, onFrame: () => level.player.health.reset() });
-  assert.equal(level.state, 'ambush', 'the beach is not won while the ambush stands');
+  assert.equal(level.state, 'ambush', 'the road into the village stays shut while the ambush stands');
 
-  stepWorld(world, 3, {
+  stepWorld(world, 8, {
     level,
     onFrame: () => {
       level.player.health.reset();
-      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
-      return level.ambush.isDone;
+      for (const alien of level.squad.members) {
+        if (alien.name === 'AlienSniper') continue; // They spawn with the gate fight, on the breaking frame
+        alien.health.takeDamage({ amount: 99999, source: level.player });
+      }
+      return level.state === 'gate';
     }
   });
   assert.equal(level.ambush.isDone, true, 'the ambush is broken');
-  assert.equal(level.state, 'objective', 'the push resumes');
-  assert.ok(world.ui.callsTo('showToast').some((call) => /ambush is broken/.test(call.args[0])));
+  assert.equal(level.state, 'gate', 'and the fight for the gate is on');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /gate opens/.test(call.args[0])), 'the gate shows its teeth');
 
-  stepWorld(world, 0.3, { level });
-  assert.equal(level.state, 'won');
-  assert.equal(world.ui.callsTo('showMissionResult').at(-1).args[0].outcome, 'victory');
+  const snipers = level._gateUnits.filter((unit) => unit.name === 'AlienSniper');
+  assert.equal(snipers.length, cfg.gate.sniper, 'snipers take the watchtowers and the ridge');
+  assert.ok(snipers.every((sniper) => !sniper.isDead), 'and every one of them is up on a perch');
+  assert.ok(
+    snipers.every((sniper) => level.gate.perches.some((perch) =>
+      Math.hypot(sniper.position.x - perch.x, sniper.position.z - perch.z) < 1.5 && Math.abs(sniper.position.y - perch.y) < 1.5)),
+    'every sniper stands on its own perch'
+  );
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });
 
@@ -251,8 +290,8 @@ test('Level 2: the waves broken, the survivors go to ground — the hunt is map-
   assert.ok(world.ui.callsTo('showToast').some((call) => /island is quiet/.test(call.args[0])));
   assert.deepEqual(
     level.getMapData().markers,
-    [{ x: level._objectivePoint.x, z: level._objectivePoint.z, label: 'OBJECTIVE' }],
-    'the map pin shows the way on'
+    [{ x: level._objectivePoint.x, z: level._objectivePoint.z, label: 'THE GATE' }],
+    'the map pin shows the way to the gate'
   );
 
   assert.equal(teardown(world, level), 0, 'no physics bodies left');

@@ -8,6 +8,7 @@ import { SupplyCrate } from './level02/SupplyCrate.js';
 import { IntelTrail } from './level02/IntelTrail.js';
 import { VillageSmoke } from './level02/VillageSmoke.js';
 import { LandingCinematic } from './level02/LandingCinematic.js';
+import { VillageGate } from './level02/VillageGate.js';
 import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
 import config from '../config.json';
@@ -30,11 +31,17 @@ const ASSAULT_JITTER = 20;
 const SHIP_ASSAULT_INSHORE = 8;   // Meters inland of the gangway foot the horde gathers at
 const SHIP_ASSAULT_SPREAD_X = 10; // Meters of scatter around that point, along the beach...
 const SHIP_ASSAULT_SPREAD_Z = 4;  // ...and inshore
-const OBJECTIVE_Z = 80;           // Where the jungle path enters the trees
 const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
-// The final ambush waits in the lanes that meet the jungle path and springs when the player
-// pushes inland; the ambushers converge on the beacon and hold it.
-const AMBUSH_LANES = ['centre', 'west', 'east'];
+// The final ambush waits in the rocks flanking the last stretch of the path and springs when the
+// squad comes up to the gate; the ambushers push for the gate approach and hold it. The posts are
+// probed clear ground on the ridges either side of the path (see VillageGate for the site probe).
+const GATE_AMBUSH_POSTS = [
+  { name: 'the west ridge', spawn: { x: -25, z: -215 } },
+  { name: 'the far west rocks', spawn: { x: -35, z: -228 } },
+  { name: 'the west rocks', spawn: { x: -15, z: -238 } },
+  { name: 'the east rocks', spawn: { x: 38, z: -226 } },
+  { name: 'the east ridge', spawn: { x: 20, z: -240 } }
+];
 // The holding force: once the waves break, the survivors have gone to ground across the island,
 // one garrison per inland zone (see `zones` in config): the woods on either side of the path,
 // the rock shelf, and the outskirts short of the village. They wait at their posts (they never
@@ -111,9 +118,10 @@ const RALLY_POSTS = [
  *
  * Flow: landing (until the player is ashore or the timer runs out) -> waves -> hunt (the survivors
  * have gone to ground across the island; the map shows them and the push resumes when the last is
- * down) -> objective (a last group springs from the trees on the way in) -> won. Lingering aboard
- * during the waves makes the aliens mass at the gangway instead of the beach, with call-outs to
- * get ashore.
+ * down) -> objective (push to the village gate, where a last group springs from the rocks) ->
+ * ambush (broken) -> gate (the gate fight: watchtower snipers, the garrison and the gate walker)
+ * -> won once the squad walks through the opening. Lingering aboard during the waves makes the
+ * aliens mass at the gangway instead of the beach, with call-outs to get ashore.
  *
  * The island is four zones, named as the player crosses into them (the `zones` in config): the
  * beach, the forest, the rockfields, then the village outskirts. Each holds its own garrison (the
@@ -125,6 +133,11 @@ const RALLY_POSTS = [
  * one in each zone — [E] to read each; the map ([M]) shows the unfound ones faintly, and every
  * find builds the story of Level 3. The village burns beyond the plateau: two smoke columns
  * (VillageSmoke) fade in over the last stretch, so the push inland has its skyline.
+ *
+ * The beach ends at the village gate (VillageGate): the massive frame on the plateau rim, broken
+ * walls, and two watchtowers whose snipers (AlienSniper) glint and train a visible laser before
+ * every shot. Break the garrison and the gate walker comes out (AlienHeavy, "THE GATE WALKER",
+ * with its own health bar) — the last fight before the squad walks into Level 3's village.
  * Losing: the player bleeds out, or goes down with nobody left standing to come.
  *
  * Level02TestLevel extends this with dummies, a respawning trio instead of waves, and dev tools.
@@ -136,6 +149,7 @@ export class Level02 extends IslandLevel {
 
     this.landingZone = null;
     this.wreckage = null;
+    this.gate = null;
     this.destructibleCover = null;
     this.waves = null;
     this.ambush = null;
@@ -145,8 +159,15 @@ export class Level02 extends IslandLevel {
     this.intel = null;
     this.villageSmoke = null;
 
-    this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> won | lost
+    this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> gate -> clear -> won | lost
     this._holdoutsTotal = 0;
+    this._gateUnits = [];     // Everything the gate sends at the squad (snipers, garrison, walker)
+    this._gateGarrison = [];  // The gate's rank and file (the walker has its own bar)
+    this._gateQueue = [];     // Types still to pour out of the opening
+    this._gateSpawnTimer = 0;
+    this._gatePostIndex = 0;
+    this._heavy = null;
+    this._heavyDown = false;
     this._zone = null;                    // The zone the player stands in (null until ashore)
     this._ambient = { explosion: Infinity, call: Infinity }; // Seconds to each ambient event
     this._ambientPoint = new THREE.Vector3(); // Scratch for placing a distant alien call
@@ -169,12 +190,17 @@ export class Level02 extends IslandLevel {
       clearings: [...this.landingZone.clearings, ...this._extraClearings()]
     }));
     this.wreckage.build();
+    // The village gate on the plateau rim: where the path leaves the beach for the village, and
+    // where the level's last fight happens (see VillageGate)
+    this.gate = this.trackDisposable(new VillageGate(this.gameWorld, this.environment));
+    this.gate.build();
     // The village burns beyond the ridge; the columns fade in over the last stretch of the push
     this.villageSmoke = this.trackDisposable(new VillageSmoke(this.gameWorld.environmentGroup, this.environment));
   }
 
   _clearings() {
-    return [...this.landingZone.clearings, ...this._extraClearings()];
+    const gateClearings = this.gate ? this.gate.clearings : [];
+    return [...this.landingZone.clearings, ...this._extraClearings(), ...gateClearings];
   }
 
   /** Once the scenery stands: give it health so firefights eat into it (see DestructibleCover). */
@@ -238,7 +264,7 @@ export class Level02 extends IslandLevel {
 
   _resultText(victory) {
     if (victory) {
-      return { title: 'THE COAST IS OURS', message: 'The beachhead is taken. The village lies to the north, and our people are waiting.' };
+      return { title: 'THE COAST IS OURS', message: 'The gate is ours. The village lies beyond it, and our people are waiting.' };
     }
     return {
       title: 'MISSION FAILED',
@@ -261,10 +287,10 @@ export class Level02 extends IslandLevel {
     return Object.values(LANES).map((lane) => ({ x: lane.spawn.x, z: lane.spawn.z, radius: 4 }));
   }
 
-  /** The beacon pin is on the map only while the push inland is the live objective. */
+  /** The gate pin is on the map from the push inland through to the fight at the gate. */
   _mapMarkers() {
-    if (this.state !== 'objective' && this.state !== 'ambush') return [];
-    return [{ x: this._objectivePoint.x, z: this._objectivePoint.z, label: 'OBJECTIVE' }];
+    if (this.state !== 'objective' && this.state !== 'ambush' && this.state !== 'gate' && this.state !== 'clear') return [];
+    return [{ x: this._objectivePoint.x, z: this._objectivePoint.z, label: 'THE GATE' }];
   }
 
   /** The zone lines on the island map: each inland line, named for the ground beyond it. */
@@ -295,9 +321,10 @@ export class Level02 extends IslandLevel {
   async _startScenario() {
     this._beginLanding(); // The intro groove and the deploy swell are already up (BaseLevel.init)
 
-    const z = OBJECTIVE_Z;
-    const x = this.environment.pathCentreX(z);
-    this._objectivePoint.set(x, this.environment.heightAt(x, z), z);
+    // The objective: the village gate on the plateau rim (see VillageGate). The beacon stands
+    // just through the opening — the push inland ends inside the gate
+    const point = this.gate.through;
+    this._objectivePoint.set(point.x, point.y, point.z);
     this.beacon = this.trackDisposable(new ObjectiveBeacon(this._objectivePoint, this.cfg.objectiveRadius));
     this.gameWorld.environmentGroup.add(this.beacon.mesh);
 
@@ -310,13 +337,14 @@ export class Level02 extends IslandLevel {
       maxAlive: this.cfg.maxAliveAliens
     });
 
-    // The final ambush: one group, waiting in the trees by the path
+    // The final ambush: the group waiting in the rocks flanking the last stretch of the path,
+    // sent at the gate approach once it springs
     const ambush = this.cfg.finalAmbush;
     this.ambush = new WaveDirector({
-      waves: [{ trooper: ambush.trooper, brute: ambush.brute, lanes: AMBUSH_LANES }],
+      waves: [{ trooper: ambush.trooper, brute: ambush.brute, lanes: GATE_AMBUSH_POSTS }],
       betweenWavesSeconds: 0, // A single wave: the pause is never reached
       spawnIntervalSeconds: ambush.spawnIntervalSeconds,
-      spawn: (type, lane) => this.spawnAlien(type, lane, this._objectivePoint),
+      spawn: (type, lane) => this.spawnAlien(type, lane, this.gate.approach),
       aliveCount: () => this.squad.aliveCount,
       maxAlive: this.cfg.maxAliveAliens
     });
@@ -368,7 +396,7 @@ export class Level02 extends IslandLevel {
           this.state = 'objective';
           this.beacon.setVisible(true);
           this._setMusic('tense');
-          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The island is quiet — push inland!', 'success', 3500);
+          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The island is quiet — push on to the gate!', 'success', 3500);
           break;
         }
         this._showObjective('HUNT THE HOLDERS', `${left} aliens still hiding on the island — find them (map: [M])`);
@@ -381,19 +409,27 @@ export class Level02 extends IslandLevel {
           this._startAmbush();
           break;
         }
-        this._showObjective('PUSH INLAND', `Reach the jungle path (green beacon) — ${Math.round(distance)} m`);
-        if (distance <= this.cfg.objectiveRadius) this._finish(true);
+        this._showObjective('PUSH TO THE GATE', `Reach the village gate (green beacon) — ${Math.round(distance)} m`);
         break;
       }
 
       case 'ambush': {
         this.ambush.update(delta);
-        this._showObjective('AMBUSH', `They were waiting in the trees — ${this.ambush.remaining} left`);
-        if (this.ambush.isDone) {
-          this.state = 'objective';
-          this._setMusic('tense');
-          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The ambush is broken — push on to the path!', 'success', 3000);
-        }
+        this._showObjective('AMBUSH', `They were waiting in the rocks — ${this.ambush.remaining} left`);
+        if (this.ambush.isDone) this._startGateFight();
+        break;
+      }
+
+      case 'gate': {
+        this._updateGateFight(delta);
+        this._showObjective('THE GATE', `Break the gate guard — ${this._gateAlive()} still standing`);
+        break;
+      }
+
+      case 'clear': {
+        const distance = Math.hypot(this.player.position.x - this._objectivePoint.x, this.player.position.z - this._objectivePoint.z);
+        this._showObjective('THROUGH THE GATE', `Walk into the village — ${Math.round(distance)} m`);
+        if (distance <= this.cfg.objectiveRadius) this._finish(true);
         break;
       }
     }
@@ -462,7 +498,7 @@ export class Level02 extends IslandLevel {
     return placed;
   }
 
-  /** The last stand: the group waiting in the trees springs as the player pushes inland. */
+  /** The last stand: the group waiting in the rocks springs as the player comes up to the gate. */
   _startAmbush() {
     this.ambushTriggered = true;
     this.state = 'ambush';
@@ -470,8 +506,121 @@ export class Level02 extends IslandLevel {
     this._setMusic('combat');
     this._stingMusic('ambush');
     if (this.gameWorld.ui) {
-      this.gameWorld.ui.showToast('Ambush! They were waiting in the trees — hold them off!', 'warning', 4000);
+      this.gameWorld.ui.showToast('Ambush! They were waiting in the rocks — hold them off!', 'warning', 4000);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // The gate: the last fight of the beach
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The ambush broken, the gate shows what it really keeps: snipers on the watchtowers and the
+   * ridge open up while the garrison pours out of the opening, and the gate walker follows when
+   * its ranks are thinned. Clearing every last one opens the road into the village.
+   */
+  _startGateFight() {
+    this.state = 'gate';
+    this._setMusic('combat');
+    this._stingMusic('ambush');
+
+    this._gateUnits = [];
+    this._gateGarrison = [];
+    this._heavy = null;
+    this._heavyDown = false;
+
+    // The perches first: the glint and the lasers are the player's introduction to the gate
+    const perches = this.gate.perches;
+    const snipers = Math.min(this.cfg.gate.sniper, perches.length);
+    for (let i = 0; i < snipers; i++) this._spawnGateUnit('sniper', perches[i]);
+
+    // The garrison queues up behind the line (heavier units last) and pours out one at a time
+    this._gateQueue = [];
+    for (let i = 0; i < this.cfg.gate.trooper; i++) this._gateQueue.push('trooper');
+    for (let i = 0; i < this.cfg.gate.brute; i++) this._gateQueue.push('brute');
+    this._gateSpawnTimer = 0; // The first out of the opening comes straight away
+    this._gatePostIndex = 0;
+
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showToast('The gate opens — snipers on the towers!', 'warning', 4000);
+    }
+  }
+
+  /** Phase 5 of the gate fight: the garrison queue, the walker, and its health bar. */
+  _updateGateFight(delta) {
+    const ui = this.gameWorld.ui;
+
+    // The garrison pours out, one at a time to its own post
+    if (this._gateQueue.length > 0) {
+      this._gateSpawnTimer -= delta;
+      if (this._gateSpawnTimer <= 0) {
+        this._gateSpawnTimer = this.cfg.gate.spawnIntervalSeconds;
+        const post = this.gate.defensePosts[this._gatePostIndex % this.gate.defensePosts.length];
+        this._gatePostIndex += 1;
+        const unit = this._spawnGateUnit(this._gateQueue.shift(), post);
+        if (unit) unit.assault(this.gate.approach);
+      }
+    }
+
+    // Down to a handful of rank and file: the walker steps out of the opening
+    if (!this._heavy && this._gateQueue.length === 0 && this._gateGarrisonAlive() <= this.cfg.gate.heavyAt) {
+      this._spawnHeavy();
+    }
+    if (this._heavy && !this._heavyDown) {
+      if (this._heavy.isDead) {
+        this._heavyDown = true;
+        if (ui) {
+          ui.hideBossHealth();
+          ui.showToast('The gate walker falls!', 'success', 3500);
+        }
+      } else if (ui) {
+        ui.updateBossHealth(this._heavy.health.currentHealth, this._heavy.health.maxHealth);
+      }
+    }
+
+    // Every last one down and the whole queue spent: the gate is clear and the village road
+    // stands open (the queue gate stops a fast start from clearing before the guard has poured)
+    if (this._gateUnits.length > 0 && this._gateQueue.length === 0 && this._gateUnits.every((unit) => unit.isDead)) {
+      this.state = 'clear';
+      if (ui) {
+        if (this._heavy) ui.hideBossHealth();
+        ui.showToast('The gate is clear — walk through!', 'success', 4000);
+      }
+      this._setMusic('tense');
+    }
+  }
+
+  /** One gate-guard unit at its post (or perch), tracked for the fight's end. */
+  _spawnGateUnit(type, spot) {
+    const unit = this.createAlien(type, spot.x, spot.z, spot.y);
+    this._gateUnits.push(unit);
+    if (type === 'trooper' || type === 'brute') this._gateGarrison.push(unit);
+    return unit;
+  }
+
+  /** The gate walker: the finale's own, out of the opening, with its bar up while it stands. */
+  _spawnHeavy() {
+    this._heavy = this._spawnGateUnit('heavy', this.gate.heavySpawn);
+    this._heavy.assault(this.gate.approach);
+    const ui = this.gameWorld.ui;
+    if (ui) {
+      ui.showBossHealth(this._heavy.displayName);
+      ui.showToast('The gate walker comes out!', 'danger', 4000);
+    }
+  }
+
+  /** How many of the gate guard are still standing. */
+  _gateAlive() {
+    let count = 0;
+    for (const unit of this._gateUnits) if (!unit.isDead) count++;
+    return count;
+  }
+
+  /** How many of the gate's rank and file are still standing (the walker not counted). */
+  _gateGarrisonAlive() {
+    let count = 0;
+    for (const unit of this._gateGarrison) if (!unit.isDead) count++;
+    return count;
   }
 
   // ---------------------------------------------------------------------------
@@ -695,7 +844,9 @@ export class Level02 extends IslandLevel {
    * @returns {AlienCombatant|null}
    */
   spawnAlien(type, laneName, assaultPoint = null) {
-    const base = LANES[laneName] || LANES.centre;
+    // String lanes are the beach's own five; a lane object is passed in directly (the gate
+    // ambush's posts on the ridges are not on the beach grid)
+    const base = typeof laneName === 'string' ? (LANES[laneName] || LANES.centre) : laneName;
     // Ambushers hold the point they were sent to (the beacon), not the lane's beach point; while
     // the player is aboard, wave aliens make for the bottom of the gangway instead
     const shipMassing = !assaultPoint && this._shipPressureActive();
@@ -740,13 +891,20 @@ export class Level02 extends IslandLevel {
     this.waves = null;
     this.ambush = null;
     this._zone = null;
+    this._gateUnits = [];
+    this._gateGarrison = [];
+    this._gateQueue = [];
+    this._heavy = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them
     if (this.intel) this.intel.dispose();
     this.intel = null;
-    super.dispose(); // Also the destructible cover, the landing zone, the wreckage, the smoke and the beacon (tracked)
+    // A defeat mid-gate-fight leaves the walker's bar up otherwise (the result screen overlays it)
+    if (this.gameWorld && this.gameWorld.ui) this.gameWorld.ui.hideBossHealth();
+    super.dispose(); // Also the destructible cover, the landing zone, the wreckage, the smoke, the gate and the beacon (tracked)
     this.beacon = null;
     this.landingZone = null;
     this.wreckage = null;
+    this.gate = null;
     this.destructibleCover = null;
   }
 }

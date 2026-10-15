@@ -110,12 +110,12 @@ test('Level 2 feeds the map: the player, the crew, the beacon pin and exactly th
       'the zone lines ride the chart'
     );
 
-  // The pin follows the live objective: it appears when the push inland is on
+  // The pin follows the live objective: it appears when the push inland is on — at the village gate
   level.state = 'objective';
   assert.deepEqual(
     level.getMapData().markers,
-    [{ x: level._objectivePoint.x, z: level._objectivePoint.z, label: 'OBJECTIVE' }],
-    'the beacon pin while pushing inland'
+    [{ x: level._objectivePoint.x, z: level._objectivePoint.z, label: 'THE GATE' }],
+    'the gate pin while pushing inland'
   );
   level.state = 'landing';
 

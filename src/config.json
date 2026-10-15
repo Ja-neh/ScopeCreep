@@ -246,6 +246,51 @@
       "searchSeconds": 6,
       "corpseSeconds": 5
     },
+    "sniper": {
+      "maxHealth": 70,
+      "walkSpeed": 2.5,
+      "runSpeed": 5.5,
+      "sightRange": 85,
+      "concealedSightRange": 10,
+      "awarenessRadius": 8,
+      "fieldOfViewDegrees": 100,
+      "hearingRange": 40,
+      "alertRadius": 25,
+      "burstShots": 1,
+      "burstInterval": 0.18,
+      "burstPause": 1.2,
+      "aimError": 0.012,
+      "aimSeconds": 1.5,
+      "shotIntervalSeconds": 3.4,
+      "damage": 22,
+      "boltSpeed": 95,
+      "lostSightSeconds": 3.5,
+      "searchSeconds": 6,
+      "sweepSpeed": 0.5,
+      "sweepArc": 16,
+      "sweepDistance": 46,
+      "corpseSeconds": 4
+    },
+    "heavy": {
+      "maxHealth": 900,
+      "walkSpeed": 2.4,
+      "runSpeed": 3.4,
+      "chargeSpeed": 8.5,
+      "sightRange": 60,
+      "concealedSightRange": 8,
+      "awarenessRadius": 12,
+      "fieldOfViewDegrees": 140,
+      "hearingRange": 50,
+      "chargeRange": 30,
+      "chargeSeconds": 3.5,
+      "slamRange": 3.6,
+      "slamDamage": 45,
+      "slamWindup": 0.65,
+      "slamRecovery": 1.4,
+      "weakSpotMultiplier": 2.0,
+      "searchSeconds": 6,
+      "corpseSeconds": 6
+    },
     "warden": {
       "maxHealth": 2400,
       "walkSpeed": 2.2,
@@ -342,6 +387,13 @@
         "trooper": 6,
         "brute": 1,
         "spawnIntervalSeconds": 0.4
+      },
+      "gate": {
+        "trooper": 4,
+        "brute": 2,
+        "sniper": 3,
+        "heavyAt": 2,
+        "spawnIntervalSeconds": 0.9
       },
       "holdouts": {
         "groupSpread": 14
