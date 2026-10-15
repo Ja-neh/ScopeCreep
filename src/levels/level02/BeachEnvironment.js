@@ -41,6 +41,14 @@ const SEED = 7;
 // Times of day. `sky` is also the haze at the horizon and the fog colour; `light` is the sun
 // (or the moon) and `direction` points towards it.
 const LOOKS = {
+  // Level 1: open sea daylight, bright azure sky and sun
+  daylight: {
+    sky: 0x87ceeb, fogDensity: 0.0010,
+    light: 0xfff5e6, lightIntensity: 1.4, direction: new THREE.Vector3(0.5, 0.8, 0.3).normalize(),
+    hemiSky: 0xb1e1ff, hemiGround: 0x3a4a3a, hemiIntensity: 0.65,
+    glow: 0x9be2ff, upper: 0x76b5d8, zenith: 0x4a8eb8, disc: 0xfffae0, stars: 0,
+    cloud: 0xffffff, cloudGlow: 0xd8e8f0, cloudShadow: 0.25
+  },
   // Level 2: the sun low in the west (to the left looking inland, and in view from the sea in
   // the opening), a warm glow along that side of the sky, dusky blue overhead
   sunset: {
@@ -124,7 +132,8 @@ export class BeachEnvironment {
    */
   constructor(gameWorld, {
     look = 'sunset', layout = 'beach', shadowCentre = DEFAULT_SHADOW_CENTRE,
-    shadowHalfExtent = DEFAULT_SHADOW_HALF_EXTENT, shadowFollowsCamera = false
+    shadowHalfExtent = DEFAULT_SHADOW_HALF_EXTENT, shadowFollowsCamera = false,
+    waveScale = 0.3
   } = {}) {
     this.gameWorld = gameWorld;
     this.layout = LAYOUTS[layout] || LAYOUTS.beach;
@@ -134,6 +143,7 @@ export class BeachEnvironment {
     this.shadowCentre = shadowCentre.clone();
     this.shadowHalfExtent = shadowHalfExtent;
     this.shadowFollowsCamera = shadowFollowsCamera;
+    this.waveScale = waveScale;
     this.sun = null;
     this.hemi = null;
     this._direction = this.look.direction.clone(); // Towards the sun or moon (moves in blendLook)
@@ -204,7 +214,7 @@ export class BeachEnvironment {
     this.sun = sun;
 
     // 3. Calm sea around the island, lit to match the sky
-    this.ocean = new Ocean({ size: 2600, segments: 200, sunDirection: look.direction.clone(), waveScale: 0.3 });
+    this.ocean = new Ocean({ size: 2600, segments: 200, sunDirection: look.direction.clone(), waveScale: this.waveScale });
     this.ocean.uniforms.uSkyColor.value.set(look.sky);
     this.ocean.uniforms.uSunColor.value.set(look.light);
     this.cloudShadows.applyToOcean(this.ocean.uniforms);
