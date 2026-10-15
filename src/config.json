@@ -90,9 +90,9 @@
     "repositionAltitude": 55,
     "targetHeight": 5,
     "waves": [
-      { "fighters": 2, "aces": 0 },
-      { "fighters": 2, "aces": 1 },
-      { "fighters": 2, "aces": 2 }
+      { "fighters": 4, "aces": 0 },
+      { "fighters": 4, "aces": 1 },
+      { "fighters": 4, "aces": 2 }
     ],
     "defense": {
       "firstWaveDelaySeconds": 3,
@@ -119,12 +119,13 @@
   },
   "airStrike": {
     "targetHealth": 180,
+    "winScore": 500,
     "targets": [
-      { "kind": "radar", "name": "Radar Station", "position": [-55, 0, 350] },
-      { "kind": "gun", "name": "Coastal Gun Battery", "position": [50, 0, 450] },
-      { "kind": "ship", "name": "Enemy Patrol Ship", "position": [0, 0, 560] },
-      { "kind": "fuel", "name": "Fuel Depot", "position": [-45, 0, 670] },
-      { "kind": "ship", "name": "Enemy Supply Ship", "position": [55, 0, 780] }
+      { "kind": "radar", "name": "Radar Station", "scoreValue": 100, "position": [-55, 0, 350] },
+      { "kind": "gun", "name": "Coastal Gun Battery", "scoreValue": 100, "position": [50, 0, 450] },
+      { "kind": "ship", "name": "Enemy Patrol Ship", "scoreValue": 150, "position": [0, 0, 560] },
+      { "kind": "fuel", "name": "Fuel Depot", "scoreValue": 100, "position": [-45, 0, 670] },
+      { "kind": "ship", "name": "Enemy Supply Ship", "scoreValue": 150, "position": [55, 0, 780] }
     ]
   },
   "player": {
