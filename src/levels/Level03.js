@@ -402,7 +402,12 @@ export class Level03 extends IslandLevel {
       ],
       defaultFocus: wardenChest,
       aimTowards: 0,
-      focus
+      focus,
+      // The camera reaches the player: the intro groove stops and the scene is just surf and wind
+      onFinished: () => {
+        const music = this.gameWorld.music;
+        if (music) music.setState('ambient');
+      }
     });
     this.gameWorld.addEntity(this.cinematic);
   }

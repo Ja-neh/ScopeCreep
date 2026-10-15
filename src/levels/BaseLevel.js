@@ -18,6 +18,13 @@ export class BaseLevel {
    */
   async init() {
     this.isInitialized = true;
+
+    // Every level opens dramatically: the intro groove under the deploy swell (an opening cinematic ends it into the ambience)
+    const music = this.gameWorld && this.gameWorld.music;
+    if (music) {
+      music.setState('deploy');
+      music.stinger('deploy');
+    }
   }
 
   /**

@@ -80,6 +80,7 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
     }
   });
   assert.equal(level.state, 'won');
+  assert.equal(world.music.callsTo('setState').at(-1).args[0], 'victory', 'the score resolves when the beach is won');
 
   const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
   assert.equal(result.outcome, 'victory');
@@ -130,6 +131,7 @@ test('Level 2: the push inland springs a final ambush, and the beach is won once
   assert.equal(level.state, 'ambush');
   assert.equal(level.ambushTriggered, true);
   assert.ok(world.ui.callsTo('showToast').some((call) => /^Ambush!/.test(call.args[0])), 'the ambush is called out');
+  assert.ok(world.music.callsTo('stinger').some((call) => call.args[0] === 'ambush'), 'the ambush sting plays');
   assert.equal(world.ui.callsTo('showObjective').at(-1).args[0], 'AMBUSH');
 
   // The whole group stands up, and it is headed for the beacon, not the beach
@@ -199,6 +201,8 @@ test('Level 2: going down with nobody left standing fails the mission; Retry res
   level.player.health.takeDamage({ amount: 1000 });
   stepWorld(world, 0.2, { level });
   assert.equal(level.state, 'lost');
+  assert.equal(world.music.callsTo('stinger').at(-1).args[0], 'defeat', 'the defeat sting lands the ending');
+  assert.ok(world.music.callsTo('stop').length >= 1, 'the bed stops on defeat');
 
   const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
   assert.equal(result.outcome, 'defeat');
@@ -465,6 +469,7 @@ test('Level 2 test level: a fresh group marches on the gangway while the player 
   world.input.press('skipCutscene');
   stepWorld(world, 0.5, { level });
   assert.equal(level._isPlayerAshore(), false, 'the player never left the ship');
+  assert.equal(world.music.callsTo('setState')[0].args[0], 'deploy', 'the sandbox opens on the mission-start intro groove');
 
   // Wipe the patrol out from the deck: the respawned group is the ship-camping pressure preview
   for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
@@ -496,4 +501,37 @@ test('Level 2 controls card: only real actions, with keys read from the bindings
   assert.equal(input.describeActions(['sprint']), 'Shift');
   assert.equal(input.describeActions(['weaponPrimary', 'weaponMelee', 'quickMelee']), '1 2 Q');
   input.dispose();
+});
+
+test('Level 2: the score follows the mission — the intro groove, the surf, combat and the held-wave suspense', async () => {
+  const { world, level } = await loadLevel(Level02);
+  assert.deepEqual(world.music.callsTo('setState').map((call) => call.args[0]), ['deploy'],
+    'the mission opens on the intro groove');
+  assert.deepEqual(world.music.callsTo('stinger').map((call) => call.args[0]), ['deploy'],
+    'the mission opens with the deploy swell');
+
+  // The opening sweep ends (here: skipped): the intro stops and the scene is just surf and wind
+  world.input.press('skipCutscene');
+  stepWorld(world, 0.2, { level });
+  assert.equal(world.music.callsTo('setState').at(-1).args[0], 'ambient', 'the camera reaching the player hands the scene to the surf');
+
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+  level.player.teleport(foot.x, foot.y, foot.z);
+  stepWorld(world, 0.5, { level });
+  assert.equal(world.music.callsTo('setState').at(-1).args[0], 'combat', 'the waves turn the score to combat');
+
+  // Clear the first wave: the break between waves drops the score to suspense with its sting
+  stepWorld(world, 90, {
+    level,
+    onFrame: () => {
+      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+      return level.waves.state === 'between';
+    }
+  });
+  assert.equal(level.waves.state, 'between');
+  const states = world.music.callsTo('setState').map((call) => call.args[0]);
+  assert.ok(states.includes('suspense'), 'the break between waves drops to suspense');
+  assert.ok(world.music.callsTo('stinger').some((call) => call.args[0] === 'waveHeld'), 'the held wave gets its sting');
+
+  assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });

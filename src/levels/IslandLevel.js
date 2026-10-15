@@ -476,6 +476,18 @@ export class IslandLevel extends BaseLevel {
    */
   _finish(victory) {
     this.state = victory ? 'won' : 'lost';
+
+    // The score lands the ending: a resolved pad on victory, silence and a sting on defeat
+    const music = this.gameWorld.music;
+    if (music && music.isRunning) {
+      if (victory) {
+        music.setState('victory');
+      } else {
+        music.stop();
+        music.stinger('defeat');
+      }
+    }
+
     if (this.cinematic) this.cinematic.finish(); // First: ending, it unfreezes the player
     this.player.isDevSuspended = true; // Freeze the player behind the result screen
     this.gameWorld.input.exitPointerLock();

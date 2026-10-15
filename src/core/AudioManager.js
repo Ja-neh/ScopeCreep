@@ -239,6 +239,7 @@ export class AudioManager {
     this._lastVoiceGain = 1;              // mix telemetry: gain of the most recent voice (tests/debug)
     this._spatial = { gain: 1, pan: 0 };  // scratch result, reused to avoid per-play allocations
     this._unlockBound = null;
+    this.onUnlocked = null; // fired once with the fresh context; companion systems (the score) start here
 
     this._load();
     this._setupUnlock();
@@ -247,6 +248,12 @@ export class AudioManager {
   get volume() { return this._volume; }
   get muted() { return this._muted; }
   get activeVoices() { return this._activeVoices; }
+
+  /** The AudioContext once unlocked; null before the first gesture, and in Node. */
+  get context() { return this._ctx; }
+
+  /** The node every voice connects to; companion systems (the music director) route through it too. */
+  get outputNode() { return this._master; }
 
   set volume(value) {
     this._volume = Math.max(0, Math.min(1, Number(value) || 0));
@@ -280,6 +287,7 @@ export class AudioManager {
     this._master.gain.value = this._muted ? 0 : this._volume;
     this._master.connect(ctx.destination);
     if (ctx.state === 'suspended' && typeof ctx.resume === 'function') ctx.resume();
+    if (this.onUnlocked) this.onUnlocked(ctx);
     return ctx;
   }
 

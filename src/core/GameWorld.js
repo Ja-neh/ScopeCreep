@@ -4,6 +4,7 @@ import { PhysicsWorld } from './PhysicsWorld.js';
 import { FPSTracker } from './FPSTracker.js';
 import { RenderQuality } from './RenderQuality.js';
 import { AudioManager } from './AudioManager.js';
+import { MusicDirector } from './MusicDirector.js';
 import { UIManager } from '../ui/UIManager.js';
 
 /**
@@ -101,6 +102,16 @@ export class GameWorld {
 
     // 11. Audio Subsystem (procedural one-shot sound engine, event-driven: no phase hook)
     this.audio = new AudioManager(this);
+
+    // ...and its companion score: adaptive music and ambience, driven by each level's own states.
+    // The score can only start once a gesture has created the AudioContext (autoplay policy);
+    // the state it remembers by then - the menu theme at boot - is what fades in first.
+    this.music = new MusicDirector(this.audio);
+    this.audio.onUnlocked = () => {
+      if (!this.music) return;
+      this.music.refresh(); // The remembered state (the menu theme) starts and fades in...
+      this.music.stinger('impact'); // ...under the game-start trailer impact
+    };
 
     // Without a GPU everything is drawn on the CPU: say so, it explains a slow game
     if (gpu.software) {
@@ -513,6 +524,11 @@ export class GameWorld {
     this.stop();
     window.removeEventListener('resize', this._onResize);
     this.input.dispose();
+
+    if (this.music) {
+      this.music.dispose();
+      this.music = null;
+    }
 
     if (this.audio) {
       this.audio.dispose();

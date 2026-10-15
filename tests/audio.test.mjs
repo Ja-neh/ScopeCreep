@@ -70,9 +70,14 @@ test('without an AudioContext every call is a safe no-op', () => {
 test('unlock builds the master chain and plays a voice through it', () => {
   const context = createFakeContext();
   const manager = new AudioManager(null, { contextFactory: () => context });
+  let announced = null;
+  manager.onUnlocked = (ctx) => { announced = ctx; };
   manager.unlock();
 
   assert.equal(context.state, 'running', 'a suspended context is resumed');
+  assert.equal(announced, context, 'companion systems are told about the context');
+  manager.unlock();
+  assert.equal(announced, context, 'later unlocks do not announce again');
   const source = manager.play('gunshot');
   assert.ok(source, 'the gunshot returns its voice source');
   assert.equal(typeof source.onended, 'function', 'the voice is counted until it ends');

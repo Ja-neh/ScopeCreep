@@ -21,6 +21,7 @@ const ALIEN_SPOTS = [
   { x: 60, z: 128, type: 'brute' }
 ];
 const ALIEN_RESPAWN_SECONDS = 5; // After the last one dies, a fresh group arrives
+const SANDBOX_COMBAT_RADIUS_M = 45; // A living alien inside this range turns the sandbox score to combat
 
 /**
  * Level02TestLevel
@@ -29,6 +30,7 @@ const ALIEN_RESPAWN_SECONDS = 5; // After the last one dies, a fresh group arriv
  * - Training dummies on the beach (one faces away for backstabs)
  * - Three troopers and a brute behind the dummies that come back after they all die
  * - A respawned group marches on the gangway while the player stays aboard (ship-camping pressure)
+ * - An adaptive score preview: tension while exploring, combat when a living alien closes in
  * - The AI squad waiting on the sand (they follow once you're ashore), pilots by the parked
  *   helicopters
  * - The shared SandboxTools: [F1] aerial camera, [F3] spawn an alien, [F4] squad on/off, and
@@ -44,6 +46,7 @@ export class Level02TestLevel extends Level02 {
 
     this._alienRespawnTimer = -1;
     this._terrainChecked = false;
+    this._musicEngagement = null;
   }
 
   get controls() {
@@ -83,6 +86,8 @@ export class Level02TestLevel extends Level02 {
       aerialPosition: new THREE.Vector3(0, 180, 420)
     });
     this.tools.init();
+
+    this._musicEngagement = 'tense'; // The relaxed preview state (BaseLevel.init opens on the deploy groove)
   }
 
   /** Dev: drops an alien on clear ground ahead of the player. */
@@ -134,6 +139,29 @@ export class Level02TestLevel extends Level02 {
         this._alienRespawnTimer = -1;
         this._spawnAliens({ shipPressure: true });
       }
+    }
+
+    this._updateMusicEngagement();
+  }
+
+  /**
+   * The sandbox score: combat while a living alien is inside engagement range of the player,
+   * tension otherwise. Only fires when the state actually changes.
+   */
+  _updateMusicEngagement() {
+    const music = this.gameWorld && this.gameWorld.music;
+    if (!music || !this.player) return;
+    let engaged = false;
+    for (const alien of this.squad.members) {
+      if (alien.isDead) continue;
+      const dx = alien.position.x - this.player.position.x;
+      const dz = alien.position.z - this.player.position.z;
+      if (dx * dx + dz * dz <= SANDBOX_COMBAT_RADIUS_M * SANDBOX_COMBAT_RADIUS_M) { engaged = true; break; }
+    }
+    const next = engaged ? 'combat' : 'tense';
+    if (next !== this._musicEngagement) {
+      this._musicEngagement = next;
+      music.setState(next);
     }
   }
 

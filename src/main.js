@@ -71,6 +71,8 @@ async function bootstrap() {
   // 3. Navigation helper to present the tactical level selection menu
   const showMenu = () => {
     gameWorld.ui.resetLevelHUD();
+    gameWorld.music.setState('menu'); // The menu raises the loud trailer groove
+    gameWorld.music.stinger('impact'); // ...with an impact each time it appears
     gameWorld.ui.showMainMenu(AVAILABLE_LEVELS, async (selectedLevel) => {
       gameWorld.ui.hideMainMenu();
       gameWorld.ui.showToast(`Deploying: ${selectedLevel.title}`, 'info', 3000);

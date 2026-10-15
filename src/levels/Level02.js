@@ -153,9 +153,21 @@ export class Level02 extends IslandLevel {
     return Object.values(LANES).map((lane) => ({ x: lane.spawn.x, z: lane.spawn.z, radius: 4 }));
   }
 
+  /** Retunes the adaptive score to a mission state; a no-op where no music director exists. */
+  _setMusic(state) {
+    const music = this.gameWorld && this.gameWorld.music;
+    if (music) music.setState(state);
+  }
+
+  /** Plays a one-shot music sting; a no-op where no music director exists. */
+  _stingMusic(name) {
+    const music = this.gameWorld && this.gameWorld.music;
+    if (music) music.stinger(name);
+  }
+
   /** The landing, the waves and the objective. */
   async _startScenario() {
-    this._beginLanding();
+    this._beginLanding(); // The intro groove and the deploy swell are already up (BaseLevel.init)
 
     const z = OBJECTIVE_Z;
     const x = this.environment.pathCentreX(z);
@@ -196,6 +208,7 @@ export class Level02 extends IslandLevel {
           this.state = 'waves';
           this.waves.start();
           this._announceWave(); // The wave-count check in the 'waves' case only sees later waves
+          this._setMusic('combat');
         }
         break;
 
@@ -206,10 +219,15 @@ export class Level02 extends IslandLevel {
         const stateBefore = this.waves.state;
         this.waves.update(delta);
         if (this.waves.waveNumber !== waveBefore) this._announceWave();
-        if (stateBefore !== 'between' && this.waves.state === 'between') this._announceHeldWave();
+        if (stateBefore !== 'between' && this.waves.state === 'between') {
+          this._announceHeldWave();
+          this._setMusic('suspense');
+          this._stingMusic('waveHeld');
+        }
         if (this.waves.isDone) {
           this.state = 'objective';
           this.beacon.setVisible(true);
+          this._setMusic('tense');
           if (this.gameWorld.ui) this.gameWorld.ui.showToast('The beach is ours. Push inland!', 'success', 3500);
         } else if (this.waves.state === 'between') {
           const regroup = ashore ? 'regroup and reload' : 'regroup, reload and get ashore';
@@ -237,6 +255,7 @@ export class Level02 extends IslandLevel {
         this._showObjective('AMBUSH', `They were waiting in the trees — ${this.ambush.remaining} left`);
         if (this.ambush.isDone) {
           this.state = 'objective';
+          this._setMusic('tense');
           if (this.gameWorld.ui) this.gameWorld.ui.showToast('The ambush is broken — push on to the path!', 'success', 3000);
         }
         break;
@@ -271,6 +290,8 @@ export class Level02 extends IslandLevel {
     this.ambushTriggered = true;
     this.state = 'ambush';
     this.ambush.start();
+    this._setMusic('combat');
+    this._stingMusic('ambush');
     if (this.gameWorld.ui) {
       this.gameWorld.ui.showToast('Ambush! They were waiting in the trees — hold them off!', 'warning', 4000);
     }
@@ -291,7 +312,9 @@ export class Level02 extends IslandLevel {
       player: this.player,
       title: 'THE BEACH',
       subtitle: 'Land the squad and take back the coast',
-      focus: (out) => this.landingZone.helicopterFocus(out)
+      focus: (out) => this.landingZone.helicopterFocus(out),
+      // The camera reaches the player: the intro groove stops and the scene is just surf and wind
+      onFinished: () => this._setMusic('ambient')
     });
     this.gameWorld.addEntity(this.cinematic);
   }
@@ -467,6 +490,7 @@ export class Level02 extends IslandLevel {
   }
 
   dispose() {
+    this._setMusic('silent'); // The score goes quiet with the level (menu, restart, another stage)
     this.waves = null;
     this.ambush = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them
