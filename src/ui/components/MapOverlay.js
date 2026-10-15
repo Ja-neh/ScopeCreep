@@ -1,9 +1,9 @@
 /**
  * MapOverlay.js
  * The island map ([M]): a north-up chart of the stage, drawn from the level's own terrain
- * sampler, with the player, the squad, the zone lines, the objective pins and the aliens alive
- * on the island (unaware ones dimmer, the ones hunting you bright red). Levels feed it through
- * `BaseLevel.getMapTerrain` / `BaseLevel.getMapData`; this component only draws.
+ * sampler, with the player, the squad, the zone lines, the objective pins, the intel spots and
+ * the aliens alive on the island (unaware ones dimmer, the ones hunting you bright red). Levels
+ * feed it through `BaseLevel.getMapTerrain` / `BaseLevel.getMapData`; this component only draws.
  * The island backdrop is sampled once and cached, so an open map redraws cheap.
  * Visual only: colours and glyph sizes live here, not in config.json.
  */
@@ -107,6 +107,7 @@ export class MapOverlay {
           <span class="ui-map-key ui-map-key-squad">Squad</span>
           <span class="ui-map-key ui-map-key-alien">Aliens</span>
           <span class="ui-map-key ui-map-key-marker">Objective</span>
+          <span class="ui-map-key ui-map-key-intel">Intel</span>
         </div>
       </div>
     `;
@@ -135,7 +136,7 @@ export class MapOverlay {
 
   /**
    * Redraws the markers over the cached island: the level's state from `getMapData`.
-   * @param {Object|null} state - { player, mates, enemies, markers, zones }
+   * @param {Object|null} state - { player, mates, enemies, markers, zones, intel }
    */
   update(state) {
     if (!this.isOpen || !this.bounds) return;
@@ -147,6 +148,7 @@ export class MapOverlay {
     if (!state) return;
 
     this._drawZones(ctx, state.zones || [], width, height);
+    this._drawIntel(ctx, state.intel || [], width, height);
     this._drawMarkers(ctx, state.markers || [], width, height);
     this._drawEnemies(ctx, state.enemies || [], width, height);
     this._drawSquad(ctx, state.mates || [], width, height);
@@ -222,6 +224,43 @@ export class MapOverlay {
       if (zone.name) ctx.fillText(zone.name.toUpperCase(), 6, p.y - 5);
     }
     ctx.restore();
+  }
+
+  /**
+   * The islanders' trail: unfound spots are faint hollow rings (something is out there), found
+   * ones a small green ring with a dot and their label.
+   */
+  _drawIntel(ctx, intel, width, height) {
+    if (!intel.length) return;
+    ctx.font = '600 9px monospace';
+    ctx.textAlign = 'center';
+    for (const spot of intel) {
+      if (typeof spot.x !== 'number' || typeof spot.z !== 'number') continue;
+      const p = projectPoint(this.bounds, width, height, spot.x, spot.z, this._point);
+      if (spot.found) {
+        ctx.strokeStyle = '#9ad06b';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#9ad06b';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        if (spot.label) {
+          ctx.fillStyle = 'rgba(154, 208, 107, 0.85)';
+          ctx.fillText(spot.label, p.x, p.y + 12);
+        }
+      } else {
+        ctx.strokeStyle = 'rgba(154, 208, 107, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
   }
 
   /** Objective pins: an amber diamond (green once done) with its label underneath. */

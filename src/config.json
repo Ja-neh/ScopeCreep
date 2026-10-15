@@ -351,7 +351,10 @@
         { "id": "forest", "name": "The Forest", "inlandFrom": 120, "holdouts": { "trooper": 5 } },
         { "id": "rocks", "name": "The Rockfields", "inlandFrom": -110, "holdouts": { "trooper": 2, "brute": 1 } },
         { "id": "outskirts", "name": "Village Outskirts", "inlandFrom": -215, "holdouts": { "trooper": 2, "brute": 1 } }
-      ]
+      ],
+      "intel": {
+        "radius": 2.4
+      }
     },
     "level03": {
       "generator": {

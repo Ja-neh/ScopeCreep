@@ -5,6 +5,8 @@ import { BeachWreckage } from './level02/BeachWreckage.js';
 import { DestructibleCover } from './level02/DestructibleCover.js';
 import { ObjectiveBeacon } from './level02/ObjectiveBeacon.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
+import { IntelTrail } from './level02/IntelTrail.js';
+import { VillageSmoke } from './level02/VillageSmoke.js';
 import { LandingCinematic } from './level02/LandingCinematic.js';
 import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
@@ -118,6 +120,11 @@ const RALLY_POSTS = [
  * hunt's holding force) and its own ambience — the surf fades inland while the wind and the
  * aliens' low under-hum grow (ZONE_AMBIENCE), with distant explosions and calls out in the trees
  * (AMBIENT_LIFE).
+ *
+ * The islanders' trail (IntelTrail): notes and dead radios left by the people the aliens took,
+ * one in each zone — [E] to read each; the map ([M]) shows the unfound ones faintly, and every
+ * find builds the story of Level 3. The village burns beyond the plateau: two smoke columns
+ * (VillageSmoke) fade in over the last stretch, so the push inland has its skyline.
  * Losing: the player bleeds out, or goes down with nobody left standing to come.
  *
  * Level02TestLevel extends this with dummies, a respawning trio instead of waves, and dev tools.
@@ -135,6 +142,8 @@ export class Level02 extends IslandLevel {
     this.ambushTriggered = false;
     this.beacon = null;
     this.supplyCrate = null;
+    this.intel = null;
+    this.villageSmoke = null;
 
     this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> won | lost
     this._holdoutsTotal = 0;
@@ -152,7 +161,7 @@ export class Level02 extends IslandLevel {
   // IslandLevel hooks
   // ---------------------------------------------------------------------------
 
-  /** Ship, gangway, parked helicopters, and the first attempt's wreckage on the sand. */
+  /** Ship, gangway, parked helicopters, the first attempt's wreckage on the sand, and the smoke over the village. */
   async _buildWorld() {
     this.landingZone = this.trackDisposable(new LandingZone(this.gameWorld, this.environment));
     await this.landingZone.build();
@@ -160,6 +169,8 @@ export class Level02 extends IslandLevel {
       clearings: [...this.landingZone.clearings, ...this._extraClearings()]
     }));
     this.wreckage.build();
+    // The village burns beyond the ridge; the columns fade in over the last stretch of the push
+    this.villageSmoke = this.trackDisposable(new VillageSmoke(this.gameWorld.environmentGroup, this.environment));
   }
 
   _clearings() {
@@ -187,7 +198,7 @@ export class Level02 extends IslandLevel {
     return { position: this.landingZone.spawnPoints.gangwayTop, yaw: 0 };
   }
 
-  /** Supply crate between the helicopters. It yields [E] while the player is reviving a squadmate. */
+  /** Supply crate between the helicopters, and the islanders' intel trail. The crate yields [E] while the player is reviving a squadmate. */
   _createProps() {
     this.supplyCrate = new SupplyCrate(this.gameWorld, {
       position: this.landingZone.spawnPoints.supplyCrate,
@@ -196,6 +207,15 @@ export class Level02 extends IslandLevel {
       isSuppressed: () => this._reviveCandidate() !== null
     });
     this.gameWorld.addEntity(this.supplyCrate);
+
+    // The islanders' trail: notes and dead radios left across the island ([E] to read each one)
+    this.intel = new IntelTrail(this.gameWorld, {
+      environment: this.environment,
+      player: this.player,
+      cover: this.cover,
+      radius: this.cfg.intel.radius
+    });
+    this.gameWorld.addEntity(this.intel); // GameWorld adds its group and updates it each phase
 
     // An alien flush grenade's blast eats into the scenery as well as anyone caught in it
     this.projectilePool.onExplosion = (point, radius, damage) => this.destructibleCover.explosionDamage(point, radius, damage);
@@ -207,6 +227,7 @@ export class Level02 extends IslandLevel {
     this._sendCrewAshore();
     this._updateZones();
     this._updateAmbientLife(delta);
+    if (this.villageSmoke) this.villageSmoke.update(delta, this.player); // The intel trail updates as an entity (Phase 5)
 
     // The crew wait on the sand until the player is ashore, then fall in behind them
     if (!this._crewFollowing && this._isPlayerAshore()) {
@@ -251,6 +272,11 @@ export class Level02 extends IslandLevel {
     return this.cfg.zones
       .filter((zone) => zone.inlandFrom !== null)
       .map((zone) => ({ id: zone.id, name: zone.name, z: zone.inlandFrom }));
+  }
+
+  /** The islanders' trail on the map: the unfound spots faint, the found ones pinned. */
+  _mapIntel() {
+    return this.intel ? this.intel.mapMarkers() : [];
   }
 
   /** Retunes the adaptive score to a mission state; a no-op where no music director exists. */
@@ -715,7 +741,9 @@ export class Level02 extends IslandLevel {
     this.ambush = null;
     this._zone = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them
-    super.dispose(); // Also the destructible cover, the landing zone, the wreckage and the beacon (tracked)
+    if (this.intel) this.intel.dispose();
+    this.intel = null;
+    super.dispose(); // Also the destructible cover, the landing zone, the wreckage, the smoke and the beacon (tracked)
     this.beacon = null;
     this.landingZone = null;
     this.wreckage = null;

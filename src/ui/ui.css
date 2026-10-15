@@ -822,10 +822,16 @@
 .ui-map-key-squad { color: #2ec4b6; }
 .ui-map-key-alien { color: #ff5252; }
 .ui-map-key-marker { color: #ffd166; }
+.ui-map-key-intel { color: #9ad06b; }
 
 .ui-map-key-marker::before {
   border-radius: 1px;
   transform: rotate(45deg);
+}
+
+.ui-map-key-intel::before {
+  background: transparent;
+  border: 1px solid currentColor;
 }
 
 /* =========================================================================
