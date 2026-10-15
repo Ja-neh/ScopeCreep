@@ -263,9 +263,9 @@ test('the flak crew swings onto a hostile jet, tracks it and shoots it up', asyn
   const dir = new THREE.Vector3();
   const muzzle = new THREE.Vector3();
   flakBarrelAim(ship.flakTurret, dir, muzzle);
-  const toJet = new THREE.Vector3().subVectors(jet.mesh.position, muzzle).normalize();
-  const errDeg = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(dir.dot(toJet), -1, 1)));
-  assert.ok(errDeg < 5, `the barrels are actually laid on the jet, off by ${errDeg.toFixed(1)} degrees`);
+  const toAim = new THREE.Vector3().subVectors(ship.crewAI._aimPoint, muzzle).normalize();
+  const errDeg = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(dir.dot(toAim), -1, 1)));
+  assert.ok(errDeg < 5, `the barrels are actually tracking the target, off by ${errDeg.toFixed(1)} degrees`);
 
   assert.ok(jet.health.currentHealth < jet.health.maxHealth, 'and flak fire is scoring hits on it');
 
