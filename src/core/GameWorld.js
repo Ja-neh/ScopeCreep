@@ -156,6 +156,7 @@ export class GameWorld {
   async loadLevel(newLevel) {
     if (this.isLevelLoading) return;
     this.isLevelLoading = true;
+    if (this.ui) this.ui.showFade(); // The handover happens behind black; the new stage fades in built
 
     // 1. Tear down previous level
     if (this.currentLevel) {
@@ -178,10 +179,12 @@ export class GameWorld {
           this.ui.showPauseButton(() => this.togglePause());
           const controls = this.currentLevel.controls;
           this.ui.showControlsHelper(controls ? controls.map(({ actions, label }) => ({ keys: this.input.describeActions(actions), label })) : null);
+          this.ui.hideFade(); // Built: the curtain lifts onto the new stage
         }
       }
     } catch (error) {
       console.error(`Failed to initialize level:`, error);
+      if (this.ui) this.ui.hideFade(); // A failed load must not leave a black screen
     } finally {
       this.isLevelLoading = false;
     }

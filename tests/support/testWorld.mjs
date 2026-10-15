@@ -118,6 +118,7 @@ export async function createTestWorld({ seed = 1 } = {}) {
     activeCamera: null,
     restartRequested: false,
     mainMenuRequested: false,
+    loadedLevel: null, // The last level asked for through loadLevel (a handover, e.g. Level 2 -> 3)
 
     addEntity(entity) {
       this.entities.add(entity);
@@ -137,7 +138,10 @@ export async function createTestWorld({ seed = 1 } = {}) {
     setActiveCamera(camera) { this.activeCamera = camera; },
     getActiveCamera() { return this.activeCamera || this.camera; },
     restartCurrentLevel() { this.restartRequested = true; },
-    returnToMainMenu() { this.mainMenuRequested = true; }
+    returnToMainMenu() { this.mainMenuRequested = true; },
+    // The real GameWorld tears the old stage down and initializes the new one; a test that only
+    // cares that a handover was asked for reads loadedLevel back (see the Level 2 ending test).
+    loadLevel(level) { this.currentLevel = level; this.loadedLevel = level; }
   };
   return world;
 }

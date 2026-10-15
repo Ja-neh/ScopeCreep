@@ -43,6 +43,9 @@ export class LandingCinematic extends BaseEntity {
    * @param {(out: THREE.Vector3) => (THREE.Vector3|null)} [options.focus] - What the camera follows
    *   until it turns to the player's view (e.g. the arriving helicopters); null when nothing to follow
    * @param {Function} [options.onFinished] - Called once, when it ends or is skipped
+   * @param {(t: number, elapsed: number) => void} [options.onFrame] - Every frame of the sweep
+   *   (t: 0-1 along the path; elapsed: seconds), for anything choreographed to the camera
+   *   (Level 2's ending walks the player up the village road on it)
    * @param {THREE.Vector3[]} [options.flightPath] - Where the camera flies (world points)
    * @param {THREE.Vector3} [options.defaultFocus] - Looked at when `focus` gives nothing
    * @param {THREE.Vector3} [options.aimPoint] - The aim leans this way...
@@ -55,7 +58,7 @@ export class LandingCinematic extends BaseEntity {
    */
   constructor(gameWorld, {
     player, title, subtitle = '', duration = DURATION_SECONDS, focus = null, onFinished = null,
-    flightPath = FLIGHT_PATH, defaultFocus = DEFAULT_FOCUS, aimPoint = LANDING_POINT,
+    onFrame = null, flightPath = FLIGHT_PATH, defaultFocus = DEFAULT_FOCUS, aimPoint = LANDING_POINT,
     aimTowards = AIM_TOWARDS_LANDING, endOnPlayer = true, easing = 'out', holdSeconds = 0
   }) {
     super('LandingCinematic');
@@ -73,6 +76,7 @@ export class LandingCinematic extends BaseEntity {
     this.duration = duration;
     this.focus = focus;
     this.onFinished = onFinished;
+    this.onFrame = onFrame;
 
     this.elapsed = 0;
     this.hasStarted = false;
@@ -114,6 +118,7 @@ export class LandingCinematic extends BaseEntity {
     this.isPlaying = true;
     this.elapsed = 0;
     this._pose(0);
+    if (this.onFrame) this.onFrame(0, 0);
     gameWorld.setActiveCamera(this.camera);
     if (gameWorld.ui) gameWorld.ui.showCinematic(this.title, this.subtitle, '[Space] Skip');
   }
@@ -145,6 +150,7 @@ export class LandingCinematic extends BaseEntity {
     this.elapsed += delta;
     const t = Math.min(1, Math.max(0, this.elapsed - this.holdSeconds) / (this.duration - this.holdSeconds));
     this._pose(t);
+    if (this.onFrame) this.onFrame(t, this.elapsed);
     if (t >= 1) this.finish();
   }
 

@@ -13,6 +13,7 @@ import { DamageFlash } from './components/DamageFlash.js';
 import { ObjectivePanel } from './components/ObjectivePanel.js';
 import { MissionResult } from './components/MissionResult.js';
 import { CinematicOverlay } from './components/CinematicOverlay.js';
+import { FadeOverlay } from './components/FadeOverlay.js';
 import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
@@ -48,6 +49,7 @@ export class UIManager {
     this.objectivePanel = new ObjectivePanel(this.container);
     this.missionResult = new MissionResult(this.container);
     this.cinematic = new CinematicOverlay(this.container);
+    this.fade = new FadeOverlay(this.container);
     this.fpsDisplay = new FPSDisplay(this.container);
     this.controlsHelper = new ControlsHelper(this.container);
     this.controlsHelper.hide(); // Hidden until level loads
@@ -336,6 +338,25 @@ export class UIManager {
       this.cinematic.hide();
       this.container.classList.remove('ui-cinematic-active');
     }
+  }
+
+  // =========================================================================
+  // Screen Fade
+  // =========================================================================
+
+  /**
+   * Fades the screen to black (level handovers: Level 2's walk through the gate, and every
+   * GameWorld.loadLevel swap, which stays covered until the new stage is built).
+   */
+  showFade() {
+    if (this.fade) this.fade.cover();
+  }
+
+  /**
+   * Lifts the black curtain again
+   */
+  hideFade() {
+    if (this.fade) this.fade.reveal();
   }
 
   // =========================================================================
@@ -643,6 +664,7 @@ export class UIManager {
     this.hideObjective();
     this.hideMissionResult();
     this.hideCinematic();
+    this.hideFade();
     if (this.damageFlash) this.damageFlash.clear();
     this.hidePauseMenu();
     this.hidePauseButton();
@@ -726,6 +748,10 @@ export class UIManager {
     if (this.cinematic) {
       this.cinematic.dispose();
       this.cinematic = null;
+    }
+    if (this.fade) {
+      this.fade.dispose();
+      this.fade = null;
     }
     if (this.missionResult) {
       this.missionResult.dispose();

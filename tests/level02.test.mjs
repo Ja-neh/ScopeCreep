@@ -1,11 +1,13 @@
 // Level 2 end to end: landing, three waves, the hunt, the final ambush, the gate fight (its
-// snipers, garrison and walker) and victory; defeat; the sandbox level; and clean teardown.
+// snipers, garrison and walker), the ending walk through the gate into the village and the
+// handover to Level 3; defeat; the sandbox level; and clean teardown.
 // Aliens are killed by the test so the flow runs quickly.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestWorld, stepWorld, bodyCount } from './support/testWorld.mjs';
 import { Level02 } from '../src/levels/Level02.js';
 import { Level02TestLevel } from '../src/levels/Level02TestLevel.js';
+import { Level03 } from '../src/levels/Level03.js';
 import { InputManager } from '../src/core/InputManager.js';
 import config from '../src/config.json';
 
@@ -109,18 +111,31 @@ test('Level 2: ashore -> three waves -> the hunt -> the gate ambush -> the gate 
   assert.equal(world.ui.callsTo('showObjective').at(-1).args[0], 'THROUGH THE GATE');
   assert.ok(world.ui.callsTo('showToast').some((call) => /gate is clear/.test(call.args[0])));
 
-  // Walk through the opening: the beach is won
+  // Walk through the opening: the ending takes over — the march up the village road (the sweep
+  // runs itself; see _beginGateEntry)
   level.player.teleport(goal.x, level.environment.heightAt(goal.x, goal.z) + 0.1, goal.z);
   stepWorld(world, 0.5, { level, onFrame: () => level.player.health.reset() });
-  assert.equal(level.state, 'won');
+  assert.equal(level.state, 'ending', 'the walk through the gate starts the ending');
   assert.equal(world.music.callsTo('setState').at(-1).args[0], 'victory', 'the score resolves when the gate is won');
+  assert.equal(level.cinematic.isPlaying, true, 'the ending sweep is up');
+  assert.equal(world.ui.callsTo('showCinematic').at(-1).args[0], 'THROUGH THE GATE');
+  assert.ok(world.activeCamera === level.cinematic.camera, 'the ending camera owns the view');
+  assert.equal(level.player.isDevSuspended, true, 'the player is marched, not driven');
 
-  const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
-  assert.equal(result.outcome, 'victory');
-  assert.deepEqual(result.actions.map((action) => action.label), ['Play again', 'Main menu']);
-  result.actions[1].onClick();
-  assert.equal(world.mainMenuRequested, true);
-  assert.equal(level.player.isDevSuspended, true, 'player frozen behind the result screen');
+  // The march: scripted up the road, through the gate line, with the squad along
+  const walkFrom = level.player.position.z;
+  stepWorld(world, 4, { level });
+  assert.ok(level.player.position.z < walkFrom - 3, 'the squad walks in through the gate');
+
+  // Skipped or run out, the sweep hands over the moment it is done: the black, then Level 3
+  world.input.press('skipCutscene');
+  stepWorld(world, 0.2, { level });
+  assert.equal(level.cinematic.isFinished, true);
+  assert.equal(level.cinematic.wasSkipped, true);
+  assert.ok(world.ui.callsTo('showFade').length >= 1, 'the screen fades to black for the handover');
+  stepWorld(world, 2.5, { level });
+  assert.equal(level._chained, true, 'asked for only once');
+  assert.ok(world.loadedLevel instanceof Level03, 'the beach hands over to the village at night');
 
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
   assert.equal(world.environmentGroup.children.length, 0);

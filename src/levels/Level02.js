@@ -9,6 +9,7 @@ import { IntelTrail } from './level02/IntelTrail.js';
 import { VillageSmoke } from './level02/VillageSmoke.js';
 import { LandingCinematic } from './level02/LandingCinematic.js';
 import { VillageGate } from './level02/VillageGate.js';
+import { Level03 } from './Level03.js';
 import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
 import config from '../config.json';
@@ -42,6 +43,18 @@ const GATE_AMBUSH_POSTS = [
   { name: 'the east rocks', spawn: { x: 38, z: -226 } },
   { name: 'the east ridge', spawn: { x: 20, z: -240 } }
 ];
+// The ending: the squad steps through the gate and the level hands over to Level 3. The camera
+// sweeps over the arch while the player is marched up the road centre (the squadmates follow on
+// their own), then the screen fades to black and Level 3 is loaded underneath it.
+const GATE_ENTRY = {
+  depth: 10,           // Meters past the gate line the march ends at (the trigger ring stops short)
+  walkSpeed: 2.0,      // m/s — a march, not a run
+  holdSeconds: 1.4,    // Beat on the entry before the camera moves and the march begins
+  walkDelay: 0.3,      // ...and a moment more before the first step
+  settleSeconds: 2.2,  // Beat on the village after the march ends, before the fade
+  fadeSeconds: 1.6,    // Seconds of black between starting the fade and loading the village
+  lookShare: [0.35, 0.85] // Share of the march the eye drifts from the squad to the village
+};
 // The holding force: once the waves break, the survivors have gone to ground across the island,
 // one garrison per inland zone (see `zones` in config): the woods on either side of the path,
 // the rock shelf, and the outskirts short of the village. They wait at their posts (they never
@@ -159,7 +172,7 @@ export class Level02 extends IslandLevel {
     this.intel = null;
     this.villageSmoke = null;
 
-    this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> gate -> clear -> won | lost
+    this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> gate -> clear -> ending (hands over to Level 3) | lost
     this._holdoutsTotal = 0;
     this._gateUnits = [];     // Everything the gate sends at the squad (snipers, garrison, walker)
     this._gateGarrison = [];  // The gate's rank and file (the walker has its own bar)
@@ -176,6 +189,13 @@ export class Level02 extends IslandLevel {
     this._objectivePoint = new THREE.Vector3();
     this._shipCampTimer = -1; // Seconds the player has stayed aboard during the waves (-1: reset)
     this._shipCampNotices = 0;
+    this._gateEntryWalk = null;   // The scripted march up the village road: { curve, startTime, duration, end }
+    this._gateEntryDone = false;  // The ending sweep is over: the screen is fading to black
+    this._gateEntryFade = -1;     // Seconds of black left before Level 3 is loaded (-1: not yet)
+    this._chained = false;        // Level 3 has been asked for (once; loadLevel is fire-and-forget)
+    this._villageLook = new THREE.Vector3(); // What the ending camera settles on (the village centre)
+    this._walkPoint = new THREE.Vector3();   // Scratch for the scripted march
+    this._walkTangent = new THREE.Vector3();
   }
 
   // ---------------------------------------------------------------------------
@@ -429,7 +449,21 @@ export class Level02 extends IslandLevel {
       case 'clear': {
         const distance = Math.hypot(this.player.position.x - this._objectivePoint.x, this.player.position.z - this._objectivePoint.z);
         this._showObjective('THROUGH THE GATE', `Walk into the village — ${Math.round(distance)} m`);
-        if (distance <= this.cfg.objectiveRadius) this._finish(true);
+        if (distance <= this.cfg.objectiveRadius) this._beginGateEntry();
+        break;
+      }
+
+      case 'ending': {
+        // The ending sweep runs itself (see _beginGateEntry); when it is done the black comes
+        // down and the village is loaded behind it (loadLevel keeps the screen covered until
+        // Level 3 is built, then fades back out onto it)
+        if (this._gateEntryFade >= 0 && !this._chained) {
+          this._gateEntryFade -= delta;
+          if (this._gateEntryFade <= 0) {
+            this._chained = true;
+            this.gameWorld.loadLevel(this._nextLevel());
+          }
+        }
         break;
       }
     }
@@ -621,6 +655,153 @@ export class Level02 extends IslandLevel {
     let count = 0;
     for (const unit of this._gateGarrison) if (!unit.isDead) count++;
     return count;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The ending: through the gate, into the village (Level 3)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The gate is clear and the squad steps through: the camera sweeps over the arch while the
+   * player is marched up the village road (the squadmates follow on their own), then the screen
+   * fades to black and Level 3 is loaded behind it — its own opening sweep plays out of the
+   * black (see _nextLevel).
+   */
+  _beginGateEntry() {
+    this.state = 'ending';
+    this._setMusic('victory'); // The score lands the beach won, under the walk into the village
+
+    const ui = this.gameWorld.ui;
+    if (ui) {
+      ui.hideObjective();
+      ui.hideStatusIndicator();
+      ui.hideMap();
+    }
+
+    const player = this.player;
+    const env = this.environment;
+    const centre = this.gate.centre;
+    const start = player.position;
+
+    // What the ending camera settles on: the village over the plateau, where the smoke rises
+    const village = env.village;
+    this._villageLook.set(village.x, village.height + 12, village.z + 20);
+
+    // The scripted march: from wherever the squad stepped into the ring, onto the road centre
+    // and up past the gate line onto the village road
+    this._gateEntryWalk = this._buildGateEntryWalk(start);
+    const walk = this._gateEntryWalk;
+    const walkSeconds = walk ? walk.duration : 0;
+    const hold = GATE_ENTRY.holdSeconds + GATE_ENTRY.walkDelay;
+    if (walk) walk.startTime = hold;
+
+    // The sweep must clear the gate's roofline: measured off the set piece itself
+    const bounds = new THREE.Box3().setFromObject(this.gate.mesh);
+    const roof = Number.isFinite(bounds.max.y) ? bounds.max.y : centre.y + 12;
+    const endZ = walk ? walk.end.z : start.z - GATE_ENTRY.depth;
+    const aheadZ = endZ - 18; // Down the road, past where the march ends
+    const roadX = env.pathCentreX(aheadZ);
+
+    // When the eye leaves the squad and runs up the road ahead of them
+    const lookFrom = hold + Math.max(1.5, walkSeconds * GATE_ENTRY.lookShare[0]);
+    const lookTo = hold + Math.max(3.0, walkSeconds * GATE_ENTRY.lookShare[1]);
+
+    this.cinematic = new LandingCinematic(this.gameWorld, {
+      player,
+      title: 'THROUGH THE GATE',
+      subtitle: "Into the village — the Warden's ground",
+      duration: hold + walkSeconds + GATE_ENTRY.settleSeconds,
+      holdSeconds: GATE_ENTRY.holdSeconds,
+      easing: 'inOut',
+      endOnPlayer: false, // The view stays on the village; the fade covers the swap from here
+      flightPath: [
+        // Behind the squad at the gate line, looking in through the opening
+        new THREE.Vector3(start.x - 8, env.heightAt(start.x - 8, start.z + 12) + 8, start.z + 12),
+        // Over the arch, well clear of its bladed roofline, as they pass under it
+        new THREE.Vector3(centre.x - 3, roof + 6, centre.z),
+        // Down onto the road ahead, running on the village
+        new THREE.Vector3(roadX, env.heightAt(roadX, aheadZ) + 8, aheadZ)
+      ],
+      // Watch the squad step through, then hand the eye to the village up the road
+      focus: (out) => {
+        const elapsed = this.cinematic ? this.cinematic.elapsed : 0;
+        return out.copy(player.position).lerp(this._villageLook, THREE.MathUtils.smoothstep(elapsed, lookFrom, lookTo));
+      },
+      aimPoint: this._villageLook,
+      aimTowards: 0.25,
+      onFrame: (t, elapsed) => this._walkIntoVillage(elapsed),
+      onFinished: () => this._onGateEntryFinished()
+    });
+    this.gameWorld.addEntity(this.cinematic);
+  }
+
+  /**
+   * The march up the village road: from wherever the squad stepped into the ring, onto the road
+   * centre (pathCentreX) and past the gate line to the yard beyond it. Null when they are
+   * already there (nothing left to march).
+   * @param {THREE.Vector3} start - The player's feet
+   */
+  _buildGateEntryWalk(start) {
+    const endZ = Math.min(start.z, this.gate.through.z - GATE_ENTRY.depth);
+    const distance = start.z - endZ;
+    if (distance < 1) return null;
+
+    const points = [start.clone()];
+    const steps = Math.ceil(distance / 2.5);
+    for (let i = 1; i <= steps; i++) {
+      const z = start.z - (distance * i) / steps;
+      const x = this.environment.pathCentreX(z);
+      points.push(new THREE.Vector3(x, this.environment.heightAt(x, z) + 0.1, z));
+    }
+
+    // Arc-length parametrised, so the pace stays even along the gentle curve onto the road
+    const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal');
+    return {
+      curve,
+      startTime: 0, // Seconds into the sweep the first step lands (set by _beginGateEntry)
+      duration: distance / GATE_ENTRY.walkSpeed,
+      end: points[points.length - 1].clone()
+    };
+  }
+
+  /**
+   * The scripted march, driven from the ending sweep's clock: the player is moved up the road at
+   * a walking pace — they glide exactly as they do in play (the avatar has no stride) — and the
+   * squadmates follow on their own, so the whole squad walks in together.
+   * @param {number} elapsed - Seconds into the sweep
+   */
+  _walkIntoVillage(elapsed) {
+    const walk = this._gateEntryWalk;
+    if (!walk || elapsed < walk.startTime) return;
+
+    const u = Math.min(1, (elapsed - walk.startTime) / walk.duration);
+    walk.curve.getPointAt(u, this._walkPoint);
+    this.player.teleport(this._walkPoint.x, this._walkPoint.y, this._walkPoint.z);
+
+    // Face the way the march runs (yaw 0 looks down -Z, inland)
+    walk.curve.getTangentAt(u, this._walkTangent);
+    const yaw = Math.atan2(-this._walkTangent.x, -this._walkTangent.z);
+    this.player.yaw = yaw;
+    this.player.mesh.rotation.y = yaw;
+  }
+
+  /**
+   * The ending sweep is over (or skipped): fade to black. The countdown in the 'ending' state
+   * hands over to Level 3 once the screen is covered.
+   */
+  _onGateEntryFinished() {
+    if (this._gateEntryDone) return;
+    this._gateEntryDone = true;
+    if (this.gameWorld.ui) this.gameWorld.ui.showFade();
+    this._gateEntryFade = GATE_ENTRY.fadeSeconds;
+  }
+
+  /**
+   * The stage the beach hands over to: the village at night. Level 3 opens out of the black
+   * with its own sweep (the hall, the village, and down to the gate where its squad stands).
+   */
+  _nextLevel() {
+    return new Level03(this.gameWorld);
   }
 
   // ---------------------------------------------------------------------------
