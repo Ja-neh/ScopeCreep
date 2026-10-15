@@ -11,6 +11,7 @@ Run it before every commit. If a test fails, either your change broke something 
 | `terrain.test.mjs` | Terrain mesh and heightfield collider describe the same ground |
 | `island.test.mjs` | Island layout: landing beach, sea depth under the ship, village plateau at the far end, size; the Level 3 layout (6x the plateau, same beach) |
 | `landingZone.test.mjs` | Walking off the ship to the beach, no hopping downhill, parked helicopters |
+| `wreckage.test.mjs` | Level 2's beach wreckage: two burned boats with fallen soldiers around them, crates as chest-high cover, everything off the landings and the walk inland, clean teardown |
 | `cover.test.mjs` | Tree, rock and bush placement rules, rock cover, triangle budget, scenery tiles (low detail far away, nothing in the fog), hiding in bushes, AI cover spots |
 | `weapons.test.mjs` | Machine gun, reload, recoil climbing and settling back, knife and backstab, quick knife, aim zoom, cleanup |
 | `aliens.test.mjs` | Trooper sight, damage, concealment, hearing, call-outs, no friendly fire, death |

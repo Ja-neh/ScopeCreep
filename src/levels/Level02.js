@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { IslandLevel, CREW_NAMES } from './IslandLevel.js';
 import { LandingZone } from './level02/LandingZone.js';
+import { BeachWreckage } from './level02/BeachWreckage.js';
 import { ObjectiveBeacon } from './level02/ObjectiveBeacon.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
 import { LandingCinematic } from './level02/LandingCinematic.js';
@@ -73,6 +74,7 @@ export class Level02 extends IslandLevel {
     this.cfg = config.levels.level02;
 
     this.landingZone = null;
+    this.wreckage = null;
     this.waves = null;
     this.ambush = null;
     this.ambushTriggered = false;
@@ -91,10 +93,14 @@ export class Level02 extends IslandLevel {
   // IslandLevel hooks
   // ---------------------------------------------------------------------------
 
-  /** Ship, gangway and parked helicopters. */
+  /** Ship, gangway, parked helicopters, and the first attempt's wreckage on the sand. */
   async _buildWorld() {
     this.landingZone = this.trackDisposable(new LandingZone(this.gameWorld, this.environment));
     await this.landingZone.build();
+    this.wreckage = this.trackDisposable(new BeachWreckage(this.gameWorld, this.environment, {
+      clearings: [...this.landingZone.clearings, ...this._extraClearings()]
+    }));
+    this.wreckage.build();
   }
 
   _clearings() {
@@ -494,8 +500,9 @@ export class Level02 extends IslandLevel {
     this.waves = null;
     this.ambush = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them
-    super.dispose(); // Also the landing zone and the beacon (tracked)
+    super.dispose(); // Also the landing zone, the wreckage and the beacon (tracked)
     this.beacon = null;
     this.landingZone = null;
+    this.wreckage = null;
   }
 }
