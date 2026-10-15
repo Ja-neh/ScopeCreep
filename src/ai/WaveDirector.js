@@ -6,15 +6,20 @@
  *
  * A wave is { trooper: 6, brute: 1, lanes: ['centre', 'west'] } (any unit type names work):
  * units are dealt round-robin across the lanes, heavier units (listed later) arriving last.
- * With `maxAlive`, spawning pauses while that many are already on the field.
+ * With `maxAlive`, spawning pauses while that many are already on the field. A unit the level
+ * cannot place (spawn returns null: no clear spot) is retried at the next interval, and skipped
+ * after SPAWN_RETRY_LIMIT consecutive failures so a wave can never stall.
  */
+const SPAWN_RETRY_LIMIT = 12; // Consecutive failed spawns before the unit is skipped
+
 export class WaveDirector {
   /**
    * @param {Object} options
    * @param {Array<Object>} options.waves - Wave definitions (e.g. config.levels.level02.waves)
    * @param {number} options.betweenWavesSeconds - Pause after a wave is cleared
    * @param {number} options.spawnIntervalSeconds - Time between individual spawns
-   * @param {(type: string, lane: string) => Object|null} options.spawn - Creates one unit
+   * @param {(type: string, lane: string) => Object|null} options.spawn - Creates one unit, or null
+   *   if no spot was found (it is retried, then skipped so the wave can never stall)
    * @param {() => number} options.aliveCount - Units of the waves still alive
    * @param {string[]} [options.unitTypes] - Unit keys in arrival order
    * @param {number} [options.maxAlive] - Most units alive at once; the rest wait their turn
@@ -32,6 +37,7 @@ export class WaveDirector {
     this.waveIndex = -1;
     this.queue = [];
     this._timer = 0;
+    this._spawnRetries = 0;
   }
 
   /** 1-based number of the current wave (0 before the first). */
@@ -52,6 +58,11 @@ export class WaveDirector {
     return this.state === 'done';
   }
 
+  /** Seconds until the next wave starts (0 while a wave is up or the run is over). */
+  get nextWaveInSeconds() {
+    return this.state === 'between' ? Math.max(0, this._timer) : 0;
+  }
+
   start() {
     if (this.state === 'idle') this._beginWave(0);
   }
@@ -65,9 +76,24 @@ export class WaveDirector {
             this._timer = 0; // Field is full: the next one comes as soon as one falls
             break;
           }
-          const unit = this.queue.shift();
-          this.spawn(unit.type, unit.lane);
-          this._timer += this.spawnIntervalSeconds;
+          const unit = this.queue[0];
+          if (this.spawn(unit.type, unit.lane)) {
+            this.queue.shift();
+            this._spawnRetries = 0;
+            this._timer += this.spawnIntervalSeconds;
+            continue;
+          }
+          // The level found no spot for it: try again next interval, but never stall the wave
+          this._spawnRetries++;
+          if (this._spawnRetries >= SPAWN_RETRY_LIMIT) {
+            console.warn(`WaveDirector: no spot for ${unit.type} in lane '${unit.lane}' after ${SPAWN_RETRY_LIMIT} tries; skipping it`);
+            this.queue.shift();
+            this._spawnRetries = 0;
+            this._timer = 0;
+            continue;
+          }
+          this._timer = this.spawnIntervalSeconds;
+          break;
         }
         if (this.queue.length === 0) this.state = 'fighting';
         break;
@@ -95,6 +121,7 @@ export class WaveDirector {
     this.queue = WaveDirector.expand(this.waves[index], this.unitTypes);
     this.state = 'spawning';
     this._timer = 0;
+    this._spawnRetries = 0;
   }
 
   /**

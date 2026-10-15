@@ -28,6 +28,7 @@ const ALIEN_RESPAWN_SECONDS = 5; // After the last one dies, a fresh group arriv
  * aliens) without the waves, plus things for trying features out:
  * - Training dummies on the beach (one faces away for backstabs)
  * - Three troopers and a brute behind the dummies that come back after they all die
+ * - A respawned group marches on the gangway while the player stays aboard (ship-camping pressure)
  * - The AI squad waiting on the sand (they follow once you're ashore), pilots by the parked
  *   helicopters
  * - The shared SandboxTools: [F1] aerial camera, [F3] spawn an alien, [F4] squad on/off, and
@@ -104,9 +105,17 @@ export class Level02TestLevel extends Level02 {
     this.tools.setCameraMode(mode);
   }
 
-  _spawnAliens() {
+  /**
+   * The patrol group at its posts — or, with `shipPressure` while the player is still aboard,
+   * the ship-camping pressure preview: the fresh group makes for the bottom of the gangway.
+   * @param {Object} [options]
+   * @param {boolean} [options.shipPressure=false]
+   */
+  _spawnAliens({ shipPressure = false } = {}) {
+    const camped = shipPressure && !this._isPlayerAshore();
     for (const spot of ALIEN_SPOTS) {
-      this.createAlien(spot.type, spot.x, spot.z);
+      const alien = this.createAlien(spot.type, spot.x, spot.z);
+      if (camped) alien.assault(this._shipAssaultPoint());
     }
   }
 
@@ -123,7 +132,7 @@ export class Level02TestLevel extends Level02 {
       this._alienRespawnTimer -= delta;
       if (this._alienRespawnTimer <= 0) {
         this._alienRespawnTimer = -1;
-        this._spawnAliens();
+        this._spawnAliens({ shipPressure: true });
       }
     }
   }

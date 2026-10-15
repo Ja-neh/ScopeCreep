@@ -194,8 +194,9 @@
       "movingSpreadPenalty": 0.01,
       "adsSpreadMultiplier": 0.35,
       "crouchSpreadMultiplier": 0.7,
-      "recoilPitch": 0,
-      "recoilYaw": 0
+      "recoilPitch": 0.0035,
+      "recoilYaw": 0.0028,
+      "recoilRecoveryRate": 1.8
     },
     "knife": {
       "damage": 75,
@@ -285,6 +286,11 @@
     "radius": 2.5,
     "searchRadius": 150
   },
+  "supplyCrate": {
+    "radius": 2.5,
+    "holdSeconds": 2.5,
+    "drainPerSecond": 1
+  },
   "allies": {
     "crewSize": 5,
     "squadMate": {
@@ -316,13 +322,22 @@
       "betweenWavesSeconds": 8,
       "spawnIntervalSeconds": 0.8,
       "objectiveRadius": 10,
-      "supplyCrateRadius": 2.5,
       "maxAliveAliens": 18,
+      "shipPressure": {
+        "warnAfterSeconds": 10,
+        "callOutIntervalSeconds": 40
+      },
       "waves": [
         { "trooper": 20, "brute": 0, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
         { "trooper": 22, "brute": 2, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
         { "trooper": 24, "brute": 4, "lanes": ["centre", "west", "east", "farWest", "farEast"] }
-      ]
+      ],
+      "finalAmbush": {
+        "triggerDistance": 45,
+        "trooper": 6,
+        "brute": 1,
+        "spawnIntervalSeconds": 0.4
+      }
     },
     "level03": {
       "generator": {

@@ -3,6 +3,7 @@ import { InputManager } from './InputManager.js';
 import { PhysicsWorld } from './PhysicsWorld.js';
 import { FPSTracker } from './FPSTracker.js';
 import { RenderQuality } from './RenderQuality.js';
+import { AudioManager } from './AudioManager.js';
 import { UIManager } from '../ui/UIManager.js';
 
 /**
@@ -56,6 +57,9 @@ export class GameWorld {
       powerPreference: 'high-performance'
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Graphics settings (resolution, shadows): the player's choice, with a recommendation for this computer
@@ -94,6 +98,9 @@ export class GameWorld {
 
     // 10. On-Screen Performance & FPS Monitor (Top-Left HUD)
     this.fpsTracker = new FPSTracker(this);
+
+    // 11. Audio Subsystem (procedural one-shot sound engine, event-driven: no phase hook)
+    this.audio = new AudioManager(this);
 
     // Without a GPU everything is drawn on the CPU: say so, it explains a slow game
     if (gpu.software) {
@@ -506,6 +513,11 @@ export class GameWorld {
     this.stop();
     window.removeEventListener('resize', this._onResize);
     this.input.dispose();
+
+    if (this.audio) {
+      this.audio.dispose();
+      this.audio = null;
+    }
 
     this.clearEntities();
     this.clearEnvironment();

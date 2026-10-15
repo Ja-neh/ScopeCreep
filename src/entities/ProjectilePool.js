@@ -294,6 +294,8 @@ export class ProjectilePool extends BaseEntity {
     });
 
     this.activeProjectiles.push(p);
+
+    if (this.gameWorld && this.gameWorld.audio) this.gameWorld.audio.play('plasma', origin);
     return p;
   }
 
@@ -301,6 +303,11 @@ export class ProjectilePool extends BaseEntity {
    * Internal hit resolver: applies damage to target entity if it possesses a HealthComponent.
    */
   _onHit(hit) {
+    // Artillery shells announce their detonation wherever they land (terrain, actors or water)
+    if (hit.projectile && hit.projectile.type === 'ARTILLERY' && this.gameWorld && this.gameWorld.audio) {
+      this.gameWorld.audio.play('explosion', hit.point);
+    }
+
     // Apply damage to entity registered on the collider or target object
     if (hit.collider) {
       let targetEntity = hit.collider.parent?.userData?.entity || hit.collider.userData?.entity;

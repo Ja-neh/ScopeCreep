@@ -197,7 +197,7 @@ test('going down during the opening: a crewmate revives the player, who stays st
   assert.equal(teardown(world, level), 0);
 });
 
-test('the supply crate refills the machine gun and heals the player when they press [E] beside it', async () => {
+test('the supply crate patches the player up while they hold [E] beside it', async () => {
   const { world, level } = await loadLevel();
   world.input.press('skipCutscene');
   stepWorld(world, 0.2, { level });
@@ -212,10 +212,31 @@ test('the supply crate refills the machine gun and heals the player when they pr
   level.player.teleport(spot.x + 1.6, level.environment.heightAt(spot.x + 1.6, spot.z) + 0.05, spot.z);
   stepWorld(world, 0.3, { level });
   assert.equal(crate.isPlayerNear, true);
-  assert.equal(world.ui.callsTo('showPrompt').at(-1).args[1], 'RESUPPLY (AMMO + HEALTH)');
+  assert.equal(world.ui.callsTo('showPrompt').at(-1).args[1], 'HOLD TO PATCH UP (AMMO + HEALTH)');
 
+  // A tap does nothing: patching up takes a held [E]
   world.input.press('specialAction');
   stepWorld(world, 0.1, { level });
+  assert.equal(rifle.reserve, 10, 'a press alone resupplies nothing');
+  assert.ok(level.player.health.currentHealth < level.player.health.maxHealth);
+  assert.ok(!world.ui.callsTo('showToast').some((call) => /^Resupplied/.test(call.args[0])));
+
+  // Holding [E] channels the patch-up...
+  world.input.hold('specialAction');
+  stepWorld(world, 1.2, { level });
+  assert.ok(Math.abs(crate.progress - 1.2) < 0.05, `the channel built to ${crate.progress.toFixed(2)}s`);
+  assert.match(world.ui.callsTo('showPrompt').at(-1).args[1], /^PATCHING UP \d0%$/);
+
+  // ...and letting go drains it
+  world.input.release('specialAction');
+  stepWorld(world, 0.4, { level });
+  assert.ok(crate.progress < 1.2, 'the channel drained while released');
+  assert.equal(world.ui.callsTo('showPrompt').at(-1).args[1], 'HOLD TO PATCH UP (AMMO + HEALTH)');
+
+  // A full hold tops the rifle up and heals the player
+  world.input.hold('specialAction');
+  stepWorld(world, config.supplyCrate.holdSeconds + 0.3, { level });
+  world.input.release('specialAction');
   assert.equal(rifle.reserve, config.weapons.machineGun.reserveAmmo);
   assert.equal(level.player.health.currentHealth, level.player.health.maxHealth, 'patched up');
   assert.ok(world.ui.callsTo('showToast').some((call) => /^Resupplied/.test(call.args[0])));

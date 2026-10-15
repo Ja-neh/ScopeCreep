@@ -115,6 +115,7 @@ The engine infrastructure is stage-agnostic and located in `src/core/`:
   - **Recommendation:** at first it comes from the graphics card. A software renderer (no GPU in use, e.g. SwiftShader or the Microsoft Basic Render Driver) gets 40% with no shadows; a GPU gets 100% with shadows. After that it follows the frame rate measured during gameplay: lighter settings below 30 fps, one step sharper at 50 fps or more. The menu shows the reason, naming the card and the measured fps.
   - **First run:** the recommended settings are used. With a software renderer, GameWorld also creates the context without antialiasing and shows a warning toast.
   - **FPS display:** shows "N% res" while rendering below full resolution.
+- **`AudioManager`:** The game's sound. Effects are synthesized procedurally with the Web Audio API (oscillators plus one shared noise buffer — no audio files), played as short one-shot voices through a master gain whose volume and mute state persist in `localStorage`. The `AudioContext` is created lazily on the first pointer or key press (browser autoplay policy); where no `AudioContext` exists (the Node test runner) the manager is a silent no-op. Sounds can be world-positioned — distance falls off from the active camera (12 m reference, silent beyond 140 m) and pans along the camera's right vector — and busy scenes are kept cheap with a 24-voice cap, per-sound repeat throttles, and a tighter floor for positional plays. The player's own gun is never throttled. It is event-driven (call `gameWorld.audio.play(name, position?)` where things happen), so it hooks into no lifecycle phase.
 
 ---
 
@@ -221,21 +222,21 @@ The edge server runs headless without DOM, WebGL, GPU, or Three.js. If and when 
 
 Level 2 is fought on foot. The squad lands from the anchored warship onto the south beach of the island and holds it against three waves of aliens coming down from the village, then pushes inland to the jungle path. All of its code is new and lives in its own files; shared engine files only gained small, opt-in additions.
 
-**Flow (`Level02`):** opening (10 s camera sweep) -> `landing` (until the player is ashore, or `firstWaveTriggerSeconds`) -> `waves` -> `objective` (reach the beacon) -> `won`. The result screen offers Retry or Play again, and Main menu. `Level02TestLevel` extends it as the sandbox: training dummies, a respawning alien group, player respawn instead of failure, and dev keys.
+**Flow (`Level02`):** opening (10 s camera sweep) -> `landing` (until the player is ashore, or `firstWaveTriggerSeconds`) -> `waves` -> `objective` (push inland to the beacon; a final ambush waits in the trees and springs on the way in — breaking it resumes the push) -> `won`. While the player lingers aboard during the waves, ship-camping pressure sends the wave aliens to mass at the gangway instead of the beach lanes, with call-outs and objective nudges to get ashore (`levels.level02.shipPressure`). The result screen offers Retry or Play again, and Main menu. `Level02TestLevel` extends it as the sandbox: training dummies, a respawning alien group (respawns preview the ship-camping pressure while the player is aboard), player respawn instead of failure, and dev keys.
 
 **Downed, revive and healing:**
 - At 0 health the player (or a squadmate) is downed, not killed. Aliens ignore the downed, because `Perception` skips anyone whose health `isDead`.
 - `HumanSquad` sends the nearest squadmate who is on their feet. It runs over and holds still beside them for `revive.holdSeconds`, then revives them with `revive.healthFraction` of their health.
 - The player revives a downed squadmate by holding [E] (`specialAction`) beside them. Letting go starts over.
 - Anyone not revived within `revive.bleedOutSeconds` is lost. For the player, that, or going down with nobody left standing, fails the mission (the sandbox respawns instead).
-- The supply crate refills ammo and health, and a hint points to it when health falls below `player.vitals.lowHealthFraction`.
+- The supply crate patches the player up: holding [E] channels it for `supplyCrate.holdSeconds` (the channel drains when released), topping up ammo and health; ammo alone is a quick press. A hint points to it when health falls below `player.vitals.lowHealthFraction`.
 - Shared hooks: `HealthComponent.revive(amount)` and `GroundCombatant.revive(health)` / `onRevived()`.
 
 **World (`src/levels/level02/`)**
 - `BeachEnvironment`: the island. Procedural terrain mesh plus a matching Rapier heightfield (the grid is shifted 0.173 m off round coordinates, because a vertical ray through an exact grid corner can slip between heightfield triangles), a calm sea, a sunset or night sky and clouds, and fog. It has two layouts: `'beach'` for Level 2 and `'village'` for Level 3, which has a bigger north end. Public helpers: `heightAt`, `slopeAt`, `pathCentreX`, `pathDistance`, `sunDirection`, `village`, `isInVillage` (where Level 3's houses go) and `scatterBounds`.
 - `LandingZone`: the battleship anchored offshore (`AnchoredShip`, a static copy of Level 1's ship), the boarding ramp and gangway (ramps, not steps; solid handrails), the two helicopter bays, and spawn points (`gangwayTop`, `gangwayFoot`, `supplyCrate`). `flyInHelicopters()` sends the helicopters back out to sea and lands them (`HelicopterArrival` flight path plus `RotorWash` sand and spray); their cover colliders only switch on at touchdown.
 - `BeachCover`: instanced trees, rocks and bushes with convex-hull rock colliders and trunk cylinders. The scenery is split into 120 m map tiles (`THREE.LOD` each). Tiles off screen are culled, tiles beyond 170 m use low-detail models, and tiles beyond 720 m (lost in the fog) are not drawn. AI helpers: `findCover(from, threat, ...)` (the edge of a tall rock, so a shooter in cover still has a line of fire), `isInBush`, `updateConcealment(actor)`, `isClearOfSolids`.
-- `ObjectiveBeacon`, `SupplyCrate` (press [E] to refill machine-gun reserve ammo and health), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
+- `ObjectiveBeacon`, `SupplyCrate` (hold [E] to channel a patch-up — full ammo and health; ammo alone is a quick press), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
 
 **Combatants (`src/entities/`)**
 - `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model.
@@ -247,7 +248,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 - `StateMachine` (states are `{ enter, update, exit }`; `update` returns the next state's name) and `Perception` (sight range and field of view with a line-of-sight ray, a shorter range against concealed targets, hearing, last known position).
 - `AlienSquad`: registers aliens, gives them targets and cover, passes call-outs and gunshot noise, counts kills and clears corpses.
 - `HumanSquad`: the leader (the player) plus `SquadMate`s. It provides formation places that turn with the leader's travel direction, the enemy list, shared tracers, and gunshot reporting. It also runs downed and revive: who is down and for how long (`isDowned`, `bleedOutLeft`), sending revivers, `reviveMember`, and bleed-out. Its `members` array is passed as `AlienSquad.targets`, so the aliens hunt the whole squad.
-- `WaveDirector`: spawns each wave's units round-robin across its lanes, at most `maxAlive` at a time, waits for the wave to be cleared, then pauses before the next.
+- `WaveDirector`: spawns each wave's units round-robin across its lanes, at most `maxAlive` at a time, waits for the wave to be cleared, then pauses before the next. Level 2 runs a second, one-wave director for its final ambush; its `spawn` callback points each alien at the beacon instead of the beach.
 
 **Weapons (`src/weapons/`):** `WeaponController` (the player's machine gun and knife, switching, aiming down sights, recoil and HUD), `HitscanWeapon` (no friendly fire: a shot stops on a teammate but does not hurt them), `MeleeWeapon` (backstab bonus), `WeaponEffects` (pooled tracers, impacts, muzzle flash) and `WeaponModels`.
 
@@ -255,7 +256,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 **UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class), `GraphicsSettings` (the Graphics section of the Options menu) and, for Level 3, `BossHealthBar` (a boss's name and health under the objective, blue while shielded) and `Credits` (the end credits rolling up the screen; the HUD hides through `ui-credits-active`). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
 
-**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, `maxAliveAliens`, timings, radii).
+**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, the `finalAmbush` group, `maxAliveAliens`, timings, radii).
 
 **Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad, and in the Level 3 sandbox [F6] starts the fight with the Warden.
 

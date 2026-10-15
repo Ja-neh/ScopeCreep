@@ -60,8 +60,28 @@ test('machine gun drops a dummy 12 m away with the crosshair on it', () => {
   const needed = Math.ceil(config.testing.trainingDummy.maxHealth / config.weapons.machineGun.damage);
   assert.ok(fired <= needed + 2, `${fired} rounds for ${needed} needed`);
   assert.ok(world.ui.callsTo('flashCrosshairHit').some((call) => call.args[0] === true), 'kill marker shown');
-  assert.equal(player.pitch, 0, 'no recoil: the aim does not climb');
-  assert.equal(player.yaw, 0, 'no recoil: the aim does not wander');
+  const plays = world.audio.callsTo('play');
+  assert.ok(plays.some((call) => call.args[0] === 'gunshot'), 'gunshots are audible');
+  assert.ok(plays.some((call) => call.args[0] === 'hit'), 'hit confirmations are audible');
+  assert.ok(player.pitch > 0, 'the aim climbs while firing');
+  assert.ok(Math.abs(player.yaw) <= config.weapons.machineGun.recoilYaw * fired, 'the aim only wanders a little');
+});
+
+test('firing climbs the aim; releasing the trigger lets it settle back', () => {
+  place(0, 170, 0, 1.2); // Into the sky
+  const basePitch = player.pitch;
+  const { recoilPitch, roundsPerSecond } = config.weapons.machineGun;
+
+  world.input.hold('firePrimary');
+  stepWorld(world, 1);
+  world.input.release('firePrimary');
+  const climbed = player.pitch - basePitch;
+  assert.ok(climbed > recoilPitch * (roundsPerSecond - 2), `climbed ${climbed.toFixed(4)} rad`);
+  assert.ok(climbed <= recoilPitch * (roundsPerSecond + 2), `climbed ${climbed.toFixed(4)} rad`);
+
+  // With the trigger released, the gun settles back to where it started
+  stepWorld(world, 3);
+  assert.ok(player.pitch - basePitch < climbed * 0.05, `settled back to ${(player.pitch - basePitch).toFixed(4)} rad`);
 });
 
 test('the gun never hurts its shooter', () => {
@@ -77,6 +97,7 @@ test('an empty magazine reloads automatically from reserve', () => {
   world.input.hold('firePrimary');
   stepWorld(world, 3.5, { onFrame: () => weapons.rifle.isReloading });
   assert.ok(weapons.rifle.isReloading, 'reload started when empty');
+  assert.ok(world.audio.callsTo('play').some((call) => call.args[0] === 'reload'), 'reloading is audible');
   world.input.release('firePrimary');
   stepWorld(world, config.weapons.machineGun.reloadSeconds + 0.2);
   assert.equal(weapons.rifle.ammo, config.weapons.machineGun.magazine);

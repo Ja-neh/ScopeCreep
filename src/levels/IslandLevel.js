@@ -174,7 +174,7 @@ export class IslandLevel extends BaseLevel {
   }
 
   _lowHealthHint() {
-    return 'Low health! Find a supply crate and press [E] to patch up.';
+    return 'Low health! Find a supply crate and hold [E] to patch up.';
   }
 
   /** Can a squadmate stand at (x, z)? Dry land, clear of rocks and trees. */
@@ -216,7 +216,7 @@ export class IslandLevel extends BaseLevel {
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['reload'], label: 'Reload' },
       { actions: ['weaponPrimary', 'weaponMelee', 'quickMelee'], label: 'Gun, knife, quick knife' },
-      { actions: ['specialAction'], label: 'Supply crate; hold to revive' },
+      { actions: ['specialAction'], label: 'Hold: revive, patch up' },
       { actions: ['toggleCamera'], label: '1st / 3rd person' },
       { actions: ['pause'], label: 'Pause and options' }
     ];
@@ -322,7 +322,13 @@ export class IslandLevel extends BaseLevel {
     const left = Math.ceil(this.allies.bleedOutLeft(player));
     if (left !== this._downedShown && this.gameWorld.ui) {
       this._downedShown = left;
-      this.gameWorld.ui.showStatusIndicator(`DOWNED: a squadmate is coming to revive you (${left}s)`, 'danger');
+      const reviver = this.allies.reviverFor(player);
+      this.gameWorld.ui.showStatusIndicator(
+        reviver
+          ? `DOWNED: ${reviver.name} is coming to revive you (${left}s)`
+          : `DOWNED: bleeding out — nobody can reach you (${left}s)`,
+        'danger'
+      );
     }
   }
 
@@ -379,12 +385,23 @@ export class IslandLevel extends BaseLevel {
   }
 
   /**
+   * The downed squadmate the player would be reviving right now, or null.
+   * The single definition of what owns [E] beside a downed mate: supply crates yield to it
+   * (their isSuppressed) so one press never both revives and resupplies.
+   * @returns {Object|null}
+   */
+  _reviveCandidate() {
+    const player = this.player;
+    const able = !player.health.isDead && !player.isDevSuspended && this.state !== 'won' && this.state !== 'lost';
+    return able ? this.allies.nearestDownedMate(player.position, this.allies.reviveRadius) : null;
+  }
+
+  /**
    * Hold [E] (specialAction) beside a downed squadmate to revive them.
    */
   _updatePlayerRevive(delta) {
     const player = this.player;
-    const able = !player.health.isDead && !player.isDevSuspended && this.state !== 'won' && this.state !== 'lost';
-    const mate = able ? this.allies.nearestDownedMate(player.position, this.allies.reviveRadius) : null;
+    const mate = this._reviveCandidate();
     if (!mate) {
       this._reviving = null;
       this._reviveProgress = 0;
@@ -435,6 +452,9 @@ export class IslandLevel extends BaseLevel {
   }
 
   _onPlayerHurt() {
+    if (this.gameWorld && this.gameWorld.audio) {
+      this.gameWorld.audio.play('hurt');
+    }
     const ui = this.gameWorld.ui;
     if (!ui) return;
     ui.flashDamage();
