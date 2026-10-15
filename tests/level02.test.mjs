@@ -24,7 +24,7 @@ function teardown(world, level) {
   return bodyCount(world);
 }
 
-test('Level 2: ashore -> three waves from the north -> objective -> victory', async () => {
+test('Level 2: ashore -> three waves from the north -> hunt the holders -> objective -> victory', async () => {
   const { world, level } = await loadLevel(Level02);
   stepWorld(world, 1, { level });
   assert.equal(level.state, 'landing', 'waits while the player is on the ship');
@@ -35,6 +35,7 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
   assert.equal(level.state, 'waves', 'first wave starts once ashore');
 
   // Kill every alien the moment it appears; check where it appeared
+  const holdoutCount = cfg.holdouts.trooper + cfg.holdouts.brute;
   const seen = new Set();
   const badSpawns = [];
   const spawnXsByWave = [];
@@ -47,7 +48,8 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
         seen.add(alien);
         if (alien.name === 'AlienBrute') brutes++;
         const { x, z } = alien.position;
-        (spawnXsByWave[level.waves.waveIndex] ||= []).push(x);
+        // Wave arrivals only: the holding force spawns later, across the island, not from lanes
+        if (level.state === 'waves') (spawnXsByWave[level.waves.waveIndex] ||= []).push(x);
         if (z > 120 || level.environment.heightAt(x, z) < 0.6 || !level.cover.isClearOfSolids(x, z, 1.0)) badSpawns.push([x, z]);
         alien.health.takeDamage({ amount: 99999, source: level.player });
       }
@@ -56,8 +58,9 @@ test('Level 2: ashore -> three waves from the north -> objective -> victory', as
   });
 
   assert.equal(level.state, 'objective');
-  assert.equal(seen.size, totalUnits('trooper') + totalUnits('brute'), 'every unit of every wave arrived');
-  assert.equal(brutes, totalUnits('brute'));
+  assert.equal(seen.size, totalUnits('trooper') + totalUnits('brute') + holdoutCount, 'every unit of every wave and the holding force arrived');
+  assert.equal(brutes, totalUnits('brute') + cfg.holdouts.brute);
+  assert.equal(level._holdoutsTotal, holdoutCount, 'the whole holding force went to ground');
   assert.equal(level.squad.killCount, seen.size);
   assert.deepEqual(badSpawns, [], 'aliens spawn on dry, clear ground north of the beach');
   spawnXsByWave.forEach((xs, i) => {
@@ -172,6 +175,72 @@ test('Level 2: the push inland springs a final ambush, and the beach is won once
   stepWorld(world, 0.3, { level });
   assert.equal(level.state, 'won');
   assert.equal(world.ui.callsTo('showMissionResult').at(-1).args[0].outcome, 'victory');
+  assert.equal(teardown(world, level), 0, 'no physics bodies left');
+});
+
+test('Level 2: the waves broken, the survivors go to ground — the hunt is map-work, then the push resumes', async () => {
+  const { world, level } = await loadLevel(Level02);
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+  level.player.teleport(foot.x, foot.y, foot.z);
+  stepWorld(world, 0.5, { level });
+
+  // Clear the wave aliens only: the moment the last one falls, the survivors go to ground
+  stepWorld(world, 200, {
+    level,
+    onFrame: () => {
+      if (level.state === 'waves') {
+        for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+      }
+      return level.state === 'hunt';
+    }
+  });
+  assert.equal(level.state, 'hunt', 'the waves are broken and the hunt has begun');
+
+  const holdouts = cfg.holdouts.trooper + cfg.holdouts.brute;
+  assert.equal(level._holdoutsTotal, holdouts, 'the holding force is out there');
+  assert.equal(level.squad.aliveCount, holdouts);
+  assert.ok(
+    world.ui.callsTo('showToast').some((call) => /gone to ground/.test(call.args[0]) && call.args[0].includes(String(holdouts))),
+    'the call-out names the holding force'
+  );
+
+  // They hold the island's far half and never push for the beach the player is standing on
+  // (the wave dead keep lying on the beach for a few seconds: only the living count here)
+  const held = level.squad.members.filter((alien) => !alien.isDead)
+    .map((alien) => ({ alien, x: alien.position.x, z: alien.position.z }));
+  assert.ok(held.every(({ z }) => z < 0), 'every holder is inland');
+  stepWorld(world, 10, { level, onFrame: () => level.player.health.reset() });
+  for (const { alien, x, z } of held) {
+    if (alien.isDead) continue;
+    const moved = Math.hypot(alien.position.x - x, alien.position.z - z);
+    assert.ok(moved < 30, `a holder wandered ${moved.toFixed(0)} m from its post`);
+    assert.ok(alien.position.z < 20, 'nobody came for the beach');
+  }
+
+  // The map shows them dim (they have not seen the player yet), and no beacon pin while hunting
+  const data = level.getMapData();
+  assert.equal(data.enemies.length, holdouts, 'every holder is on the map');
+  assert.ok(data.enemies.every((enemy) => enemy.alerted === false), 'the map shows them dim');
+  assert.equal(data.enemies.filter((enemy) => enemy.big).length, cfg.holdouts.brute, 'both heavies read big');
+  assert.deepEqual(data.markers, [], 'no beacon pin while the hunt is on');
+
+  // The objective panel counts them down
+  const objective = world.ui.callsTo('showObjective').at(-1).args;
+  assert.equal(objective[0], 'HUNT THE HOLDERS');
+  assert.match(objective[1], new RegExp(`^${holdouts} aliens still hiding`));
+
+  // Clearing the island hands the push back: the beacon lights and the map pin returns
+  for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+  stepWorld(world, 0.3, { level });
+  assert.equal(level.state, 'objective');
+  assert.equal(level.beacon.mesh.visible, true, 'the push beacon lights');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /island is quiet/.test(call.args[0])));
+  assert.deepEqual(
+    level.getMapData().markers,
+    [{ x: level._objectivePoint.x, z: level._objectivePoint.z, label: 'OBJECTIVE' }],
+    'the map pin shows the way on'
+  );
+
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });
 

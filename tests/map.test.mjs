@@ -99,11 +99,16 @@ test('Level 2 feeds the map: the player, the crew, the beacon pin and exactly th
   assert.equal(data.mates.length, level.allies.members.length - 1, 'every member but the player');
   assert.ok(data.mates.every((mate) => mate.downed === false));
   assert.deepEqual(data.enemies, [], 'the island is quiet before the waves');
+  assert.deepEqual(data.markers, [], 'no beacon pin before the push inland');
+
+  // The pin follows the live objective: it appears when the push inland is on
+  level.state = 'objective';
   assert.deepEqual(
-    data.markers,
+    level.getMapData().markers,
     [{ x: level._objectivePoint.x, z: level._objectivePoint.z, label: 'OBJECTIVE' }],
-    'the beacon pin'
+    'the beacon pin while pushing inland'
   );
+  level.state = 'landing';
 
   // A hider waiting in the hills: on the chart, not yet hunting (dim), the brute reads bigger
   const trooper = level.createAlien('trooper', 0, 100);

@@ -342,6 +342,11 @@
         "trooper": 6,
         "brute": 1,
         "spawnIntervalSeconds": 0.4
+      },
+      "holdouts": {
+        "trooper": 9,
+        "brute": 2,
+        "groupSpread": 14
       }
     },
     "level03": {

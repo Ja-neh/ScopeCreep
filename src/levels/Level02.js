@@ -33,6 +33,19 @@ const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
 // The final ambush waits in the lanes that meet the jungle path and springs when the player
 // pushes inland; the ambushers converge on the beacon and hold it.
 const AMBUSH_LANES = ['centre', 'west', 'east'];
+// The holding force: once the waves break, the survivors have gone to ground across the island —
+// the woods on either side of the path, the rocks, and the outskirts short of the village. They
+// wait at their posts (they never push for the beach): the map ([M]) shows them dim until they
+// see the player, and the hunt is over when the last one is down. The heavier units hold the two
+// posts nearest the village.
+const HOLDOUT_POSTS = [
+  { name: 'the west woods', x: -95, z: -15 },
+  { name: 'the east woods', x: 88, z: -55 },
+  { name: 'the west rocks', x: -125, z: -150 },
+  { name: 'the path bend', x: 8, z: -170 },
+  { name: 'the west outskirts', x: -55, z: -255 },
+  { name: 'the east outskirts', x: 65, z: -270 }
+];
 
 // The helicopter pilots (call signs for messages)
 const PILOT_NAMES = ['Hawk', 'Viper'];
@@ -64,9 +77,11 @@ const RALLY_POSTS = [
  * formation and fight alongside them. A supply crate stands between the helicopters (hold [E] to
  * patch up).
  *
- * Flow: landing (until the player is ashore or the timer runs out) -> waves -> objective (a last
- * group springs from the trees on the way in) -> won. Lingering aboard during the waves makes the
- * aliens mass at the gangway instead of the beach, with call-outs to get ashore.
+ * Flow: landing (until the player is ashore or the timer runs out) -> waves -> hunt (the survivors
+ * have gone to ground across the island; the map shows them and the push resumes when the last is
+ * down) -> objective (a last group springs from the trees on the way in) -> won. Lingering aboard
+ * during the waves makes the aliens mass at the gangway instead of the beach, with call-outs to
+ * get ashore.
  * Losing: the player bleeds out, or goes down with nobody left standing to come.
  *
  * Level02TestLevel extends this with dummies, a respawning trio instead of waves, and dev tools.
@@ -85,7 +100,8 @@ export class Level02 extends IslandLevel {
     this.beacon = null;
     this.supplyCrate = null;
 
-    this.state = 'landing'; // landing -> waves -> objective -> won | lost
+    this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> won | lost
+    this._holdoutsTotal = 0;
     this._crewFollowing = false;
     this._crewRoutes = [];    // Crew waiting on the gangway: { mate, route, rally, facing }
     this._objectivePoint = new THREE.Vector3();
@@ -183,9 +199,9 @@ export class Level02 extends IslandLevel {
     return Object.values(LANES).map((lane) => ({ x: lane.spawn.x, z: lane.spawn.z, radius: 4 }));
   }
 
-  /** The beacon point is the map's objective pin until the mission ends. */
+  /** The beacon pin is on the map only while the push inland is the live objective. */
   _mapMarkers() {
-    if (this.state === 'won' || this.state === 'lost') return [];
+    if (this.state !== 'objective' && this.state !== 'ambush') return [];
     return [{ x: this._objectivePoint.x, z: this._objectivePoint.z, label: 'OBJECTIVE' }];
   }
 
@@ -261,10 +277,7 @@ export class Level02 extends IslandLevel {
           this._stingMusic('waveHeld');
         }
         if (this.waves.isDone) {
-          this.state = 'objective';
-          this.beacon.setVisible(true);
-          this._setMusic('tense');
-          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The beach is ours. Push inland!', 'success', 3500);
+          this._beginHunt();
         } else if (this.waves.state === 'between') {
           const regroup = ashore ? 'regroup and reload' : 'regroup, reload and get ashore';
           this._showObjective(`WAVE ${this.waves.waveNumber + 1} INCOMING`, `Next wave in ${Math.ceil(this.waves.nextWaveInSeconds)}s — ${regroup}`);
@@ -272,6 +285,19 @@ export class Level02 extends IslandLevel {
           const left = ashore ? `Aliens left: ${this.waves.remaining}` : `Aliens left: ${this.waves.remaining} — get ashore!`;
           this._showObjective(`HOLD THE BEACH — WAVE ${this.waves.waveNumber} OF ${this.waves.totalWaves}`, left);
         }
+        break;
+      }
+
+      case 'hunt': {
+        const left = this.squad.aliveCount;
+        if (left === 0) {
+          this.state = 'objective';
+          this.beacon.setVisible(true);
+          this._setMusic('tense');
+          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The island is quiet — push inland!', 'success', 3500);
+          break;
+        }
+        this._showObjective('HUNT THE HOLDERS', `${left} aliens still hiding on the island — find them (map: [M])`);
         break;
       }
 
@@ -319,6 +345,42 @@ export class Level02 extends IslandLevel {
     const ui = this.gameWorld.ui;
     if (!ui) return;
     ui.showToast(`Wave ${this.waves.waveNumber} held! Next wave in ${Math.round(this.cfg.betweenWavesSeconds)}s — regroup, reload, patch up.`, 'success', 3500);
+  }
+
+  /**
+   * The waves are broken; the survivors have gone to ground across the island. The hunt begins:
+   * the map ([M]) shows them dim until they see the player, and the push inland resumes when the
+   * last one is down.
+   */
+  _beginHunt() {
+    this.state = 'hunt';
+    this._setMusic('tense');
+    this._holdoutsTotal = this._spawnHoldouts();
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showToast(`The survivors have gone to ground — ${this._holdoutsTotal} are still out there. Hunt them down (map: [M]).`, 'warning', 5000);
+    }
+  }
+
+  /**
+   * Deals the holding force round-robin across the island's posts, heavier units last: they wait
+   * at their posts and never push for the beach — the player has to find them.
+   * @returns {number} How many found a spot (the hunt's count)
+   */
+  _spawnHoldouts() {
+    const holdouts = this.cfg.holdouts;
+    const roster = [];
+    for (let i = 0; i < (holdouts.trooper || 0); i++) roster.push('trooper');
+    for (let i = 0; i < (holdouts.brute || 0); i++) roster.push('brute');
+
+    let placed = 0;
+    roster.forEach((type, index) => {
+      const post = HOLDOUT_POSTS[index % HOLDOUT_POSTS.length];
+      const spot = this._findSpawnSpot(post, holdouts.groupSpread, holdouts.groupSpread);
+      if (!spot) return; // A missed spot just thins the group; every post is verified clear ground
+      this.createAlien(type, spot.x, spot.z);
+      placed++;
+    });
+    return placed;
   }
 
   /** The last stand: the group waiting in the trees springs as the player pushes inland. */
@@ -516,10 +578,10 @@ export class Level02 extends IslandLevel {
   /**
    * A dry spot clear of rocks and trunks near `centre`, or null.
    */
-  _findSpawnSpot(centre) {
+  _findSpawnSpot(centre, spreadX = SPAWN_SPREAD_X, spreadZ = SPAWN_SPREAD_Z) {
     for (let attempt = 0; attempt < 12; attempt++) {
-      const x = centre.x + (Math.random() - 0.5) * 2 * SPAWN_SPREAD_X;
-      const z = centre.z + (Math.random() - 0.5) * 2 * SPAWN_SPREAD_Z;
+      const x = centre.x + (Math.random() - 0.5) * 2 * spreadX;
+      const z = centre.z + (Math.random() - 0.5) * 2 * spreadZ;
       if (this.environment.heightAt(x, z) > 0.6 && this.cover.isClearOfSolids(x, z, 1.2)) return { x, z };
     }
     return null;
