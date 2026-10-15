@@ -101,6 +101,25 @@ test('banking turns the jet and the wings level smoothly after roll input is rel
   jet.dispose();
 });
 
+test('flight control authority decreases at low speed', () => {
+  const actions = new Set(['rollLeft']);
+  const gameWorld = createGameWorld(createInput(actions));
+  const slowJet = new PlayerJet(gameWorld);
+  const fastJet = new PlayerJet(gameWorld);
+  slowJet.currentSpeed = slowJet.minSpeed;
+  fastJet.currentSpeed = fastJet.maxSpeed;
+
+  slowJet.prePhysicsUpdate(0.2);
+  fastJet.prePhysicsUpdate(0.2);
+
+  assert.ok(
+    Math.abs(fastJet.rotationEuler.z) > Math.abs(slowJet.rotationEuler.z),
+    'the jet responds more strongly to roll at high speed'
+  );
+  slowJet.dispose();
+  fastJet.dispose();
+});
+
 test('jet guns fire through the pooled flak API at the configured cadence', () => {
   const gameWorld = createGameWorld(createInput(new Set(['firePrimary'])));
   const jet = new PlayerJet(gameWorld);

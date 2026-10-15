@@ -13,6 +13,7 @@ export class BaseStation {
   constructor(options = {}) {
     this.gameWorld = options.gameWorld || null;
     this.battleship = options.battleship || null;
+    this.faction = options.faction || this.battleship?.faction || 'humans';
     this.position = options.position || new THREE.Vector3();
     this.stationName = options.name || 'Station';
 
