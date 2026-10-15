@@ -16,6 +16,7 @@ export class PlayerJet extends BaseEntity {
     this.mesh.name = 'PlayerJet';
     this.mesh.userData.entity = this;
     this.mesh.position.copy(options.position ?? new THREE.Vector3(0, 100, 0));
+    if (options.rotation) this.mesh.quaternion.copy(options.rotation);
     this.faction = options.faction ?? 'humans';
     this.health = new HealthComponent(options.maxHealth ?? config.playerJet.health);
     this.isDestroyed = false;
@@ -45,6 +46,7 @@ export class PlayerJet extends BaseEntity {
     this.bankTurnRate = jetConfig.bankTurnRate;
     this.bankLevelingRate = jetConfig.bankLevelingRate;
     this.cameraFollowSpeed = jetConfig.cameraFollowSpeed;
+    this.lowSpeedControlAuthority = jetConfig.lowSpeedControlAuthority;
     this.weaponConfig = jetConfig.weapon;
 
     this.rotationEuler = new THREE.Euler().setFromQuaternion(this.mesh.quaternion, 'YXZ');
@@ -98,14 +100,19 @@ export class PlayerJet extends BaseEntity {
     const yawInput = input.getAxis('yawRight', 'yawLeft');
 
     this.rotationEuler.setFromQuaternion(this.mesh.quaternion, 'YXZ');
+    const controlAuthority = THREE.MathUtils.clamp(
+      this.currentSpeed / this.maxSpeed,
+      this.lowSpeedControlAuthority,
+      1
+    );
     this.rotationEuler.x = THREE.MathUtils.clamp(
-      this.rotationEuler.x - pitchInput * this.pitchRate * delta,
+      this.rotationEuler.x - pitchInput * this.pitchRate * controlAuthority * delta,
       -this.maxPitch,
       this.maxPitch
     );
     if (rollInput !== 0) {
       this.rotationEuler.z = THREE.MathUtils.clamp(
-        this.rotationEuler.z + rollInput * this.rollRate * delta,
+        this.rotationEuler.z + rollInput * this.rollRate * controlAuthority * delta,
         -this.maxBank,
         this.maxBank
       );
@@ -113,7 +120,6 @@ export class PlayerJet extends BaseEntity {
       this.rotationEuler.z *= Math.exp(-this.bankLevelingRate * delta);
     }
 
-    const controlAuthority = this.currentSpeed / this.maxSpeed;
     const bankTurn = Math.sin(this.rotationEuler.z) * this.bankTurnRate;
     this.rotationEuler.y -= (yawInput * this.yawRate + bankTurn) * controlAuthority * delta;
     this.mesh.quaternion.setFromEuler(this.rotationEuler);

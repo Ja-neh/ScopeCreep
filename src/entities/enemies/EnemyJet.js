@@ -63,8 +63,14 @@ export class EnemyJet extends BaseEntity {
     this.spread = variantSettings.spread ?? settings.spread;
     this.burstSize = settings.burstSize;
     this.breakawaySeconds = settings.breakawaySeconds;
+    this.weaveAmplitude = settings.weaveAmplitude;
+    this.weaveFrequency = settings.weaveFrequency;
+    this.breakawaySideStrength = settings.breakawaySideStrength;
     this.repositionAltitude = settings.repositionAltitude;
     this.targetHeight = settings.targetHeight;
+    this.attackStyle = options.attackStyle ?? (this.variant === 'ace' ? 'weave' : 'direct');
+    this.breakawaySide = options.breakawaySide ?? (this.variant === 'ace' ? -1 : 1);
+    this._maneuverElapsed = 0;
     this.maneuverState = 'approach';
     this._maneuverTimer = 0;
     this._burstShotsRemaining = this.burstSize;
@@ -108,10 +114,38 @@ export class EnemyJet extends BaseEntity {
   _getTargetPosition() {
     if (!this.target || this.target.isDestroyed || !this.target.mesh) {
       this.target = null;
-      for (const entity of this.gameWorld.entities) {
-        if (entity !== this && entity.faction === 'humans' && entity.mesh && !entity.isDestroyed) {
+
+      const currentLevel = this.gameWorld?.currentLevel;
+      const preferredHumanTargets = [
+        currentLevel?.playerJet,
+        currentLevel?.battleship,
+        ...[...(this.gameWorld?.entities ?? [])].filter(
+          (entity) => entity !== this && entity.faction === 'humans' && entity.mesh && !entity.isDestroyed
+        )
+      ].filter(Boolean);
+
+      for (const entity of preferredHumanTargets) {
+        if (entity === currentLevel?.playerJet && !entity.isDestroyed) {
           this.target = entity;
           break;
+        }
+      }
+
+      if (!this.target) {
+        for (const entity of preferredHumanTargets) {
+          if (entity === currentLevel?.battleship && !entity.isDestroyed) {
+            this.target = entity;
+            break;
+          }
+        }
+      }
+
+      if (!this.target) {
+        for (const entity of preferredHumanTargets) {
+          if (entity && !entity.isDestroyed) {
+            this.target = entity;
+            break;
+          }
         }
       }
     }
@@ -127,11 +161,13 @@ export class EnemyJet extends BaseEntity {
   prePhysicsUpdate(delta) {
     if (this.isDestroyed || !this._getTargetPosition()) return;
 
+    this._maneuverElapsed += delta;
     if (this.maneuverState === 'breakaway') {
       this._maneuverTimer -= delta;
       this._desiredDirection.subVectors(this.mesh.position, this._targetPosition);
       if (this._desiredDirection.lengthSq() < 1e-6) this._desiredDirection.set(0, 0, -1);
       this._desiredDirection.normalize();
+      this._desiredDirection.x += this.breakawaySide * this.breakawaySideStrength;
       this._desiredDirection.y += Math.max(
         0,
         this._targetPosition.y + this.repositionAltitude - this.mesh.position.y
@@ -148,7 +184,11 @@ export class EnemyJet extends BaseEntity {
         this._aimPosition.copy(this.target.velocity).multiplyScalar(flightTime);
         this._targetPosition.add(this._aimPosition);
       }
-      this._desiredDirection.subVectors(this._targetPosition, this.mesh.position);
+      const navigationTarget = this._aimPosition.copy(this._targetPosition);
+      if (this.attackStyle === 'weave') {
+        navigationTarget.x += Math.sin(this._maneuverElapsed * this.weaveFrequency) * this.weaveAmplitude;
+      }
+      this._desiredDirection.subVectors(navigationTarget, this.mesh.position);
     }
     if (this._desiredDirection.lengthSq() < 1e-6) return;
     this._desiredDirection.normalize();
@@ -213,6 +253,7 @@ export class EnemyJet extends BaseEntity {
     if (this._burstShotsRemaining <= 0) {
       this.maneuverState = 'breakaway';
       this._maneuverTimer = this.breakawaySeconds;
+      this._fireCooldown = 0;
     }
   }
 
