@@ -1,9 +1,14 @@
+import config from '../config.json';
+
 export class AirStrikeMission {
   constructor(gameWorld, playerJet, targets) {
     this.gameWorld = gameWorld;
     this.playerJet = playerJet;
     this.targets = targets;
+    this.winScore = config.airStrike.winScore;
     this.elapsed = 0;
+    this.score = 0;
+    this._scoredTargets = new Set();
     this.state = 'ready';
   }
 
@@ -11,10 +16,10 @@ export class AirStrikeMission {
     if (this.state !== 'ready') return;
     this.state = 'active';
     this.gameWorld.ui?.showObjective(
-      'DESTROY ENEMY COASTAL TARGETS',
-      `Targets remaining: ${this.targets.length} — dive to line up your guns.`
+      'REACH THE STRIKE SCORE TARGET',
+      `SCORE: 0 / ${this.winScore}  |  Targets remaining: ${this.targets.length}`
     );
-    this.gameWorld.ui?.showToast('Enemy radar, gun batteries, and supply ships ahead. Make your attack run!', 'warning', 4500);
+    this.gameWorld.ui?.showToast(`Destroy targets to score points. Reach ${this.winScore} to complete the strike!`, 'warning', 4500);
   }
 
   update(delta) {
@@ -26,14 +31,21 @@ export class AirStrikeMission {
       return;
     }
 
+    for (const target of this.targets) {
+      if (!target.isDestroyed || this._scoredTargets.has(target)) continue;
+      this._scoredTargets.add(target);
+      this.score += target.scoreValue;
+      this.gameWorld.ui?.showToast(`${target.name} destroyed! +${target.scoreValue} points`, 'success', 1800);
+    }
+
     const remaining = this.targets.filter((target) => !target.isDestroyed).length;
-    if (remaining === 0) {
-      this._finish(true, 'All enemy coastal targets have been destroyed.');
+    if (this.score >= this.winScore) {
+      this._finish(true, `Strike score target reached: ${this.score} points.`);
       return;
     }
     this.gameWorld.ui?.showObjective(
-      'DESTROY ENEMY COASTAL TARGETS',
-      `Targets remaining: ${remaining}  |  Destroyed: ${this.targets.length - remaining}/${this.targets.length}`
+      'REACH THE STRIKE SCORE TARGET',
+      `SCORE: ${this.score} / ${this.winScore}  |  Targets remaining: ${remaining}`
     );
   }
 
@@ -50,7 +62,9 @@ export class AirStrikeMission {
       message,
       stats: [
         { label: 'Time', value: `${Math.floor(this.elapsed / 60)}:${Math.floor(this.elapsed % 60).toString().padStart(2, '0')}` },
-        { label: 'Targets destroyed', value: String(this.targets.length - this.targets.filter((target) => !target.isDestroyed).length) },
+        { label: 'Score', value: String(this.score) },
+        { label: 'Score required', value: String(this.winScore) },
+        { label: 'Targets destroyed', value: String(this._scoredTargets.size) },
         { label: 'Targets remaining', value: String(this.targets.filter((target) => !target.isDestroyed).length) }
       ],
       actions: [
@@ -63,5 +77,6 @@ export class AirStrikeMission {
   dispose() {
     this.playerJet = null;
     this.targets = [];
+    this._scoredTargets.clear();
   }
 }

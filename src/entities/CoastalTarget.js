@@ -7,11 +7,12 @@ import config from '../config.json';
  * A destructible enemy installation or vessel for the air-strike mission.
  */
 export class CoastalTarget extends BaseEntity {
-  constructor(gameWorld, { kind, name, position }) {
+  constructor(gameWorld, { kind, name, position, scoreValue = config.airStrike.targets.find((target) => target.kind === kind)?.scoreValue ?? 0 }) {
     super(name);
     this.gameWorld = gameWorld;
     this.faction = 'aliens';
     this.kind = kind;
+    this.scoreValue = scoreValue;
     this.isDestroyed = false;
     this.health = new HealthComponent(config.airStrike.targetHealth);
     this.materials = {
