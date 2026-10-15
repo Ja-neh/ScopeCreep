@@ -1,4 +1,4 @@
-// The sound engine: six procedural one-shots, lazy unlock, saved mix, throttles, the voice
+// The sound engine: seven procedural one-shots, lazy unlock, saved mix, throttles, the voice
 // cap, and distance fall-off - all checked against a fake AudioContext, because Node has none.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -54,8 +54,8 @@ function fakeStorage() {
   };
 }
 
-test('the manager exposes exactly the six core sounds', () => {
-  assert.deepEqual(AudioManager.soundNames, ['gunshot', 'plasma', 'hit', 'hurt', 'explosion', 'reload']);
+test('the manager exposes exactly the seven core sounds', () => {
+  assert.deepEqual(AudioManager.soundNames, ['gunshot', 'plasma', 'hit', 'hurt', 'explosion', 'reload', 'alienCall']);
 });
 
 test('without an AudioContext every call is a safe no-op', () => {

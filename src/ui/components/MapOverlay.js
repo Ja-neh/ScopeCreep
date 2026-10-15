@@ -1,8 +1,8 @@
 /**
  * MapOverlay.js
  * The island map ([M]): a north-up chart of the stage, drawn from the level's own terrain
- * sampler, with the player, the squad, the objective pins and the aliens alive on the island
- * (unaware ones dimmer, the ones hunting you bright red). Levels feed it through
+ * sampler, with the player, the squad, the zone lines, the objective pins and the aliens alive
+ * on the island (unaware ones dimmer, the ones hunting you bright red). Levels feed it through
  * `BaseLevel.getMapTerrain` / `BaseLevel.getMapData`; this component only draws.
  * The island backdrop is sampled once and cached, so an open map redraws cheap.
  * Visual only: colours and glyph sizes live here, not in config.json.
@@ -135,7 +135,7 @@ export class MapOverlay {
 
   /**
    * Redraws the markers over the cached island: the level's state from `getMapData`.
-   * @param {Object|null} state - { player, mates, enemies, markers }
+   * @param {Object|null} state - { player, mates, enemies, markers, zones }
    */
   update(state) {
     if (!this.isOpen || !this.bounds) return;
@@ -146,6 +146,7 @@ export class MapOverlay {
     if (this._background) ctx.drawImage(this._background, 0, 0);
     if (!state) return;
 
+    this._drawZones(ctx, state.zones || [], width, height);
     this._drawMarkers(ctx, state.markers || [], width, height);
     this._drawEnemies(ctx, state.enemies || [], width, height);
     this._drawSquad(ctx, state.mates || [], width, height);
@@ -199,6 +200,28 @@ export class MapOverlay {
     const bg = this._background.getContext('2d');
     bg.imageSmoothingEnabled = true;
     bg.drawImage(sample, 0, 0, width, height);
+  }
+
+  /** Zone boundaries: a faint dashed line across the island, labelled on the inland side. */
+  _drawZones(ctx, zones, width, height) {
+    if (!zones.length) return;
+    ctx.save();
+    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.font = '600 10px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    for (const zone of zones) {
+      if (typeof zone.z !== 'number') continue;
+      const p = projectPoint(this.bounds, width, height, this.bounds.minX, zone.z, this._point);
+      ctx.beginPath();
+      ctx.moveTo(0, p.y);
+      ctx.lineTo(width, p.y);
+      ctx.stroke();
+      if (zone.name) ctx.fillText(zone.name.toUpperCase(), 6, p.y - 5);
+    }
+    ctx.restore();
   }
 
   /** Objective pins: an amber diamond (green once done) with its label underneath. */

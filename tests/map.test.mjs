@@ -100,6 +100,15 @@ test('Level 2 feeds the map: the player, the crew, the beacon pin and exactly th
   assert.ok(data.mates.every((mate) => mate.downed === false));
   assert.deepEqual(data.enemies, [], 'the island is quiet before the waves');
   assert.deepEqual(data.markers, [], 'no beacon pin before the push inland');
+    assert.deepEqual(
+      data.zones,
+      [
+        { id: 'forest', name: 'The Forest', z: 120 },
+        { id: 'rocks', name: 'The Rockfields', z: -110 },
+        { id: 'outskirts', name: 'Village Outskirts', z: -215 }
+      ],
+      'the zone lines ride the chart'
+    );
 
   // The pin follows the live objective: it appears when the push inland is on
   level.state = 'objective';

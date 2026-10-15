@@ -10,6 +10,8 @@ import config from '../src/config.json';
 
 const cfg = config.levels.level02;
 const totalUnits = (type) => cfg.waves.reduce((sum, wave) => sum + (wave[type] || 0), 0);
+const zoneMix = (type) => cfg.zones.reduce((sum, zone) => sum + ((zone.holdouts && zone.holdouts[type]) || 0), 0);
+const holdoutCount = zoneMix('trooper') + zoneMix('brute');
 
 async function loadLevel(LevelClass, seed = 3) {
   const world = await createTestWorld({ seed });
@@ -35,7 +37,6 @@ test('Level 2: ashore -> three waves from the north -> hunt the holders -> objec
   assert.equal(level.state, 'waves', 'first wave starts once ashore');
 
   // Kill every alien the moment it appears; check where it appeared
-  const holdoutCount = cfg.holdouts.trooper + cfg.holdouts.brute;
   const seen = new Set();
   const badSpawns = [];
   const spawnXsByWave = [];
@@ -59,7 +60,7 @@ test('Level 2: ashore -> three waves from the north -> hunt the holders -> objec
 
   assert.equal(level.state, 'objective');
   assert.equal(seen.size, totalUnits('trooper') + totalUnits('brute') + holdoutCount, 'every unit of every wave and the holding force arrived');
-  assert.equal(brutes, totalUnits('brute') + cfg.holdouts.brute);
+  assert.equal(brutes, totalUnits('brute') + zoneMix('brute'));
   assert.equal(level._holdoutsTotal, holdoutCount, 'the whole holding force went to ground');
   assert.equal(level.squad.killCount, seen.size);
   assert.deepEqual(badSpawns, [], 'aliens spawn on dry, clear ground north of the beach');
@@ -196,7 +197,7 @@ test('Level 2: the waves broken, the survivors go to ground — the hunt is map-
   });
   assert.equal(level.state, 'hunt', 'the waves are broken and the hunt has begun');
 
-  const holdouts = cfg.holdouts.trooper + cfg.holdouts.brute;
+  const holdouts = holdoutCount;
   assert.equal(level._holdoutsTotal, holdouts, 'the holding force is out there');
   assert.equal(level.squad.aliveCount, holdouts);
   assert.ok(
@@ -217,11 +218,24 @@ test('Level 2: the waves broken, the survivors go to ground — the hunt is map-
     assert.ok(alien.position.z < 20, 'nobody came for the beach');
   }
 
+  // Each zone keeps its own garrison: the woods are trooper country, and the rock shelf and the
+  // outskirts are each backed by a brute (see the `zones` in config)
+  const zoneAt = (z) => (z <= -215 ? 'outskirts' : z <= -110 ? 'rocks' : z <= 120 ? 'forest' : 'beach');
+  const garrison = { forest: { trooper: 0, brute: 0 }, rocks: { trooper: 0, brute: 0 }, outskirts: { trooper: 0, brute: 0 } };
+  for (const { alien, z } of held) {
+    garrison[zoneAt(z)][alien.name === 'AlienBrute' ? 'brute' : 'trooper'] += 1;
+  }
+  assert.deepEqual(garrison, {
+    forest: { trooper: 5, brute: 0 },
+    rocks: { trooper: 2, brute: 1 },
+    outskirts: { trooper: 2, brute: 1 }
+  }, 'every zone holds its own mix');
+
   // The map shows them dim (they have not seen the player yet), and no beacon pin while hunting
   const data = level.getMapData();
   assert.equal(data.enemies.length, holdouts, 'every holder is on the map');
   assert.ok(data.enemies.every((enemy) => enemy.alerted === false), 'the map shows them dim');
-  assert.equal(data.enemies.filter((enemy) => enemy.big).length, cfg.holdouts.brute, 'both heavies read big');
+  assert.equal(data.enemies.filter((enemy) => enemy.big).length, zoneMix('brute'), 'both heavies read big');
   assert.deepEqual(data.markers, [], 'no beacon pin while the hunt is on');
 
   // The objective panel counts them down
@@ -240,6 +254,68 @@ test('Level 2: the waves broken, the survivors go to ground — the hunt is map-
     [{ x: level._objectivePoint.x, z: level._objectivePoint.z, label: 'OBJECTIVE' }],
     'the map pin shows the way on'
   );
+
+  assert.equal(teardown(world, level), 0, 'no physics bodies left');
+});
+
+test('Level 2: the island is four zones — each names itself, holds its own garrison and its own air', async () => {
+  const { world, level } = await loadLevel(Level02);
+  const ground = (x, z) => level.environment.heightAt(x, z) + 0.1;
+
+  // Aboard the ship nothing is announced, and the ambient mix is still the director's own
+  stepWorld(world, 1, { level });
+  assert.equal(level._zone, null, 'no zone while aboard');
+  assert.equal(world.music.callsTo('setAmbience').length, 0, 'the mix stays untouched until ashore');
+
+  // Step ashore: the beach names itself and takes the surf
+  const foot = level.landingZone.spawnPoints.gangwayFoot;
+  level.player.teleport(foot.x, foot.y, foot.z);
+  stepWorld(world, 0.5, { level });
+  assert.equal(level._zone.id, 'beach');
+  assert.ok(world.ui.callsTo('showToast').some((call) => /^THE BEACH —/.test(call.args[0])), 'the beach names itself');
+  assert.deepEqual(world.music.callsTo('setAmbience').at(-1).args[0], { ocean: 0.12, wind: 0.09, alien: 0 }, 'the beach is surf and wind');
+
+  // Across each inland line the ground changes name and the mix follows: the surf falls away
+  // while the wind - and the under-hum - grow
+  const crossings = [
+    { id: 'forest', toast: /^THE FOREST —/, z: 60, mix: { ocean: 0.05, wind: 0.11, alien: 0.05 } },
+    { id: 'rocks', toast: /^THE ROCKFIELDS —/, z: -150, mix: { ocean: 0.02, wind: 0.12, alien: 0.08 } },
+    { id: 'outskirts', toast: /^VILLAGE OUTSKIRTS —/, z: -260, mix: { ocean: 0, wind: 0.13, alien: 0.12 } }
+  ];
+  for (const crossing of crossings) {
+    const x = level.environment.pathCentreX(crossing.z);
+    level.player.teleport(x, ground(x, crossing.z), crossing.z);
+    stepWorld(world, 0.3, { level, onFrame: () => level.player.health.reset() });
+    assert.equal(level._zone.id, crossing.id, `crossed into ${crossing.id}`);
+    assert.ok(world.ui.callsTo('showToast').some((call) => crossing.toast.test(call.args[0])), `${crossing.id} names itself`);
+    assert.deepEqual(world.music.callsTo('setAmbience').at(-1).args[0], crossing.mix, `the ${crossing.id} mix`);
+  }
+
+  // The chart draws the zone lines so the island reads at a glance
+  assert.deepEqual(level.getMapData().zones, [
+    { id: 'forest', name: 'The Forest', z: 120 },
+    { id: 'rocks', name: 'The Rockfields', z: -110 },
+    { id: 'outskirts', name: 'Village Outskirts', z: -215 }
+  ], 'every inland line rides the map');
+
+  // Ambient life: the war inland and something calling out in the trees, on the zone's clock
+  const before = world.audio.callsTo('play').length;
+  stepWorld(world, 30, {
+    level,
+    onFrame: () => {
+      level.player.health.reset();
+      for (const alien of level.squad.members) alien.health.takeDamage({ amount: 99999, source: level.player });
+    }
+  });
+  const plays = world.audio.callsTo('play').slice(before);
+  assert.ok(
+    plays.some((call) => call.args[0] === 'explosion' && !call.args[1]),
+    'a distant explosion reaches the outskirts (flat, not placed on the ground)'
+  );
+  const call = plays.find((entry) => entry.args[0] === 'alienCall');
+  assert.ok(call, 'something calls out in the trees');
+  const away = Math.hypot(call.args[1].x - level.player.position.x, call.args[1].z - level.player.position.z);
+  assert.ok(away >= 40 && away <= 90, `the call came from ${away.toFixed(0)} m out`);
 
   assert.equal(teardown(world, level), 0, 'no physics bodies left');
 });

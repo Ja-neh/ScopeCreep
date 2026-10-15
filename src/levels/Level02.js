@@ -33,19 +33,49 @@ const LEFT_SHIP_Z = 195;          // Past the gangway foot: the player is ashore
 // The final ambush waits in the lanes that meet the jungle path and springs when the player
 // pushes inland; the ambushers converge on the beacon and hold it.
 const AMBUSH_LANES = ['centre', 'west', 'east'];
-// The holding force: once the waves break, the survivors have gone to ground across the island —
-// the woods on either side of the path, the rocks, and the outskirts short of the village. They
-// wait at their posts (they never push for the beach): the map ([M]) shows them dim until they
-// see the player, and the hunt is over when the last one is down. The heavier units hold the two
-// posts nearest the village.
+// The holding force: once the waves break, the survivors have gone to ground across the island,
+// one garrison per inland zone (see `zones` in config): the woods on either side of the path,
+// the rock shelf, and the outskirts short of the village. They wait at their posts (they never
+// push for the beach): the map ([M]) shows them dim until they see the player, and the hunt is
+// over when the last one is down. Heavier units come last in each zone's roster.
 const HOLDOUT_POSTS = [
-  { name: 'the west woods', x: -95, z: -15 },
-  { name: 'the east woods', x: 88, z: -55 },
-  { name: 'the west rocks', x: -125, z: -150 },
-  { name: 'the path bend', x: 8, z: -170 },
-  { name: 'the west outskirts', x: -55, z: -255 },
-  { name: 'the east outskirts', x: 65, z: -270 }
+  { zone: 'forest', name: 'the west woods', x: -95, z: -15 },
+  { zone: 'forest', name: 'the east woods', x: 88, z: -55 },
+  { zone: 'rocks', name: 'the west rocks', x: -125, z: -150 },
+  { zone: 'rocks', name: 'the path bend', x: 8, z: -170 },
+  { zone: 'outskirts', name: 'the west outskirts', x: -55, z: -255 },
+  { zone: 'outskirts', name: 'the east outskirts', x: 65, z: -270 }
 ];
+// How the scene sounds per zone (audio presentation, kept out of config like the director's own
+// mix): the surf falls away as the squad pushes inland while the wind - and something low,
+// chittering in the trees - takes over. The under-hum is the MusicDirector's own alien layer
+// (setAmbience); the events below are one-shots the level plays.
+const ZONE_AMBIENCE = {
+  beach: { ocean: 0.12, wind: 0.09, alien: 0.0 },
+  forest: { ocean: 0.05, wind: 0.11, alien: 0.05 },
+  rocks: { ocean: 0.02, wind: 0.12, alien: 0.08 },
+  outskirts: { ocean: 0.0, wind: 0.13, alien: 0.12 }
+};
+// A line of flavour for each zone, shown the first time the player crosses into it.
+const ZONE_FLAVOUR = {
+  beach: 'the waterline is behind you — hold the sand',
+  forest: 'the canopy closes in — the surf fades behind you',
+  rocks: 'broken ground and boulders — watch the high rocks',
+  outskirts: 'the village plateau looms ahead — the last stretch'
+};
+// Ambient life: what is going on beyond the treeline, per zone. Ranges are seconds between
+// events ([min, max]); a null kind never fires there. Explosions are the war inland, played flat
+// as a far-off rumble; calls are alien voices placed out in the trees around the player, and the
+// volume they carry is how close the island feels.
+const AMBIENT_LIFE = {
+  beach: { explosion: [9, 20], call: null, callVolume: 0.7 },
+  forest: { explosion: [14, 26], call: [7, 15], callVolume: 0.7 },
+  rocks: { explosion: [12, 24], call: [6, 12], callVolume: 0.85 },
+  outskirts: { explosion: [10, 22], call: [5, 11], callVolume: 1.0 }
+};
+const ALIEN_CALL_MIN_DISTANCE = 40;    // A call is heard out in the trees, never at the ear
+const ALIEN_CALL_MAX_DISTANCE = 90;
+const DISTANT_EXPLOSION_VOLUME = 0.22; // Well under a real blast: it is somebody else's fight
 
 // The helicopter pilots (call signs for messages)
 const PILOT_NAMES = ['Hawk', 'Viper'];
@@ -82,6 +112,12 @@ const RALLY_POSTS = [
  * down) -> objective (a last group springs from the trees on the way in) -> won. Lingering aboard
  * during the waves makes the aliens mass at the gangway instead of the beach, with call-outs to
  * get ashore.
+ *
+ * The island is four zones, named as the player crosses into them (the `zones` in config): the
+ * beach, the forest, the rockfields, then the village outskirts. Each holds its own garrison (the
+ * hunt's holding force) and its own ambience — the surf fades inland while the wind and the
+ * aliens' low under-hum grow (ZONE_AMBIENCE), with distant explosions and calls out in the trees
+ * (AMBIENT_LIFE).
  * Losing: the player bleeds out, or goes down with nobody left standing to come.
  *
  * Level02TestLevel extends this with dummies, a respawning trio instead of waves, and dev tools.
@@ -102,6 +138,9 @@ export class Level02 extends IslandLevel {
 
     this.state = 'landing'; // landing -> waves -> hunt -> objective -> ambush -> won | lost
     this._holdoutsTotal = 0;
+    this._zone = null;                    // The zone the player stands in (null until ashore)
+    this._ambient = { explosion: Infinity, call: Infinity }; // Seconds to each ambient event
+    this._ambientPoint = new THREE.Vector3(); // Scratch for placing a distant alien call
     this._crewFollowing = false;
     this._crewRoutes = [];    // Crew waiting on the gangway: { mate, route, rally, facing }
     this._objectivePoint = new THREE.Vector3();
@@ -166,6 +205,8 @@ export class Level02 extends IslandLevel {
     this.landingZone.update(delta);
     if (this.destructibleCover) this.destructibleCover.update(delta);
     this._sendCrewAshore();
+    this._updateZones();
+    this._updateAmbientLife(delta);
 
     // The crew wait on the sand until the player is ashore, then fall in behind them
     if (!this._crewFollowing && this._isPlayerAshore()) {
@@ -203,6 +244,13 @@ export class Level02 extends IslandLevel {
   _mapMarkers() {
     if (this.state !== 'objective' && this.state !== 'ambush') return [];
     return [{ x: this._objectivePoint.x, z: this._objectivePoint.z, label: 'OBJECTIVE' }];
+  }
+
+  /** The zone lines on the island map: each inland line, named for the ground beyond it. */
+  _mapZones() {
+    return this.cfg.zones
+      .filter((zone) => zone.inlandFrom !== null)
+      .map((zone) => ({ id: zone.id, name: zone.name, z: zone.inlandFrom }));
   }
 
   /** Retunes the adaptive score to a mission state; a no-op where no music director exists. */
@@ -362,24 +410,29 @@ export class Level02 extends IslandLevel {
   }
 
   /**
-   * Deals the holding force round-robin across the island's posts, heavier units last: they wait
-   * at their posts and never push for the beach — the player has to find them.
+   * Deals each zone's garrison across that zone's posts, heavier units last - the beach is the
+   * waves' business, so only the inland zones hold troops. They wait at their posts and never
+   * push for the beach: the player has to come and find them.
    * @returns {number} How many found a spot (the hunt's count)
    */
   _spawnHoldouts() {
-    const holdouts = this.cfg.holdouts;
-    const roster = [];
-    for (let i = 0; i < (holdouts.trooper || 0); i++) roster.push('trooper');
-    for (let i = 0; i < (holdouts.brute || 0); i++) roster.push('brute');
-
+    const spread = this.cfg.holdouts.groupSpread;
     let placed = 0;
-    roster.forEach((type, index) => {
-      const post = HOLDOUT_POSTS[index % HOLDOUT_POSTS.length];
-      const spot = this._findSpawnSpot(post, holdouts.groupSpread, holdouts.groupSpread);
-      if (!spot) return; // A missed spot just thins the group; every post is verified clear ground
-      this.createAlien(type, spot.x, spot.z);
-      placed++;
-    });
+    for (const zone of this.cfg.zones) {
+      const mix = zone.holdouts;
+      if (!mix) continue; // The beach's garrison already broke on the sand (the waves)
+      const posts = HOLDOUT_POSTS.filter((post) => post.zone === zone.id);
+      const roster = [];
+      for (let i = 0; i < (mix.trooper || 0); i++) roster.push('trooper');
+      for (let i = 0; i < (mix.brute || 0); i++) roster.push('brute');
+      roster.forEach((type, index) => {
+        const post = posts[index % posts.length];
+        const spot = this._findSpawnSpot(post, spread, spread);
+        if (!spot) return; // A missed spot just thins the group; every post is verified clear ground
+        this.createAlien(type, spot.x, spot.z);
+        placed++;
+      });
+    }
     return placed;
   }
 
@@ -537,6 +590,75 @@ export class Level02 extends IslandLevel {
   }
 
   // ---------------------------------------------------------------------------
+  // The island's zones
+  // ---------------------------------------------------------------------------
+
+  /** The zone the player stands in now: the last inland line they have crossed (see `zones`). */
+  _currentZone() {
+    const zones = this.cfg.zones;
+    const z = this.player.position.z;
+    for (let i = zones.length - 1; i >= 1; i--) {
+      if (z <= zones[i].inlandFrom) return zones[i];
+    }
+    return zones[0];
+  }
+
+  /**
+   * Names the ground the first time the player is ashore, and again whenever they cross into a
+   * new zone; the ambient mix follows (the surf fades inland, the island grows louder), and each
+   * zone's ambient clocks start on their own first delays.
+   */
+  _updateZones() {
+    if (!this._isPlayerAshore()) return;
+    const zone = this._currentZone();
+    if (zone === this._zone) return;
+    this._zone = zone;
+    const ui = this.gameWorld.ui;
+    if (ui) ui.showToast(`${zone.name.toUpperCase()} — ${ZONE_FLAVOUR[zone.id]}`, 'info', 4000);
+    const music = this.gameWorld.music;
+    if (music && ZONE_AMBIENCE[zone.id]) music.setAmbience(ZONE_AMBIENCE[zone.id]);
+    const life = AMBIENT_LIFE[zone.id];
+    if (life) {
+      this._ambient.explosion = life.explosion ? life.explosion[0] : Infinity;
+      this._ambient.call = life.call ? life.call[0] : Infinity;
+    }
+  }
+
+  /**
+   * Ambient life: the war inland (a distant explosion, flat and far off) and alien calls placed
+   * out in the trees around the player, each on its zone's own clock (see AMBIENT_LIFE). The
+   * beach hears the surf; the further in, the louder the island gets.
+   */
+  _updateAmbientLife(delta) {
+    if (!this._zone || this.state === 'won' || this.state === 'lost') return;
+    const life = AMBIENT_LIFE[this._zone.id];
+    if (!life) return;
+    const audio = this.gameWorld.audio;
+
+    if (life.explosion) {
+      this._ambient.explosion -= delta;
+      if (this._ambient.explosion <= 0) {
+        const [min, max] = life.explosion;
+        this._ambient.explosion = min + Math.random() * (max - min);
+        if (audio) audio.play('explosion', null, DISTANT_EXPLOSION_VOLUME);
+      }
+    }
+
+    if (life.call) {
+      this._ambient.call -= delta;
+      if (this._ambient.call <= 0) {
+        const [min, max] = life.call;
+        this._ambient.call = min + Math.random() * (max - min);
+        const p = this.player.position;
+        const angle = Math.random() * Math.PI * 2;
+        const distance = ALIEN_CALL_MIN_DISTANCE + Math.random() * (ALIEN_CALL_MAX_DISTANCE - ALIEN_CALL_MIN_DISTANCE);
+        this._ambientPoint.set(p.x + Math.sin(angle) * distance, p.y, p.z + Math.cos(angle) * distance);
+        if (audio) audio.play('alienCall', this._ambientPoint, life.callVolume);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Spawning waves
   // ---------------------------------------------------------------------------
 
@@ -591,6 +713,7 @@ export class Level02 extends IslandLevel {
     this._setMusic('silent'); // The score goes quiet with the level (menu, restart, another stage)
     this.waves = null;
     this.ambush = null;
+    this._zone = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them
     super.dispose(); // Also the destructible cover, the landing zone, the wreckage and the beacon (tracked)
     this.beacon = null;

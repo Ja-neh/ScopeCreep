@@ -209,6 +209,45 @@ const SOUNDS = {
       clicks.stop(when + 0.26);
       return clicks;
     }
+  },
+
+  // A distant alien call: a wobbling slide heard across the trees (Level 2's ambient life - see
+  // AMBIENT_LIFE; positional, so it pans out where it came from)
+  alienCall: {
+    gain: 0.5,
+    minInterval: 1.2,
+    pitchJitter: 0.18,
+    build({ ctx, when, out, pitch }) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(330 * pitch, when);
+      osc.frequency.exponentialRampToValueAtTime(190 * pitch, when + 0.55);
+      osc.frequency.exponentialRampToValueAtTime(140 * pitch, when + 1.15);
+      // The warble rides on the slide: a fast wobble, widest while the call is loud
+      const wobble = ctx.createOscillator();
+      wobble.type = 'sine';
+      wobble.frequency.value = 7.5;
+      const wobbleDepth = ctx.createGain();
+      wobbleDepth.gain.value = 22 * pitch;
+      wobble.connect(wobbleDepth);
+      wobbleDepth.connect(osc.frequency);
+      const formant = ctx.createBiquadFilter();
+      formant.type = 'bandpass';
+      formant.frequency.value = 520 * pitch;
+      formant.Q.value = 1.5;
+      const voiceGain = ctx.createGain();
+      voiceGain.gain.setValueAtTime(0.0001, when);
+      voiceGain.gain.exponentialRampToValueAtTime(1, when + 0.14);
+      voiceGain.gain.exponentialRampToValueAtTime(0.001, when + 1.3);
+      osc.connect(formant);
+      formant.connect(voiceGain);
+      voiceGain.connect(out);
+      osc.start(when);
+      osc.stop(when + 1.35);
+      wobble.start(when);
+      wobble.stop(when + 1.35);
+      return osc;
+    }
   }
 };
 

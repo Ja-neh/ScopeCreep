@@ -27,6 +27,7 @@ export const CREW_NAMES = ['Okafor', 'Reyes', 'Novak', 'Chen'];
  * - _buildWorld(): the level's own places (landing zone, village), before the trees are planted
  * - _clearings(): ground the trees and rocks must leave open
  * - _mapMarkers(): objective pins drawn on the island map ([M])
+ * - _mapZones(): zone boundary lines drawn on the island map ([M])
  * - _playerSpawn(): where the player starts ({ position, yaw })
  * - _createProps(): things that need the player and weapons (supply crates)
  * - _startScenario() / _updateScenario(delta): the mission itself (state != won/lost)
@@ -156,6 +157,11 @@ export class IslandLevel extends BaseLevel {
     return [];
   }
 
+  /** Zone boundary lines drawn on the island map ([M]). Island missions with zones override this. */
+  _mapZones() {
+    return [];
+  }
+
   /** The island chart for the map overlay: world bounds around the playable scatter. */
   getMapTerrain() {
     return this.environment ? mapTerrainFromEnvironment(this.environment) : null;
@@ -163,7 +169,8 @@ export class IslandLevel extends BaseLevel {
 
   /**
    * The open map's snapshot: the player, the squad, the aliens still alive (the ones hunting
-   * us burn bright, the unaware ones are a dim rim to go and find), and the level's markers.
+   * us burn bright, the unaware ones are a dim rim to go and find), the level's markers and its
+   * zone lines.
    */
   getMapData() {
     const player = this.player;
@@ -199,7 +206,8 @@ export class IslandLevel extends BaseLevel {
       player: { x: player.position.x, z: player.position.z, yaw: player.yaw },
       mates,
       enemies,
-      markers: this._mapMarkers()
+      markers: this._mapMarkers(),
+      zones: this._mapZones()
     };
   }
 

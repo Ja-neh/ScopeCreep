@@ -206,6 +206,58 @@ test('silent and stop zero the bed and the ambience; the score can come back', (
   director.dispose();
 });
 
+test('the level moves the ambient mix and leaving the mission parks it back', () => {
+  const audio = fakeAudio();
+  audio.context = createFakeContext();
+  const director = new MusicDirector(audio);
+
+  director.setState('tense');
+  assert.equal(director.buses.alien.gain.value, 0, 'the alien under-hum starts silent');
+
+  // Level 2's zones: the surf falls away and the trees pick up the hum; wind is untouched
+  director.setAmbience({ ocean: 0.05, alien: 0.12 });
+  assert.equal(director.buses.ocean.gain.value, 0.05, 'the surf recedes inland');
+  assert.equal(director.buses.alien.gain.value, 0.12, 'the under-hum rises');
+  assert.equal(director.buses.wind.gain.value, 0.09, 'omitted keys keep their value');
+
+  director.setAmbience({ alien: 5 });
+  assert.equal(director.buses.alien.gain.value, 1, 'levels clamp to 1');
+
+  // The score's own state changes never touch the zone mix...
+  director.setState('combat');
+  assert.equal(director.buses.alien.gain.value, 1, 'combat leaves the mix alone');
+
+  // ...but the menu (and silence) park it back at the defaults
+  director.setState('menu');
+  assert.equal(director.buses.ocean.gain.value, 0.12, 'the menu restores the surf');
+  assert.equal(director.buses.alien.gain.value, 0, 'and parks the under-hum');
+
+  // A stopped score parks the mix too, so the next stage opens on its own air
+  director.setState('tense');
+  director.setAmbience({ ocean: 0, alien: 0.3 });
+  assert.equal(director.buses.ocean.gain.value, 0);
+  director.stop();
+  assert.equal(director.buses.alien.gain.value, 0, 'stop() parks the under-hum');
+  director.setState('tense');
+  assert.equal(director.buses.ocean.gain.value, 0.12, 'a restarted score takes the default surf back');
+  director.dispose();
+});
+
+test('a mix requested before the AudioContext exists applies at the lazy build', () => {
+  const audio = fakeAudio();
+  const director = new MusicDirector(audio);
+  director.setState('combat');
+  director.setAmbience({ ocean: 0, alien: 0.35 }); // No context: remembered, nothing built
+  assert.equal(director.buses, null);
+
+  audio.context = createFakeContext();
+  assert.equal(director.refresh(), true);
+  assert.equal(director.buses.ocean.gain.value, 0, 'the remembered mix applies at birth');
+  assert.equal(director.buses.alien.gain.value, 0.35);
+  assert.equal(director.buses.wind.gain.value, 0.09, 'untouched keys stay at their defaults');
+  director.dispose();
+});
+
 test('stingers schedule one-shot voices over the score', () => {
   const audio = fakeAudio();
   audio.context = createFakeContext();

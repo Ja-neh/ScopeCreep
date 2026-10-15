@@ -16,6 +16,11 @@
  *   victory   a resolved major pad that swells in when the mission is won
  * One-shot stingers ('impact', 'deploy', 'waveHeld', 'ambush', 'defeat') land the moments between states.
  *
+ * Under the score sits the ambience bed: the surf wash, the wind, and - once a level moves the mix
+ * out to it - a low alien under-hum. The states only gate it; setAmbience blends it per zone
+ * (Level 2's zones fade the surf out as the squad pushes inland), and leaving a mission (silence,
+ * the menu, or stop()) parks it back at the defaults.
+ *
  * Everything routes through the AudioManager's output node, so the player's volume and mute
  * apply to the score automatically. The AudioContext only exists after the first user gesture
  * (see AudioManager.unlock): every call before that - and everywhere in the Node test runner -
@@ -31,6 +36,8 @@ const NOISE_SECONDS = 1;       // one-second noise buffer, looped
 
 const AMB_OCEAN_LEVEL = 0.12;  // surf wash under everything
 const AMB_WIND_LEVEL = 0.09;   // wind gusts
+const AMB_ALIEN_LEVEL = 0;     // the low under-hum in the trees: only where a level moves the mix to it
+const DEFAULT_AMBIENCE = { ocean: AMB_OCEAN_LEVEL, wind: AMB_WIND_LEVEL, alien: AMB_ALIEN_LEVEL };
 
 // The menu's trailer groove: a two-bar loop at this tempo (96 BPM -> 5.0 s per loop)
 const TRAILER_BPM = 96;
@@ -255,6 +262,7 @@ export class MusicDirector {
     this._noise = null;
     this._groove = null;
     this._intro = null;
+    this._ambience = { ...DEFAULT_AMBIENCE }; // The mix setAmbience moves (Level 2's zones drive it)
   }
 
   get state() { return this._state; }
@@ -269,6 +277,9 @@ export class MusicDirector {
   setState(name) {
     if (!STATES[name]) return;
     this._running = name !== 'silent';
+    // Leaving a mission must not carry its zone mix away: silence and the menu park the mix back
+    // at the defaults, so the next stage opens on its own air, not the last island's
+    if (name === 'silent' || name === 'menu') this._ambience = { ...DEFAULT_AMBIENCE };
     if (name === this._state && this.buses) return; // Same state, nothing to retune
     const built = !!this.buses;
     this._state = name;
@@ -288,6 +299,27 @@ export class MusicDirector {
   }
 
   /**
+   * Moves the ambient bed to a mix - the surf, the wind and the alien under-hum, each 0..1.
+   * Omitted keys keep their value; levels drive this from where the player is standing (Level 2's
+   * zones fade the surf out as the squad pushes inland). The score's own states never touch the
+   * mix, and leaving the mission parks it back at the defaults. Safe before the AudioContext
+   * exists: the mix is remembered and applied at the lazy build.
+   * @param {{ocean?: number, wind?: number, alien?: number}} levels
+   */
+  setAmbience(levels = {}) {
+    let changed = false;
+    for (const key of ['ocean', 'wind', 'alien']) {
+      if (typeof levels[key] !== 'number') continue;
+      const value = Math.max(0, Math.min(1, levels[key]));
+      if (value === this._ambience[key]) continue;
+      this._ambience[key] = value;
+      changed = true;
+    }
+    if (!changed || !this.buses) return;
+    this._applyAmbience(RAMP_SECONDS);
+  }
+
+  /**
    * Builds the score graph if the AudioContext has appeared since the last call, applying the
    * state remembered while there was none. The AudioManager calls this on its first unlock,
    * which is how the menu theme starts on the player's first click. Safe to call any time.
@@ -301,6 +333,7 @@ export class MusicDirector {
   stop() {
     this._running = false;
     this._state = 'silent';
+    this._ambience = { ...DEFAULT_AMBIENCE }; // A stopped score parks the ambient mix too
     if (!this.buses) return;
     this._applyState(STOP_RAMP_SECONDS);
   }
@@ -320,6 +353,7 @@ export class MusicDirector {
     this._noise = null;
     this._groove = null;
     this._intro = null;
+    this._ambience = { ...DEFAULT_AMBIENCE };
   }
 
   // --- internals -----------------------------------------------------------
@@ -455,7 +489,30 @@ export class MusicDirector {
     this._start(windNoise);
     this._lfo(ctx, windTrem.gain, 0.06, 0.2, 'sine');
 
-    this.buses = { master, drone, pulse, drums, pad, groove, intro, ocean, wind, pulseLfo };
+    // The alien under-hum: a slow, wet wail in the trees, silent until a level moves the mix to
+    // it (Level 2's zones - see setAmbience). Two detuned triangles breathe through a tight
+    // band whose centre drifts, so it never settles into a note.
+    const alien = this._gain(ctx, 0, master);
+    const alienTrem = ctx.createGain();
+    alienTrem.gain.value = 0.5;
+    const alienFilter = ctx.createBiquadFilter();
+    alienFilter.type = 'bandpass';
+    alienFilter.frequency.value = 240;
+    alienFilter.Q.value = 2.2;
+    alienFilter.connect(alienTrem);
+    alienTrem.connect(alien);
+    for (const detune of [-9, 7]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.value = 88;
+      osc.detune.value = detune;
+      osc.connect(alienFilter);
+      this._start(osc);
+    }
+    this._lfo(ctx, alienTrem.gain, 0.07, 0.4, 'triangle');
+    this._lfo(ctx, alienFilter.frequency, 0.05, 90, 'sine');
+
+    this.buses = { master, drone, pulse, drums, pad, groove, intro, ocean, wind, alien, pulseLfo };
   }
 
   /** Crossfades every layer to the current state's targets. */
@@ -468,12 +525,19 @@ export class MusicDirector {
     this._ramp(this.buses.pad.gain, state.pad, now, ramp);
     this._ramp(this.buses.groove.gain, state.groove, now, ramp);
     this._ramp(this.buses.intro.gain, state.intro, now, ramp);
-    const ambience = this._running ? 1 : 0;
-    this._ramp(this.buses.ocean.gain, AMB_OCEAN_LEVEL * ambience, now, ramp);
-    this._ramp(this.buses.wind.gain, AMB_WIND_LEVEL * ambience, now, ramp);
+    this._applyAmbience(ramp);
     if (this.buses.pulseLfo) {
       this._ramp(this.buses.pulseLfo.frequency, state.pulseRate, now, Math.min(ramp, 0.6));
     }
+  }
+
+  /** Ramps the ambience bed (surf, wind, the alien under-hum) to the current mix, gated by the score. */
+  _applyAmbience(ramp) {
+    const gate = this._running ? 1 : 0;
+    const now = this._ctx.currentTime;
+    this._ramp(this.buses.ocean.gain, this._ambience.ocean * gate, now, ramp);
+    this._ramp(this.buses.wind.gain, this._ambience.wind * gate, now, ramp);
+    this._ramp(this.buses.alien.gain, this._ambience.alien * gate, now, ramp);
   }
 
   /** The crossfade length a state deserves. */
