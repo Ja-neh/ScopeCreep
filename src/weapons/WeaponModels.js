@@ -2,15 +2,16 @@ import * as THREE from 'three';
 
 /**
  * WeaponModels
- * Procedural low-poly machine gun and combat knife, visual only. Each model points along -Z
- * with its grip at the origin. Share one materials set between all copies of the models.
+ * Procedural low-poly machine gun, combat knife and plasma bomb, visual only. Each model points
+ * along -Z with its grip at the origin. Share one materials set between all copies of the models.
  */
 
 export function createWeaponMaterials() {
   return {
     gunmetal: new THREE.MeshStandardMaterial({ color: 0x2e3237, roughness: 0.45, metalness: 0.6 }),
     polymer: new THREE.MeshStandardMaterial({ color: 0x3b3f2f, roughness: 0.8, metalness: 0.1 }),
-    blade: new THREE.MeshStandardMaterial({ color: 0xc9d0d6, roughness: 0.25, metalness: 0.9 })
+    blade: new THREE.MeshStandardMaterial({ color: 0xc9d0d6, roughness: 0.25, metalness: 0.9 }),
+    charge: new THREE.MeshStandardMaterial({ color: 0x8dffb8, emissive: 0x2ecc71, emissiveIntensity: 1.4, roughness: 0.4 })
   };
 }
 
@@ -63,6 +64,24 @@ export function createKnifeModel(materials) {
   bladeGeo.rotateX(-Math.PI / 2);
   bladeGeo.scale(0.3, 1, 1);
   part(mesh, bladeGeo, materials.blade, 0, 0, -0.19);
+
+  return { mesh };
+}
+
+/**
+ * Plasma bomb: a compact sphere with a glowing energy seam and a safety lever.
+ * @returns {{ mesh: THREE.Group }}
+ */
+export function createBombModel(materials) {
+  const mesh = new THREE.Group();
+  mesh.name = 'Bomb';
+
+  const body = part(mesh, new THREE.SphereGeometry(0.085, 10, 8), materials.gunmetal, 0, 0, 0);
+  body.scale.y = 1.15;
+  part(mesh, new THREE.CylinderGeometry(0.087, 0.087, 0.04, 10), materials.charge, 0, 0.01, 0);
+  part(mesh, new THREE.CylinderGeometry(0.026, 0.026, 0.05, 6), materials.polymer, 0, 0.12, 0);
+  const lever = part(mesh, new THREE.BoxGeometry(0.016, 0.02, 0.1), materials.gunmetal, 0.05, 0.08, -0.03);
+  lever.rotation.x = 0.25;
 
   return { mesh };
 }

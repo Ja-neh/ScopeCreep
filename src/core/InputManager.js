@@ -70,6 +70,7 @@ export class InputManager {
       reload: ['KeyR'],
       weaponPrimary: ['Digit1'],
       weaponMelee: ['Digit2'],
+      weaponBomb: ['Digit3'],
       weaponNext: ['WheelDown'],
       weaponPrev: ['WheelUp'],
       quickMelee: ['KeyQ'],

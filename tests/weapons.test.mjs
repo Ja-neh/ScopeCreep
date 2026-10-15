@@ -1,9 +1,10 @@
-// WeaponController: machine gun, reload, knife and backstab, quick knife, aim zoom, cleanup.
+// WeaponController: machine gun, reload, knife and backstab, quick knife, bomb, aim zoom, cleanup.
 import { test, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { createTestWorld, stepWorld, bodyCount } from './support/testWorld.mjs';
 import { BeachEnvironment } from '../src/levels/level02/BeachEnvironment.js';
+import { ProjectilePool } from '../src/entities/ProjectilePool.js';
 import { Player } from '../src/entities/Player.js';
 import { TrainingDummy } from '../src/entities/TrainingDummy.js';
 import { WeaponController } from '../src/weapons/WeaponController.js';
@@ -157,6 +158,53 @@ test('aiming down sights zooms in; crouching and aiming tighten the spread', () 
   world.input.release('aimDownSights');
   stepWorld(world, 0.6);
   assert.ok(world.camera.fov > 58);
+});
+
+test('3 arms the bomb: a throw lobs it at the crosshair and the blast hurts the target, never the thrower', () => {
+  const pool = new ProjectilePool(world);
+  world.addEntity(pool);
+  world.projectilePool = pool;
+
+  const dummy = dummyAt(30, 150, Math.PI);
+  // The crosshair sits 0.75 m right of the player, so stand left of the target line,
+  // close enough that the blast covers the thrower too
+  place(29.25, 155.5);
+  world.input.press('weaponBomb');
+  stepWorld(world, 0.4);
+  assert.equal(weapons.activeWeapon, 'bomb');
+  const armed = weapons.bombsLeft;
+
+  world.input.hold('firePrimary');
+  stepWorld(world, 4, { onFrame: () => dummy.health.currentHealth < dummy.health.maxHealth });
+  world.input.release('firePrimary');
+
+  assert.equal(weapons.bombsLeft, armed - 1, 'one bomb left the hand');
+  assert.ok(dummy.health.currentHealth < dummy.health.maxHealth, `the blast hurt the dummy (${dummy.health.currentHealth} hp)`);
+  assert.equal(player.health.currentHealth, player.health.maxHealth, 'the thrower is never hurt by their own blast');
+  assert.ok(world.audio.callsTo('play').some((call) => call.args[0] === 'explosion'), 'the blast is heard');
+  const hud = world.ui.callsTo('updateWeaponHUD').at(-1).args[0];
+  assert.equal(hud.name, 'BOMB');
+  assert.equal(hud.ammo, armed - 1, 'the panel shows the bombs left');
+  assert.equal(hud.slot, 3, 'slot 3 is highlighted');
+
+  world.clearEntities();
+  world.projectilePool = null;
+});
+
+test('the wheel cycles gun, knife and bomb', () => {
+  place(0, 170);
+  world.input.press('weaponNext');
+  stepWorld(world, 0.4);
+  assert.equal(weapons.equipped, 'knife');
+  world.input.press('weaponNext');
+  stepWorld(world, 0.4);
+  assert.equal(weapons.equipped, 'bomb');
+  world.input.press('weaponNext');
+  stepWorld(world, 0.4);
+  assert.equal(weapons.equipped, 'rifle');
+  world.input.press('weaponPrev');
+  stepWorld(world, 0.4);
+  assert.equal(weapons.equipped, 'bomb');
 });
 
 test('removing the weapons restores the camera and frees the effects', async () => {

@@ -226,7 +226,7 @@ export class IslandLevel extends BaseLevel {
       { actions: ['firePrimary'], label: 'Fire (click to lock the mouse)' },
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['reload'], label: 'Reload' },
-      { actions: ['weaponPrimary', 'weaponMelee', 'quickMelee'], label: 'Gun, knife, quick knife' },
+      { actions: ['weaponPrimary', 'weaponMelee', 'weaponBomb', 'quickMelee'], label: 'Gun, knife, bomb, quick knife' },
       { actions: ['specialAction'], label: 'Hold: revive, patch up' },
       { actions: ['toggleCamera'], label: '1st / 3rd person' },
       { actions: ['pause'], label: 'Pause and options' }

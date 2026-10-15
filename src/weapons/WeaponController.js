@@ -4,7 +4,7 @@ import { CameraMode } from '../entities/components/SpringArmCamera.js';
 import { HitscanWeapon } from './HitscanWeapon.js';
 import { MeleeWeapon } from './MeleeWeapon.js';
 import { WeaponEffects } from './WeaponEffects.js';
-import { createWeaponMaterials, createRifleModel, createKnifeModel, disposeModelGeometry } from './WeaponModels.js';
+import { createWeaponMaterials, createRifleModel, createKnifeModel, createBombModel, disposeModelGeometry } from './WeaponModels.js';
 import config from '../config.json';
 
 // Camera and pose feel while armed (visual, not balance)
@@ -18,17 +18,19 @@ const VIEW_OFFSET_ADS = new THREE.Vector3(0, -0.16, -0.42);
 const RECOIL_KICK = 0.06;                                  // Visual kickback of the gun per shot (meters)
 const SHOULDER_SHOT_DROP = 0.25;                           // Third-person shots leave the shoulder, below the eye
 
-const WEAPON_NAMES = { rifle: 'MACHINE GUN', knife: 'KNIFE' };
+const SLOT_CYCLE = ['rifle', 'knife', 'bomb'];
+const WEAPON_NAMES = { rifle: 'MACHINE GUN', knife: 'KNIFE', bomb: 'BOMB' };
 
 /**
  * WeaponController
- * Gives a Player a machine gun and a knife: switching (1 / 2 / mouse wheel), quick knife (Q),
- * reload (R), aim down sights (right mouse), recoil, tracers and impacts, a held model on the
- * avatar and a first-person view model, plus the crosshair and ammo HUD.
+ * Gives a Player a machine gun, a knife and a plasma bomb: switching (1 / 2 / 3 / mouse wheel),
+ * quick knife (Q), reload (R), aim down sights (right mouse), recoil, tracers and impacts, a held
+ * model on the avatar and a first-person view model, plus the crosshair and slot HUD. The bomb is
+ * thrown through the shared grenade pool (an arc to the crosshair, blast-only damage).
  * Attached by levels that need infantry combat, so Player itself stays weapon-free.
  * Add it to the GameWorld after its Player so its Phase 6 update runs after the camera has moved.
  *
- * - Phase 5 (gameplayUpdate): input, firing, melee hits, ammo and HUD
+ * - Phase 5 (gameplayUpdate): input, firing, melee hits, bomb throws, ammo and HUD
  * - Phase 6 (lateUpdate): aim zoom, held / view model poses, effects
  */
 export class WeaponController extends BaseEntity {
@@ -50,13 +52,16 @@ export class WeaponController extends BaseEntity {
 
     this.gunCfg = config.weapons.machineGun;
     this.knifeCfg = config.weapons.knife;
+    this.bombCfg = config.weapons.bomb;
     this.switchSeconds = config.weapons.switchSeconds;
 
     this.rifle = new HitscanWeapon(this.gunCfg);
     this.knife = new MeleeWeapon(this.knifeCfg);
+    this.bombsLeft = this.bombCfg.count;
     this.equipped = 'rifle';
     this.switchTimer = 0;
     this.quickMeleeTimer = 0; // > 0 while a quick knife swing stands in for the gun
+    this.throwTimer = 0;      // Cools down between bomb throws and clocks the toss pose
     this.isAiming = false;
     this._adsBlend = 0;
     this._recoil = 0;
@@ -69,13 +74,15 @@ export class WeaponController extends BaseEntity {
     player.mesh.add(this.heldPivot);
     this.heldRifle = createRifleModel(this.materials);
     this.heldKnife = createKnifeModel(this.materials);
-    this.heldPivot.add(this.heldRifle.mesh, this.heldKnife.mesh);
+    this.heldBomb = createBombModel(this.materials);
+    this.heldPivot.add(this.heldRifle.mesh, this.heldKnife.mesh, this.heldBomb.mesh);
 
     this.viewModel = new THREE.Group();
     this.viewModel.name = 'WeaponViewModel';
     this.viewRifle = createRifleModel(this.materials);
     this.viewKnife = createKnifeModel(this.materials);
-    this.viewModel.add(this.viewRifle.mesh, this.viewKnife.mesh);
+    this.viewBomb = createBombModel(this.materials);
+    this.viewModel.add(this.viewRifle.mesh, this.viewKnife.mesh, this.viewBomb.mesh);
     this.viewModel.traverse((child) => { if (child.isMesh) child.castShadow = false; });
     this.viewModel.visible = false;
     gameWorld.effectsGroup.add(this.viewModel);
@@ -98,7 +105,7 @@ export class WeaponController extends BaseEntity {
     this._muzzle = new THREE.Vector3();
     this._tmp = new THREE.Vector3();
 
-    this._hud = { weapon: null, ammo: -1, reserve: -1, reloadStep: -2 };
+    this._hud = { weapon: null, ammo: -1, reserve: -1, bombs: -1, reloadStep: -2 };
     if (gameWorld.ui) {
       gameWorld.ui.showCrosshair('rifle');
       gameWorld.ui.showWeaponHUD();
@@ -124,6 +131,7 @@ export class WeaponController extends BaseEntity {
     this.rifle.update(delta);
     if (this.knife.update(delta)) this._resolveStrike(gameWorld);
     if (this.switchTimer > 0) this.switchTimer -= delta;
+    if (this.throwTimer > 0) this.throwTimer -= delta;
     if (this.quickMeleeTimer > 0) {
       this.quickMeleeTimer -= delta;
       if (this.quickMeleeTimer <= 0) this._showModels();
@@ -137,8 +145,12 @@ export class WeaponController extends BaseEntity {
         this._equip('rifle');
       } else if (input.isActionJustPressed('weaponMelee')) {
         this._equip('knife');
-      } else if (input.isActionJustPressed('weaponNext') || input.isActionJustPressed('weaponPrev')) {
-        this._equip(this.equipped === 'rifle' ? 'knife' : 'rifle');
+      } else if (input.isActionJustPressed('weaponBomb')) {
+        this._equip('bomb');
+      } else if (input.isActionJustPressed('weaponNext')) {
+        this._equip(SLOT_CYCLE[(SLOT_CYCLE.indexOf(this.equipped) + 1) % SLOT_CYCLE.length]);
+      } else if (input.isActionJustPressed('weaponPrev')) {
+        this._equip(SLOT_CYCLE[(SLOT_CYCLE.indexOf(this.equipped) + SLOT_CYCLE.length - 1) % SLOT_CYCLE.length]);
       }
 
       if (input.isActionJustPressed('reload') && this.equipped === 'rifle') {
@@ -157,6 +169,8 @@ export class WeaponController extends BaseEntity {
           this._fireRifle(gameWorld);
         } else if (this.equipped === 'knife' && input.isActionJustPressed('firePrimary')) {
           this.knife.startAttack();
+        } else if (this.equipped === 'bomb' && input.isActionDown('firePrimary')) {
+          this._throwBomb(gameWorld);
         }
       }
     }
@@ -240,10 +254,37 @@ export class WeaponController extends BaseEntity {
   }
 
   /**
+   * Throws a plasma bomb: the point under the crosshair (scattered a little — it is a throw, not
+   * a shot), lobbed by the shared grenade pool. The blast hurts the aliens and tears up cover.
+   */
+  _throwBomb(gameWorld) {
+    if (this.bombsLeft <= 0 || this.throwTimer > 0) return;
+    const pool = gameWorld.projectilePool;
+    if (!pool || typeof pool.fireGrenade !== 'function') return;
+
+    this._computeAim(gameWorld, this.bombCfg.range);
+    if (this.bombCfg.aimError > 0) {
+      this._aimPoint.x += (Math.random() - 0.5) * 2 * this.bombCfg.aimError;
+      this._aimPoint.z += (Math.random() - 0.5) * 2 * this.bombCfg.aimError;
+    }
+    pool.fireGrenade({
+      origin: this._origin,
+      target: this._aimPoint,
+      source: this.player,
+      excludeCollider: this.player.collider
+    });
+    this.bombsLeft--;
+    this.throwTimer = this.bombCfg.throwSeconds;
+    // The throw is loud: aliens nearby turn towards it
+    if (this.onGunshot) this.onGunshot(this._origin);
+    this._refreshHud(true);
+  }
+
+  /**
    * Shots go from the shoulder (or eye, in first person) to whatever is under the crosshair.
    * The crosshair ray starts level with the player so nothing between camera and player catches it.
    */
-  _computeAim(gameWorld) {
+  _computeAim(gameWorld, range = this.gunCfg.range) {
     const player = this.player;
     const camera = gameWorld.camera;
     this._camPos.copy(camera.position);
@@ -270,8 +311,8 @@ export class WeaponController extends BaseEntity {
     this._aimRay.dir.x = this._camDir.x;
     this._aimRay.dir.y = this._camDir.y;
     this._aimRay.dir.z = this._camDir.z;
-    const hit = physics.castRay(this._aimRay, this.gunCfg.range, true, undefined, undefined, player.collider);
-    this._aimPoint.copy(this._tmp).addScaledVector(this._camDir, hit ? hit.timeOfImpact : this.gunCfg.range);
+    const hit = physics.castRay(this._aimRay, range, true, undefined, undefined, player.collider);
+    this._aimPoint.copy(this._tmp).addScaledVector(this._camDir, hit ? hit.timeOfImpact : range);
   }
 
   _visibleMuzzle(out) {
@@ -341,6 +382,13 @@ export class WeaponController extends BaseEntity {
     this.viewKnife.mesh.rotation.x = -arc * 1.2;
     this.viewKnife.mesh.position.z = -arc * 0.25;
 
+    // Bomb: rests in the hand; a throw flicks it forward
+    const toss = this.activeWeapon === 'bomb' && this.throwTimer > 0
+      ? Math.sin((1 - this.throwTimer / this.bombCfg.throwSeconds) * Math.PI)
+      : 0;
+    this.heldBomb.mesh.rotation.x = -toss * 1.4;
+    this.viewBomb.mesh.rotation.x = -toss * 1.4;
+
     this.effects.update(delta);
 
     if (gameWorld.ui && this.activeWeapon === 'rifle') {
@@ -354,8 +402,10 @@ export class WeaponController extends BaseEntity {
     const weapon = this.activeWeapon;
     this.heldRifle.mesh.visible = weapon === 'rifle';
     this.heldKnife.mesh.visible = weapon === 'knife';
+    this.heldBomb.mesh.visible = weapon === 'bomb';
     this.viewRifle.mesh.visible = weapon === 'rifle';
     this.viewKnife.mesh.visible = weapon === 'knife';
+    this.viewBomb.mesh.visible = weapon === 'bomb';
   }
 
   /**
@@ -369,18 +419,20 @@ export class WeaponController extends BaseEntity {
     const reloadStep = this.rifle.isReloading ? Math.floor(this.rifle.reloadProgress * 50) : -1;
     const hud = this._hud;
     if (!force && hud.weapon === weapon && hud.ammo === this.rifle.ammo &&
-        hud.reserve === this.rifle.reserve && hud.reloadStep === reloadStep) {
+        hud.reserve === this.rifle.reserve && hud.bombs === this.bombsLeft && hud.reloadStep === reloadStep) {
       return;
     }
     hud.weapon = weapon;
     hud.ammo = this.rifle.ammo;
     hud.reserve = this.rifle.reserve;
+    hud.bombs = this.bombsLeft;
     hud.reloadStep = reloadStep;
 
     ui.updateWeaponHUD({
       name: WEAPON_NAMES[weapon],
-      ammo: weapon === 'rifle' ? this.rifle.ammo : null,
-      reserve: this.rifle.reserve,
+      slot: SLOT_CYCLE.indexOf(weapon) + 1,
+      ammo: weapon === 'rifle' ? this.rifle.ammo : (weapon === 'bomb' ? this.bombsLeft : null),
+      reserve: weapon === 'rifle' ? this.rifle.reserve : null,
       reloadProgress: reloadStep >= 0 ? reloadStep / 50 : null
     });
   }

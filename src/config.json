@@ -171,6 +171,12 @@
       "cooldown": 0.6,
       "windup": 0.12,
       "backstabMultiplier": 2.0
+    },
+    "bomb": {
+      "count": 6,
+      "throwSeconds": 0.9,
+      "range": 45.0,
+      "aimError": 1.1
     }
   },
   "physicsJuice": {

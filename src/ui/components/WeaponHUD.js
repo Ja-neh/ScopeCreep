@@ -1,7 +1,7 @@
 /**
  * WeaponHUD.js
  * Infantry weapon panel (bottom right): weapon name, magazine and reserve ammo,
- * a reload bar, and the weapon keys.
+ * a reload bar, and the weapon slots with their keys.
  */
 export class WeaponHUD {
   /**
@@ -22,7 +22,12 @@ export class WeaponHUD {
       <div class="ui-weapon-hud-reload ui-hidden" data-role="reload-track">
         <div class="ui-weapon-hud-reload-fill" data-role="reload-fill"></div>
       </div>
-      <div class="ui-weapon-hud-keys">[1] Gun &nbsp;[2] Knife &nbsp;[Q] Quick knife &nbsp;[R] Reload &nbsp;[RMB] Aim</div>
+      <div class="ui-weapon-hud-keys">
+        <span data-role="slot-1">[1] Gun</span>
+        <span data-role="slot-2">[2] Knife</span>
+        <span data-role="slot-3">[3] Bomb</span>
+        [Q] Quick knife &nbsp;[R] Reload &nbsp;[RMB] Aim
+      </div>
     `;
 
     this.nameEl = this.element.querySelector('[data-role="name"]');
@@ -30,6 +35,11 @@ export class WeaponHUD {
     this.reserveEl = this.element.querySelector('[data-role="reserve"]');
     this.reloadTrackEl = this.element.querySelector('[data-role="reload-track"]');
     this.reloadFillEl = this.element.querySelector('[data-role="reload-fill"]');
+    this.slotEls = [
+      this.element.querySelector('[data-role="slot-1"]'),
+      this.element.querySelector('[data-role="slot-2"]'),
+      this.element.querySelector('[data-role="slot-3"]')
+    ];
 
     this.parent.appendChild(this.element);
   }
@@ -46,16 +56,21 @@ export class WeaponHUD {
    * @param {Object} state
    * @param {string} state.name - Weapon name
    * @param {number|null} state.ammo - Rounds in the magazine (null for melee weapons)
-   * @param {number} state.reserve - Spare rounds
+   * @param {number|null} state.reserve - Spare rounds (null for weapons that have none)
    * @param {number|null} state.reloadProgress - 0..1 while reloading, otherwise null
+   * @param {number} [state.slot] - 1-based slot to highlight in the keys line
    */
-  update({ name, ammo, reserve, reloadProgress }) {
+  update({ name, ammo, reserve, reloadProgress, slot }) {
     this.nameEl.textContent = name;
 
     const hasAmmo = ammo !== null && ammo !== undefined;
     this.ammoEl.textContent = hasAmmo ? String(ammo) : '—';
-    this.reserveEl.textContent = hasAmmo ? `/ ${reserve}` : '';
+    this.reserveEl.textContent = hasAmmo && reserve !== null && reserve !== undefined ? `/ ${reserve}` : '';
     this.ammoEl.classList.toggle('empty', hasAmmo && ammo === 0);
+
+    if (slot !== undefined) {
+      this.slotEls.forEach((el, i) => el.classList.toggle('active', i + 1 === slot));
+    }
 
     const reloading = reloadProgress !== null && reloadProgress !== undefined;
     this.reloadTrackEl.classList.toggle('ui-hidden', !reloading);
