@@ -55,6 +55,18 @@ const GATE_ENTRY = {
   fadeSeconds: 1.6,    // Seconds of black between starting the fade and loading the village
   lookShare: [0.35, 0.85] // Share of the march the eye drifts from the squad to the village
 };
+// The gate walker's fall: a short, low camera beat that cuts in the moment it goes down — the
+// fall seen from its flank, then closer as it settles — before the view hands back to the player
+// standing where they fought it (see _playKillCam)
+const KILL_CAM = {
+  duration: 3.4,
+  holdSeconds: 0.5,     // Beat on the fall before the camera starts to drift
+  firstDistance: 7,     // First shot: this far off the corpse's flank...
+  firstHeight: 2.6,     // ...and this high, looking down on it
+  closeDistance: 4.2,   // Then it closes in...
+  closeHeight: 1.7,     // ...down to the corpse's level
+  aimHeight: 2.2        // Roughly the walker's chest while it stood
+};
 // The holding force: once the waves break, the survivors have gone to ground across the island,
 // one garrison per inland zone (see `zones` in config): the woods on either side of the path,
 // the rock shelf, and the outskirts short of the village. They wait at their posts (they never
@@ -181,6 +193,7 @@ export class Level02 extends IslandLevel {
     this._gatePostIndex = 0;
     this._heavy = null;
     this._heavyDown = false;
+    this.killCam = null;          // The walker's fall: the short kill-cam entity (see _playKillCam)
     this._zone = null;                    // The zone the player stands in (null until ashore)
     this._ambient = { explosion: Infinity, call: Infinity }; // Seconds to each ambient event
     this._ambientPoint = new THREE.Vector3(); // Scratch for placing a distant alien call
@@ -447,6 +460,8 @@ export class Level02 extends IslandLevel {
       }
 
       case 'clear': {
+        // The walker's fall gets its own beat first: the walk through waits until the view is back
+        if (this.killCam && this.killCam.isPlaying) break;
         const distance = Math.hypot(this.player.position.x - this._objectivePoint.x, this.player.position.z - this._objectivePoint.z);
         this._showObjective('THROUGH THE GATE', `Walk into the village — ${Math.round(distance)} m`);
         if (distance <= this.cfg.objectiveRadius) this._beginGateEntry();
@@ -603,10 +618,8 @@ export class Level02 extends IslandLevel {
     if (this._heavy && !this._heavyDown) {
       if (this._heavy.isDead) {
         this._heavyDown = true;
-        if (ui) {
-          ui.hideBossHealth();
-          ui.showToast('The gate walker falls!', 'success', 3500);
-        }
+        if (ui) ui.hideBossHealth();
+        this._playKillCam(); // The fall gets a beat of its own (its own title card, not a toast)
       } else if (ui) {
         ui.updateBossHealth(this._heavy.health.currentHealth, this._heavy.health.maxHealth);
       }
@@ -641,6 +654,34 @@ export class Level02 extends IslandLevel {
       ui.showBossHealth(this._heavy.displayName);
       ui.showToast('The gate walker comes out!', 'danger', 4000);
     }
+  }
+
+  /**
+   * The walker goes down: a short kill-cam — the fall seen low from its flank, then closer as it
+   * settles — and the view hands back to the player where they stand (skippable like any sweep).
+   * The corpse is the ragdoll body, so the camera rides it as it topples.
+   */
+  _playKillCam() {
+    if (this.killCam || !this._heavy || !this._heavy.mesh) return;
+    const corpse = this._heavy;
+    const x = corpse.position.x, y = corpse.position.y, z = corpse.position.z;
+    this.killCam = new LandingCinematic(this.gameWorld, {
+      player: this.player,
+      title: 'THE GATE WALKER FALLS',
+      duration: KILL_CAM.duration,
+      holdSeconds: KILL_CAM.holdSeconds,
+      easing: 'inOut',
+      focus: (out) => out.set(corpse.mesh.position.x, corpse.mesh.position.y + KILL_CAM.aimHeight, corpse.mesh.position.z),
+      aimTowards: 0, // Straight at the corpse: the fall's own aim, not the landing's lean
+      flightPath: [
+        // On the flank as it comes down
+        new THREE.Vector3(x - KILL_CAM.firstDistance, y + KILL_CAM.firstHeight, z + KILL_CAM.firstDistance * 0.6),
+        // Down and closer, at the corpse's level, as it settles
+        new THREE.Vector3(x - KILL_CAM.closeDistance, y + KILL_CAM.closeHeight, z + KILL_CAM.closeDistance * 0.3)
+      ]
+    });
+    this.gameWorld.addEntity(this.killCam);
+    this._stingMusic('impact');
   }
 
   /** How many of the gate guard are still standing. */

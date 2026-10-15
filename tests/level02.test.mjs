@@ -98,7 +98,16 @@ test('Level 2: ashore -> three waves -> the hunt -> the gate ambush -> the gate 
   assert.ok(world.ui.callsTo('showBossHealth').some((call) => call.args[0] === 'THE GATE WALKER'), 'the walker brings its bar');
   assert.ok(world.ui.callsTo('updateBossHealth').length > 0, 'the bar tracks the fight');
   assert.ok(world.ui.callsTo('hideBossHealth').length > 0, 'and comes down with the walker');
-  assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === 'The gate walker falls!'));
+
+  // The fall gets its own beat: a kill-cam on the corpse, skippable, that hands the view back
+  stepWorld(world, 0.2, { level, onFrame: () => level.player.health.reset() });
+  assert.ok(level.killCam && level.killCam.isPlaying, 'the walker falls into a kill-cam');
+  assert.equal(world.ui.callsTo('showCinematic').at(-1).args[0], 'THE GATE WALKER FALLS');
+  assert.ok(world.activeCamera === level.killCam.camera, 'the kill-cam owns the view');
+  assert.equal(level.player.isDevSuspended, true, 'frozen for the beat');
+  stepWorld(world, 4, { level, onFrame: () => level.player.health.reset() });
+  assert.equal(level.killCam.isFinished, true, 'the beat ends on its own');
+  assert.equal(level.player.isDevSuspended, false, 'the view and the controls come back');
 
   // The snipers are all that is left up there: fall back into the open, then cut them down
   const snipers = level._gateUnits.filter((unit) => unit.name === 'AlienSniper');

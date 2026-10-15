@@ -161,8 +161,19 @@ test('Level 2: the gate guard pours out, and the walker brings its bar', async (
   assert.ok(world.ui.callsTo('updateBossHealth').length >= 1, 'and tracks its health');
   assert.ok(world.ui.callsTo('hideBossHealth').length >= 1, 'and comes down when it falls');
   assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === 'The gate walker comes out!'));
-  assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === 'The gate walker falls!'));
   assert.ok(world.ui.callsTo('showToast').some((call) => /gate is clear/.test(call.args[0])));
+
+  // The fall gets its own beat: a kill-cam on the corpse that hands the view back by itself
+  stepWorld(world, 0.2, { level, onFrame: () => level.player.health.reset() });
+  assert.ok(level.killCam && level.killCam.isPlaying, 'the walker falls into a kill-cam');
+  assert.equal(world.ui.callsTo('showCinematic').at(-1).args[0], 'THE GATE WALKER FALLS');
+  assert.ok(world.activeCamera === level.killCam.camera, 'the kill-cam owns the view');
+  assert.equal(level.player.isDevSuspended, true, 'frozen for the beat');
+  const distance = level.killCam.camera.position.distanceTo(level._heavy.mesh.position);
+  assert.ok(distance < 12, `the beat is on the corpse (${distance.toFixed(1)} m)`);
+  stepWorld(world, 4, { level, onFrame: () => level.player.health.reset() });
+  assert.equal(level.killCam.isFinished, true, 'the beat ends on its own');
+  assert.equal(level.player.isDevSuspended, false, 'the view and the controls come back');
 
   // The walker is sent at the gate approach, where the garrison held
   const approach = level.gate.approach;
