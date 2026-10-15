@@ -83,24 +83,27 @@ export class GameWorld {
     // 6. Registered entities list (for per-frame updates)
     this.entities = new Set();
 
-    // 7. Active level lifecycle tracking
+    // 7. Decal marks for the physics juice (created per level, see BaseLevel.init)
+    this.decals = null;
+
+    // 8. Active level lifecycle tracking
     this.currentLevel = null;
     this.isLevelLoading = false;
     this.isPaused = false;
     this._onMainMenuRequested = null;
 
-    // 8. Event bindings
+    // 9. Event bindings
     this._onResize = this._onResize.bind(this);
     this._loop = this._loop.bind(this);
     window.addEventListener('resize', this._onResize);
 
-    // 9. UI Subsystem (HUD, prompts, health bars, overlays)
+    // 10. UI Subsystem (HUD, prompts, health bars, overlays)
     this.ui = new UIManager();
 
-    // 10. On-Screen Performance & FPS Monitor (Top-Left HUD)
+    // 11. On-Screen Performance & FPS Monitor (Top-Left HUD)
     this.fpsTracker = new FPSTracker(this);
 
-    // 11. Audio Subsystem (procedural one-shot sound engine, event-driven: no phase hook)
+    // 12. Audio Subsystem (procedural one-shot sound engine, event-driven: no phase hook)
     this.audio = new AudioManager(this);
 
     // ...and its companion score: adaptive music and ambience, driven by each level's own states.

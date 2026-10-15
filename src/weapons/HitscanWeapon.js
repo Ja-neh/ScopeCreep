@@ -167,6 +167,8 @@ export class HitscanWeapon {
       const multiplier = typeof entity.damageMultiplierAt === 'function' ? entity.damageMultiplierAt(result.point) : 1;
       this._damageInfo.amount = this.damage * multiplier;
       this._damageInfo.source = source;
+      this._damageInfo.direction = this._direction;
+      this._damageInfo.point = result.point;
       result.entity = entity;
       result.damaged = entity.health.takeDamage(this._damageInfo) > 0;
       result.killed = entity.health.isDead;

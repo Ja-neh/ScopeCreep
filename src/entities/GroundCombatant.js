@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseEntity } from './BaseEntity.js';
 import { HealthComponent } from './components/HealthComponent.js';
+import { Ragdoll } from './components/Ragdoll.js';
 import config from '../config.json';
 
 const DEFAULT_CAPSULE = { radius: 0.45, halfHeight: 0.55 }; // Human-sized: 2 m tall
@@ -52,6 +53,7 @@ export class GroundCombatant extends BaseEntity {
     this.isGrounded = false;
     this.isAiming = false;
     this.attackPose = 0; // 0..1: arms raised for a melee strike
+    this.capsule = capsule;
     this.capsuleCenter = capsule.radius + capsule.halfHeight;
     this.eyeHeight = this.capsuleCenter * 1.6; // Used by Perception
 
@@ -65,6 +67,7 @@ export class GroundCombatant extends BaseEntity {
     // Death
     this.isDead = false;
     this.deathTime = 0;
+    this.ragdoll = null; // Dynamic corpse body while down (see _startRagdoll)
 
     this.model = model;
     this.mesh = model.mesh;
@@ -95,6 +98,7 @@ export class GroundCombatant extends BaseEntity {
     this._stuckTimer = 0;
     this._stuckFrom = this.position.clone();
     this._hitFlash = 0;
+    this._knockback = new THREE.Vector3(); // Decaying shove from blasts (applyKnockback)
 
     this.health.onDamage = (info) => {
       this._hitFlash = 1;
@@ -119,6 +123,11 @@ export class GroundCombatant extends BaseEntity {
 
   /** Puts it straight down with its feet at (x, y, z), standing still (dev tools, respawns). */
   teleport(x, y, z) {
+    if (this.ragdoll) {
+      this.ragdoll.dispose();
+      this.ragdoll = null;
+      if (this.mesh) this.mesh.rotation.set(0, this.yaw, 0);
+    }
     this.position.set(x, y, z);
     if (this.rigidBody) this.rigidBody.setTranslation({ x, y: y + this.capsuleCenter, z }, true);
     this.velocity.set(0, 0, 0);
@@ -149,6 +158,23 @@ export class GroundCombatant extends BaseEntity {
   }
 
   /**
+   * Shoves the combatant away from a blast or shockwave. The push decays over the next
+   * fraction of a second, layered on top of steering; a grounded target is hopped off its feet.
+   * @param {THREE.Vector3} direction - Horizontal unit direction to push along
+   * @param {number} speed - Push speed in m/s (falls off with distance at the blast)
+   */
+  applyKnockback(direction, speed) {
+    if (this.isDead || speed <= 0) return;
+    this._knockback.x += direction.x * speed;
+    this._knockback.z += direction.z * speed;
+    const hop = speed * config.physicsJuice.knockback.hopFraction;
+    if (this.isGrounded && hop > 0) {
+      this.isGrounded = false;
+      this.verticalVelocity = Math.max(this.verticalVelocity, hop);
+    }
+  }
+
+  /**
    * Hook for subclasses: called whenever damage lands (before death).
    */
   onDamaged(info) { }
@@ -167,6 +193,14 @@ export class GroundCombatant extends BaseEntity {
     this.health.revive(health);
     this.isDead = false;
     this.deathTime = 0;
+    if (this.ragdoll) {
+      // Stand back up where the corpse came to rest
+      const spot = this.mesh ? this.mesh.position : this.position;
+      this.ragdoll.dispose();
+      this.ragdoll = null;
+      this.teleport(spot.x, spot.y, spot.z);
+      if (this.mesh) this.mesh.rotation.set(0, this.yaw, 0);
+    }
     this.velocity.set(0, 0, 0);
     this.verticalVelocity = 0;
     if (this.collider) this.collider.setEnabled(true);
@@ -185,7 +219,22 @@ export class GroundCombatant extends BaseEntity {
     this.hasMoveTarget = false;
     this.velocity.set(0, 0, 0);
     if (this.collider) this.collider.setEnabled(false);
+    this._startRagdoll(info);
     this.onDied(info);
+  }
+
+  /**
+   * Hands the body over to physics: a dynamic capsule corpse kicked along the killing blow.
+   */
+  _startRagdoll(info) {
+    if (!this.mesh || !this.physicsWorld || this.ragdoll) return;
+    this.ragdoll = new Ragdoll(this.physicsWorld, {
+      radius: this.capsule.radius,
+      halfHeight: this.capsule.halfHeight,
+      position: this.position,
+      quaternion: this.mesh.quaternion
+    });
+    this.ragdoll.kick(info ? info.direction : null);
   }
 
   // ---------------------------------------------------------------------------
@@ -196,6 +245,15 @@ export class GroundCombatant extends BaseEntity {
     if (this.isDead || !this.rigidBody) return;
 
     this._computeDesiredVelocity(delta);
+
+    // Blast knockback: a decaying shove layered over steering
+    if (this._knockback.lengthSq() > 0.0001) {
+      this._desired.x += this._knockback.x;
+      this._desired.z += this._knockback.z;
+      const keep = Math.max(0, 1 - config.physicsJuice.knockback.decayPerSecond * delta);
+      this._knockback.multiplyScalar(keep);
+      if (this._knockback.lengthSq() < 0.0001) this._knockback.set(0, 0, 0);
+    }
 
     // Ease towards the desired horizontal velocity
     const blend = Math.min(1, ACCELERATION * delta);
@@ -309,6 +367,12 @@ export class GroundCombatant extends BaseEntity {
   // ---------------------------------------------------------------------------
 
   lateUpdate(delta) {
+    if (this.ragdoll) {
+      // The corpse follows the physics body instead of the kinematic pose
+      this.ragdoll.sync(this.mesh);
+      this.model.setHitFlash(this._hitFlash);
+      return;
+    }
     this.mesh.position.copy(this.position);
     this.mesh.rotation.y = this.yaw;
     this.model.setHitFlash(this._hitFlash);
@@ -320,6 +384,10 @@ export class GroundCombatant extends BaseEntity {
   }
 
   dispose() {
+    if (this.ragdoll) {
+      this.ragdoll.dispose();
+      this.ragdoll = null;
+    }
     if (this.rigidBody) {
       this.physicsWorld.removeRigidBody(this.rigidBody);
       this.rigidBody = null;

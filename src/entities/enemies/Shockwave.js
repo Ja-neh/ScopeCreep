@@ -26,8 +26,10 @@ export class Shockwave {
     this.speed = 0;
     this.damage = 0;
     this.clearHeight = 0;
+    this.knockback = 0;
     this.source = null;
     this._hit = new Set();
+    this._push = new THREE.Vector3();
 
     const wall = new THREE.CylinderGeometry(1, 1, WALL_HEIGHT, 48, 1, true);
     wall.translate(0, WALL_HEIGHT / 2, 0);
@@ -60,14 +62,16 @@ export class Shockwave {
    * @param {number} wave.maxRadius - Where it fades out
    * @param {number} wave.damage - To each target it catches
    * @param {number} wave.clearHeight - Feet this far above the floor (a jump) let it pass
+   * @param {number} [wave.knockback] - Shove in m/s away from the ring for whoever it hurt
    * @param {Object} [wave.source] - Credited with the damage
    */
-  start(centre, { speed, maxRadius, damage, clearHeight, source = null }) {
+  start(centre, { speed, maxRadius, damage, clearHeight, knockback = 0, source = null }) {
     this.centre.copy(centre);
     this.speed = speed;
     this.maxRadius = maxRadius;
     this.damage = damage;
     this.clearHeight = clearHeight;
+    this.knockback = knockback;
     this.source = source;
     this.radius = 0.5;
     this.active = true;
@@ -88,7 +92,12 @@ export class Shockwave {
       if (Math.abs(distance - this.radius) > BAND / 2) continue;
       if (target.position.y - this.centre.y > this.clearHeight) continue; // Jumped it
       this._hit.add(target);
-      target.health.takeDamage({ amount: this.damage, source: this.source });
+      const dealt = target.health.takeDamage({ amount: this.damage, source: this.source });
+      if (dealt > 0 && this.knockback > 0 && typeof target.applyKnockback === 'function') {
+        this._push.set(target.position.x - this.centre.x, 0, target.position.z - this.centre.z);
+        if (this._push.lengthSq() < 1e-4) this._push.set(0, 0, 1); // Dead centre: any way out
+        target.applyKnockback(this._push.normalize(), this.knockback);
+      }
     }
     if (this.radius >= this.maxRadius) this.active = false;
   }

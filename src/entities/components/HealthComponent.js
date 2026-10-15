@@ -8,6 +8,8 @@ export const DamageType = Object.freeze({
 
 /**
  * Damage information payload.
+ * `direction` (unit vector the blow travelled along) and `point` (world-space impact point)
+ * are optional: physics juice (ragdoll kick, decals) reads them when a producer can supply them.
  */
 export class DamageInfo {
   constructor(amount = 0, type = DamageType.KINETIC, source = null) {
@@ -16,10 +18,14 @@ export class DamageInfo {
       this.amount = Math.max(0, opts.amount || 0);
       this.type = opts.type === DamageType.EXPLOSIVE ? DamageType.EXPLOSIVE : DamageType.KINETIC;
       this.source = opts.source || null;
+      this.direction = opts.direction || null;
+      this.point = opts.point || null;
     } else {
       this.amount = Math.max(0, amount);
       this.type = type === DamageType.EXPLOSIVE ? DamageType.EXPLOSIVE : DamageType.KINETIC;
       this.source = source;
+      this.direction = null;
+      this.point = null;
     }
   }
 }
@@ -45,7 +51,7 @@ export class HealthComponent {
       ? damage
       : (typeof damage === 'number'
         ? new DamageInfo(damage)
-        : new DamageInfo(damage?.amount, damage?.type, damage?.source));
+        : new DamageInfo(damage || {}));
 
     const incoming = this.absorb ? this.absorb(info.amount) : info.amount;
     const appliedDamage = Math.min(this.currentHealth, incoming);

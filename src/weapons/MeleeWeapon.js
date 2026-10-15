@@ -111,14 +111,16 @@ export class MeleeWeapon {
         }
       }
 
+      result.point.copy(origin).addScaledVector(this._direction, hit.timeOfImpact);
       this._damageInfo.amount = damage;
       this._damageInfo.source = source;
+      this._damageInfo.direction = this._direction;
+      this._damageInfo.point = result.point;
       entity.health.takeDamage(this._damageInfo);
 
       result.hit = true;
       result.entity = entity;
       result.killed = entity.health.isDead;
-      result.point.copy(origin).addScaledVector(this._direction, hit.timeOfImpact);
       return result;
     }
     return result;

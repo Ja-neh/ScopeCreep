@@ -209,6 +209,11 @@ export class WeaponController extends BaseEntity {
     if (result.hit) {
       const surface = result.entity ? 'hit' : (result.collider.userData && result.collider.userData.isTerrain ? 'dust' : 'spark');
       this.effects.impact(result.point, surface);
+      // Bullet holes only on fixed surfaces: decks and characters move out from under a decal
+      const hitSurface = result.collider.rigidBody;
+      if (gameWorld.decals && hitSurface && typeof hitSurface.isFixed === 'function' && hitSurface.isFixed()) {
+        gameWorld.decals.spawn(result.point, result.normal, 'bullet');
+      }
     }
     if (result.damaged && gameWorld.audio) {
       gameWorld.audio.play('hit');

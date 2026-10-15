@@ -1,3 +1,5 @@
+import { Decals } from '../rendering/Decals.js';
+
 /**
  * BaseLevel
  * Base class defining the lifecycle for all game stages/levels.
@@ -18,6 +20,11 @@ export class BaseLevel {
    */
   async init() {
     this.isInitialized = true;
+
+    // Bullet holes and scorch marks: one pooled decal entity for the whole stage
+    this.decals = new Decals(this.gameWorld);
+    this.gameWorld.addEntity(this.decals);
+    this.gameWorld.decals = this.decals;
 
     // Every level opens dramatically: the intro groove under the deploy swell (an opening cinematic ends it into the ambience)
     const music = this.gameWorld && this.gameWorld.music;
@@ -66,6 +73,12 @@ export class BaseLevel {
    */
   dispose() {
     this.isInitialized = false;
+
+    // The decal entity itself is disposed by GameWorld.clearEntities()
+    if (this.gameWorld && this.gameWorld.decals === this.decals) {
+      this.gameWorld.decals = null;
+    }
+    this.decals = null;
 
     for (const item of this.disposables) {
       if (item.geometry) {

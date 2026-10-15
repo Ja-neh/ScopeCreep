@@ -33,6 +33,7 @@ export class Projectile {
     this._stepDir = new THREE.Vector3();
     this._forward = new THREE.Vector3(0, 0, -1);
     this._targetQuat = new THREE.Quaternion();
+    this._hitNormal = new THREE.Vector3();
 
     // Reusable Rapier Ray
     this._rayOrigin = { x: 0, y: 0, z: 0 };
@@ -135,7 +136,7 @@ export class Projectile {
         this._ray.dir.y = this._stepDir.y;
         this._ray.dir.z = this._stepDir.z;
 
-        const hit = physicsWorld.castRay(
+        const hit = physicsWorld.castRayAndGetNormal(
           this._ray,
           stepDist,
           true,
@@ -147,6 +148,7 @@ export class Projectile {
         if (hit && hit.timeOfImpact <= stepDist) {
           hitDetected = true;
           hitCollider = hit.collider;
+          this._hitNormal.set(hit.normal.x, hit.normal.y, hit.normal.z);
           hitPoint = new THREE.Vector3(
             this._prevPos.x + this._stepDir.x * hit.timeOfImpact,
             this._prevPos.y + this._stepDir.y * hit.timeOfImpact,
@@ -161,6 +163,7 @@ export class Projectile {
       const t = -this._prevPos.y / stepY;
       if (t >= 0 && t <= 1) {
         hitDetected = true;
+        this._hitNormal.set(0, 1, 0);
         hitPoint = new THREE.Vector3(
           this._prevPos.x + stepX * t,
           0,
@@ -171,9 +174,13 @@ export class Projectile {
 
     // 6. Resolve Hit or Advance Position
     if (hitDetected) {
+      // The blow's direction and point ride along: ragdolls kick away from the shot
+      this.damageInfo.direction = this._stepDir;
+      this.damageInfo.point = hitPoint;
       if (onHit && typeof onHit === 'function') {
         onHit({
           point: hitPoint,
+          normal: this._hitNormal,
           collider: hitCollider,
           projectile: this,
           damageInfo: this.damageInfo

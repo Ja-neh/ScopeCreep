@@ -36,9 +36,9 @@ export class PhysicsWorld {
    *
    * One step per frame, never an accumulator: platforms queue their collider transforms with
    * setNextKinematicTranslation, which Rapier applies only during a step, so a skipped step
-   * would leave deck colliders a frame behind the Phase 4 character sweeps. Every body is fixed
-   * or kinematic today, so nothing integrates over the timestep yet; revisit substepping before
-   * adding dynamic bodies.
+   * would leave deck colliders a frame behind the Phase 4 character sweeps. The only dynamic
+   * bodies are ragdoll corpses, which are CCD-enabled and purely decorative, so a single step
+   * is enough; revisit substepping before adding dynamic bodies the gameplay depends on.
    * @param {number} [delta] - Frame time in seconds; defaults to 1/60
    */
   step(delta = DEFAULT_TIMESTEP) {
@@ -58,7 +58,9 @@ export class PhysicsWorld {
     const groundBody = this.world.createRigidBody(groundBodyDesc);
     const groundColliderDesc = this.RAPIER.ColliderDesc.cuboid(size / 2, 0.5, size / 2)
       .setTranslation(0, yPosition, 0);
-    return this.world.createCollider(groundColliderDesc, groundBody);
+    const collider = this.world.createCollider(groundColliderDesc, groundBody);
+    collider.rigidBody = groundBody;
+    return collider;
   }
 
   /**

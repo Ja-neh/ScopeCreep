@@ -140,6 +140,7 @@ To prevent 1-frame kinematic lag, character tunneling, and camera jitter, entiti
 | **Controlled Characters & Actors** | `CharacterController`, deck crew, foot soldiers | **`postPhysicsUpdate(delta, gameWorld)`** | Must sweep **AFTER** platforms have moved and physics has stepped, inheriting platform deltas to collide with the current frame's surfaces. |
 | **Weapons, Projectiles & Ballistics** | `MainGun`, `FlakTurret`, artillery shells, torpedoes | **`gameplayUpdate(delta, gameWorld)`** | Advances trajectories, weapon cooldowns, and collision raycasts against the settled physics state of the current frame. |
 | **Cameras & View Tracking** | 1st/3rd person camera, gun sight, spring-arm, crosshairs | **`lateUpdate(delta, gameWorld)`** | Positions camera **AFTER** all actors and platforms have finished moving to prevent visual camera stutter. |
+| **Dynamic Physics Bodies** | ragdoll corpses, blast-shoved fighters | **`lateUpdate(delta, gameWorld)`** | Rapier integrates the body itself in Phase 3; producers apply impulses in Phase 5 (kicks, blasts); the entity only syncs its mesh from the body in Phase 6. |
 | **Stationary Props / Scenery** | Crates, radar masts, buoys, static obstacles | *None* | Zero update overhead; static colliders never move. |
 
 ---
@@ -176,6 +177,10 @@ Levels represent isolated game stages that extend the abstract `BaseLevel` class
 - **Compound Cuboids vs. Trimeshes:** Decks and ramps are modeled using compound cuboid boxes rather than raw trimeshes. Cuboid primitives eliminate internal edge "snagging" where characters trip over triangle seams.
 - **Anti-Tunneling Slabs:** Decks feature $3.5\text{m}$ deep solid collision volumes, ensuring that even during high-velocity drops or severe wave pitches, characters cannot phase through floors.
 - **Encapsulation via `PhysicsWorld`:** Entities and levels never import `@dimforge/rapier3d-compat` directly. All physics bodies, colliders, character controllers, and raycasts are routed through `PhysicsWorld` (or helper adapters like `ThreePhysicsAdapter` / `BattleshipColliders`), ensuring proper native resource disposal and debug visualization.
+- **Physics Juice:** The kinematic world's counterweight — dynamic bodies and impulses give weight and momentum to the fights on foot.
+  - **Ragdolls (`entities/components/Ragdoll.js`):** on death a `GroundCombatant` hands its body over to physics: one dynamic Rapier capsule at the corpse's feet (mass scaled from `physicsJuice.ragdoll.mass`, linear/angular damping, CCD on) takes a `kick()` along the killing blow's `DamageInfo.direction` plus a random tumble. These are the first genuinely dynamic bodies in the simulation; Rapier's auto-sleep settles them (no per-frame settle logic). The owning entity syncs its model mesh from the body in Phase 6 and disposes the body whenever the corpse is pruned, revived or torn down.
+  - **Impulses:** artillery detonations (`ProjectilePool._blast`) shove everything within `physicsJuice.explosion.radius`, falling off with distance: corpses are thrown by `Ragdoll.blastFrom()` (radial plus `upwardFraction` lift) and living actors (player, AI) by `applyKnockback(direction, speed)` — a decaying shove layered on top of steering that hops a grounded target off their feet. The Warden's shockwave pushes the same way (`Shockwave.start({ knockback })`).
+  - **Decals (`rendering/Decals.js`):** bullet holes and artillery scorch marks. A fixed pool of flat quads (one shared plane, per-decal material) is laid over the impact point along the surface normal; the textures are generated once as `DataTexture`s (no canvas needed), spawning recycles the oldest mark, and marks fade away after their seconds. Only fixed surfaces receive decals, because decks and characters move out from under them. `BaseLevel.init` creates one and registers it (`gameWorld.decals`); `ProjectilePool._blast` (scorch) and the rifle in `WeaponController` (bullet holes) are the producers.
 
 ---
 
@@ -240,7 +245,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 - `ObjectiveBeacon`, `SupplyCrate` (hold [E] to channel a patch-up — full ammo and health; ammo alone is a quick press), and `LandingCinematic` (the opening sweep; it ends exactly on the player's spring-arm view, and [Space] or [Enter] skips it).
 
 **Combatants (`src/entities/`)**
-- `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model.
+- `GroundCombatant`: base for every AI soldier. Kinematic capsule with its own character controller, `HealthComponent`, `faction`, and steering: `moveTo`, `stop`, `lookAt`, feeler rays and a stuck detour. Phase 4 moves it, Phase 5 runs the subclass brain, Phase 6 poses the model. Death hands the body to a `Ragdoll` (see [2.6](#26-physics-architecture)), and `applyKnockback(direction, speed)` layers blast shoves over its steering.
 - `enemies/AlienCombatant` (shared patrol, investigate and search states, hearing, squad call-outs, `assault(point)`; subclasses may add states and pick the first one), `AlienTrooper` (fights from the edges of cover, flanks a target that stays dug in, plasma bursts), `AlienBrute` (charge and overhead slam; its back pack takes double damage through `damageMultiplierAt`), and Level 3's boss `AlienWarden` (see 2.9).
 - `allies/SquadMate`: our AI soldier. Orders are `walkRoute(points)`, `follow()` (a place in formation) and `hold(point, facing)`. A follower with a wall in the way follows the leader's trail around it, and runs to catch up when far behind. It fights from cover near its post without straying beyond `leashRadius`, and turns on whoever shoots it.
 - Models: `AlienModel`, `SoldierModel`, `HelicopterModel`. Character models merge each rigid piece into one solid and one glow mesh (`rendering/MeshMerge.js`), about 6 to 8 draw calls per character. Only an alien's body casts a shadow (limbs and rifle do not), which keeps big waves cheaper in the shadow pass.
@@ -257,7 +262,7 @@ Level 2 is fought on foot. The squad lands from the anchored warship onto the so
 
 **UI additions (`src/ui/components/`):** `StatusIndicator`, `WeaponHUD`, `PlayerHealthBar`, `DamageFlash`, `ObjectivePanel`, `MissionResult`, `CinematicOverlay` (letterbox bars; it hides the gameplay HUD through the `ui-cinematic-active` class), `GraphicsSettings` (the Graphics section of the Options menu) and, for Level 3, `BossHealthBar` (a boss's name and health under the objective, blue while shielded) and `Credits` (the end credits rolling up the screen; the HUD hides through `ui-credits-active`). A level can list its own controls (`get controls()` on `BaseLevel`); `GameWorld` turns their action names into key names with `InputManager.describeActions` for the controls card.
 
-**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`) and `levels.level02` (wave list, the `finalAmbush` group, `maxAliveAliens`, timings, radii).
+**Balance (`config.json`):** `player.vitals`, `revive`, `weapons.machineGun`, `weapons.knife`, `projectiles.plasma`, `enemies.trooper`, `enemies.brute`, `allies` (`crewSize`, `squadMate`), `levels.level02` (wave list, the `finalAmbush` group, `maxAliveAliens`, timings, radii) and `physicsJuice` (ragdoll kick/damping/mass, knockback decay, explosion radius and impulse).
 
 **Dev keys (sandbox):** [F1] aerial camera, [F3] spawns a trooper ahead ([Shift]+[F3] a brute), [F4] toggles the AI squad, and in the Level 3 sandbox [F6] starts the fight with the Warden.
 
@@ -410,14 +415,15 @@ ScopeCreep/
 │   │   ├── Battleship.js   # Guided-missile destroyer assembly, decks, citadel, colliders
 │   │   ├── Player.js       # Human avatar, dual camera, kinematic physics sweep
 │   │   ├── components/     # Reusable entity components
-│   │   │   └── HealthComponent.js # Basic health tracking (KINETIC and EXPLOSIVE damage)
+│   │   │   ├── HealthComponent.js # Basic health tracking (KINETIC and EXPLOSIVE damage)
+│   │   │   └── Ragdoll.js         # Dynamic capsule corpse (killing-blow kick, blast impulses)
 │   │   ├── models/         # 3D procedural geometry builders
 │   │   │   └── BattleshipModel.js # Destroyer hull, superstructure, stairs, collider slabs
 │   │   ├── player-components/     # Modular player sub-systems
 │   │   │   └── SpringArmCamera.js # 1st/3rd person camera, occlusion raycasting, arm compression
-│   │   ├── projectiles/    # High-performance object-pooled ballistics
-│   │   │   ├── Projectile.js      # Ballistic trajectory, gravity arc, CCD raycast sweep
-│   │   │   └── ProjectilePool.js  # Zero-allocation pool (Flak, Artillery)
+│   │   ├── projectile-components/
+│   │   │   └── Projectile.js      # Ballistic trajectory, gravity arc, CCD raycast sweep
+│   │   ├── ProjectilePool.js  # Zero-allocation pool (Flak, Artillery, Plasma)
 │   │   └── ship-components/# Specialized naval stations and subsystems
 │   │       ├── BaseStation.js     # Abstract station lifecycle (mount, dismount, proximity, deck return)
 │   │       ├── ShipBuoyancy.js    # 5-probe wave sampling, pitch/roll/heave damping
@@ -440,6 +446,7 @@ ScopeCreep/
 │   │   └── TestLevel.js    # Ground testing sandbox: Flat terrain, isolated weapon testing
 │   ├── rendering/          # Visual WebGL components
 │   │   ├── Ocean.js        # Subdivided ocean plane driving custom GPU shaders
+│   │   ├── Decals.js       # Pooled bullet holes and scorch marks (data-texture quads)
 │   │   ├── Terrain.js, Vegetation.js, Noise.js # Island terrain, instanced scatter, noise
 │   │   ├── SkyDome.js, Clouds.js # Sunset sky and clouds
 │   │   ├── MeshMerge.js    # Merges a model's rigid parts into a few vertex-coloured meshes
@@ -526,6 +533,7 @@ ScopeCreep/
 - `lateUpdate(delta)`: Delegates camera positioning and obstacle occlusion raycasting to `SpringArmCamera`.
 - `toggleCameraMode()`: Inverts between First-Person eye view and Third-Person orbit view via `SpringArmCamera`.
 - `setMounted(bool)`: Suspends player movement and updates visibility when operating a station.
+- `applyKnockback(direction, speed)`: Adds a decaying blast/shockwave shove on top of input movement (hopped off the ground when it lands while grounded); consumed in `postPhysicsUpdate`.
 - `teleport(x, y, z)`: Warps character position directly in Rapier and Three.js.
 - `setColliderDebugVisible(bool)`: Toggles cyan capsule wireframe mesh.
 
@@ -559,27 +567,38 @@ ScopeCreep/
 - `FlakTurret`: Aft quad rapid-fire anti-aircraft battery with high-angle elevation.
 - `update(delta)`: Handles station proximity detection, mouse aiming, crosshair HUD display, and dismount inputs.
 
-### `ProjectilePool` (`src/entities/projectiles/ProjectilePool.js`)
+### `ProjectilePool` (`src/entities/ProjectilePool.js`)
 - High-performance, zero-allocation object pool for rapid-fire ballistics.
-- Pre-allocates 100 Flak tracers and 30 Heavy Artillery shells upfront in `gameWorld.projectilesGroup`.
+- Pre-allocates 100 Flak tracers, 30 heavy Artillery shells and the Plasma bolts upfront in `gameWorld.projectilesGroup`.
 - `gameplayUpdate(delta, gameWorld)`: Runs in **Phase 5**, advancing all active trajectories and executing $O(1)$ swap-and-pop recycling upon impact or lifetime expiration.
 - `fireFlak({ origin, direction, spread, source })`: Spawns high-velocity kinetic tracer ($460\text{ m/s}$, slight spread, 2.4s lifetime).
 - `fireArtillery({ origin, direction, source })`: Spawns heavy explosive shell ($240\text{ m/s}$, gravity arc $-18\text{ m/s}^2$, 6.5s lifetime).
+- `_onHit(hit)`: Resolves the impact: friendly fire is skipped but the shell still detonates. An artillery shell (`_blast`) plays the fireball, drops a scorch decal when it lands on a fixed surface, and shoves every entity within `physicsJuice.explosion.radius` — corpses via `Ragdoll.blastFrom`, the living via `applyKnockback`.
 
-### `Projectile` (`src/entities/projectiles/Projectile.js`)
+### `Projectile` (`src/entities/projectile-components/Projectile.js`)
 - Single physical projectile instance managing position, velocity, ballistic gravity, and drag.
-- Continuous Collision Detection (CCD): Performs segment raycasting (`castRay`) from previous position to next position every frame, preventing tunneling through thin surfaces even at $500\text{ m/s}$.
-- Detects surface impacts against Rapier colliders and ocean water plane ($Y \le 0$). Delivers `DamageInfo` (`KINETIC` or `EXPLOSIVE`) to target entity's `HealthComponent`.
+- Continuous Collision Detection (CCD): Performs segment raycasting (`castRayAndGetNormal`) from previous position to next position every frame, preventing tunneling through thin surfaces even at $500\text{ m/s}$.
+- Detects surface impacts against Rapier colliders and ocean water plane ($Y \le 0$). Delivers `DamageInfo` (`KINETIC` or `EXPLOSIVE`) to target entity's `HealthComponent`, and publishes the impact point, surface normal and blow direction (`DamageInfo.direction`/`point`) in the hit payload — ragdoll kicks, decals and blast shoves all read them.
 
 ### `HealthComponent` (`src/entities/components/HealthComponent.js`)
 - Standalone health container focused strictly on basic damage mechanics.
 - `DamageType`: Strict enum constrained to `KINETIC` and `EXPLOSIVE`.
-- `DamageInfo`: Lightweight payload (`amount`, `type`, `source`).
+- `DamageInfo`: Lightweight payload (`amount`, `type`, `source`) plus optional `direction` (unit vector the blow travelled along) and `point` (world impact point) for physics juice — ragdoll kicks, decals and blast falloff read them when a producer can supply them.
 - `HealthComponent`: Manages `currentHealth`, `maxHealth`, `isDead`, `invulnerable` (a shield: `takeDamage` does nothing while set), `absorb` (an optional `(amount) => left over` that takes hits first: the player's shield), `takeDamage(damage)`, `heal(amount)`, `reset()`, and `onDamage`/`onDeath` event callbacks.
+
+### `Ragdoll` (`src/entities/components/Ragdoll.js`)
+- The dynamic capsule corpse of a dead character, created and owned by its `GroundCombatant` (`_startRagdoll`, disposed on prune/revive/teardown).
+- `kick(direction)`: impulse along the killing blow plus a random tumble; `blastFrom(point)`: throws the corpse away from an explosion (radial plus lift, falloff), returning the falloff.
+- `sync(mesh)`: Phase 6 — places the model mesh from the body (origin at the feet, capsule centre up the body's up axis).
 
 ### `Ocean` (`src/rendering/Ocean.js`)
 - `update(delta)`: Advances shader `uTime` uniform.
 - `getWaveHeight(x, z, time)`: Computes CPU wave height at world coordinates matching GPU shader math for vessel buoyancy.
+
+### `Decals` (`src/rendering/Decals.js`)
+- The physics juice's marks on the world: bullet holes and artillery scorch marks, one `BaseEntity` with a fixed pool of flat quads (one shared plane geometry, per-decal material so each fades on its own).
+- `spawn(point, normal, kind, scale)`: lays a mark over the surface along its normal (slightly offset to avoid z-fighting) and recycles the oldest once the pool is full.
+- `lateUpdate(delta)`: Phase 6 — ages marks and fades them out; retired marks hide until recycled. Fixed surfaces only.
 
 ---
 
@@ -664,7 +683,7 @@ Rather than declaring rigid, grand specifications upfront, the remaining systems
 ### Damage State Placement
 - **Current State:** A lightweight, standalone foundation exists in `HealthComponent.js` (`src/entities/components/HealthComponent.js`), supporting basic health tracking and damage calculation.
 - **Strict Damage Types:** Constrained strictly to two types: `DamageType.KINETIC` and `DamageType.EXPLOSIVE`, passed via a minimal `DamageInfo` payload.
-- **Wiring so far:** `Player` takes a `HealthComponent` when a level passes `maxHealth` (Level 2 does; Level 1 does not yet). Every `GroundCombatant` has one. Hits find their target through `collider.userData.entity`, and both plasma and hitscan shots skip targets of the shooter's own `faction`.
+- **Wiring so far:** `Player` takes a `HealthComponent` when a level passes `maxHealth` (Level 2 does; Level 1 does not yet). Every `GroundCombatant` has one. Hits find their target through `collider.userData.entity`, and both plasma and hitscan shots skip targets of the shooter's own `faction`. When a producer can supply them, `DamageInfo` also carries the blow's `direction` and impact `point` — ragdoll kicks, decals and artillery blast falloff read them.
 
 ### Enemy AI
 - **Status:** Level 2 uses a small custom `StateMachine` with `Perception` and simple feeler-ray steering (`src/ai/`, `GroundCombatant`). Yuka was not needed. Aircraft and boats for Level 1 can reuse `StateMachine` and `Perception`.

@@ -93,6 +93,7 @@ export class Player extends BaseEntity {
     this._camForward = new THREE.Vector3();
     this._camRight = new THREE.Vector3();
     this._moveDir = new THREE.Vector3();
+    this._knockback = new THREE.Vector3(); // Decaying shove from blasts (applyKnockback)
 
     // Rapier physics handles
     this.rigidBody = null;
@@ -240,6 +241,23 @@ export class Player extends BaseEntity {
   }
 
   /**
+   * Shoves the player away from a blast or shockwave. The push decays over the next fraction
+   * of a second, layered over input movement; a grounded player is hopped off their feet.
+   * @param {THREE.Vector3} direction - Horizontal unit direction to push along
+   * @param {number} speed - Push speed in m/s (falls off with distance at the blast)
+   */
+  applyKnockback(direction, speed) {
+    if (speed <= 0) return;
+    this._knockback.x += direction.x * speed;
+    this._knockback.z += direction.z * speed;
+    const hop = speed * config.physicsJuice.knockback.hopFraction;
+    if (this.isGrounded && hop > 0) {
+      this.isGrounded = false;
+      this.verticalVelocity = Math.max(this.verticalVelocity, hop);
+    }
+  }
+
+  /**
    * Phase 4 (Post-Physics): Resolves character kinematic movement, moving platform
    * displacement inheritance, and Rapier collision sweeps against current platform transforms.
    */
@@ -303,6 +321,15 @@ export class Player extends BaseEntity {
 
     this.velocity.x = this._moveDir.x * speed;
     this.velocity.z = this._moveDir.z * speed;
+
+    // Blast knockback: a decaying shove layered over input movement
+    if (this._knockback.lengthSq() > 0.0001) {
+      this.velocity.x += this._knockback.x;
+      this.velocity.z += this._knockback.z;
+      const keep = Math.max(0, 1 - config.physicsJuice.knockback.decayPerSecond * delta);
+      this._knockback.multiplyScalar(keep);
+      if (this._knockback.lengthSq() < 0.0001) this._knockback.set(0, 0, 0);
+    }
 
     // 5. Physics Collision & Kinematic Character Controller
     if (this.characterController && this.rigidBody && this.collider) {

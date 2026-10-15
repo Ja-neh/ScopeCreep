@@ -6,6 +6,11 @@ const IMPACT_COUNT = 16;
 const IMPACT_SECONDS = 0.35;
 const FLASH_SECONDS = 0.05;
 const FLASH_LIGHT_INTENSITY = 6;
+const BLAST_COUNT = 4;
+const BLAST_SECONDS = 0.6;
+const BLAST_START_SCALE = 0.5;
+const BLAST_END_SCALE = 2.4;
+const BLAST_LIGHT_INTENSITY = 45;
 
 const IMPACT_COLORS = {
   dust: new THREE.Color(0xc9b48a),
@@ -15,9 +20,10 @@ const IMPACT_COLORS = {
 
 /**
  * WeaponEffects
- * Pooled visual feedback for small arms: bullet tracers, impact puffs and a muzzle flash
- * with a point light. Nothing is allocated after construction. The flash light stays in the
- * scene at zero intensity so firing never triggers a shader recompile.
+ * Pooled visual feedback for guns: bullet tracers, impact puffs, a muzzle flash with a point
+ * light, and fireballs for artillery detonations. Nothing is allocated after construction.
+ * The flash light stays in the scene at zero intensity so firing never triggers a shader
+ * recompile; it also lights the first moments of a blast.
  */
 export class WeaponEffects {
   /**
@@ -75,6 +81,25 @@ export class WeaponEffects {
       this.group.add(this.flashLight);
     }
     this._flashLife = 0;
+
+    // Blast fireballs: each has its own material so it can fade on its own
+    this.blastGeometry = new THREE.IcosahedronGeometry(1, 1);
+    this.blasts = [];
+    for (let i = 0; i < BLAST_COUNT; i++) {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffa63d,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false
+      });
+      const mesh = new THREE.Mesh(this.blastGeometry, material);
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.blasts.push({ mesh, life: 0, scale: 1 });
+    }
+    this._nextBlast = 0;
+    this._blastLightLife = 0;
   }
 
   /**
@@ -120,6 +145,26 @@ export class WeaponEffects {
   }
 
   /**
+   * A fireball where an artillery shell detonated.
+   * @param {THREE.Vector3} position - Detonation centre
+   * @param {number} [scale] - Relative size multiplier
+   */
+  blast(position, scale = 1) {
+    const blast = this.blasts[this._nextBlast];
+    this._nextBlast = (this._nextBlast + 1) % BLAST_COUNT;
+    blast.scale = scale;
+    blast.mesh.position.copy(position);
+    blast.mesh.scale.setScalar(BLAST_START_SCALE * scale);
+    blast.mesh.material.opacity = 0.9;
+    blast.mesh.visible = true;
+    blast.life = BLAST_SECONDS;
+    if (this.flashLight) {
+      this.flashLight.position.copy(position);
+      this._blastLightLife = BLAST_SECONDS;
+    }
+  }
+
+  /**
    * Fades and retires effects. Call once per frame.
    */
   update(delta) {
@@ -140,10 +185,24 @@ export class WeaponEffects {
 
     if (this._flashLife > 0) {
       this._flashLife -= delta;
-      if (this._flashLife <= 0) {
-        this.flash.visible = false;
-        if (this.flashLight) this.flashLight.intensity = 0;
-      }
+      if (this._flashLife <= 0) this.flash.visible = false;
+    }
+
+    for (const blast of this.blasts) {
+      if (blast.life <= 0) continue;
+      blast.life -= delta;
+      const t = 1 - Math.max(0, blast.life) / BLAST_SECONDS;
+      blast.mesh.scale.setScalar((BLAST_START_SCALE + (BLAST_END_SCALE - BLAST_START_SCALE) * t) * blast.scale);
+      blast.mesh.material.opacity = 0.9 * (1 - t);
+      if (blast.life <= 0) blast.mesh.visible = false;
+    }
+
+    // The single light serves the muzzle flash and blasts: the brighter of the two
+    if (this._blastLightLife > 0) this._blastLightLife = Math.max(0, this._blastLightLife - delta);
+    if (this.flashLight) {
+      const flash = this._flashLife > 0 ? FLASH_LIGHT_INTENSITY : 0;
+      const blastLight = this._blastLightLife > 0 ? BLAST_LIGHT_INTENSITY * (this._blastLightLife / BLAST_SECONDS) : 0;
+      this.flashLight.intensity = Math.max(flash, blastLight);
     }
   }
 
@@ -154,6 +213,8 @@ export class WeaponEffects {
     for (const impact of this.impacts) impact.mesh.material.dispose();
     this.flash.geometry.dispose();
     this.flashMaterial.dispose();
+    this.blastGeometry.dispose();
+    for (const blast of this.blasts) blast.mesh.material.dispose();
     if (this.flashLight) this.flashLight.dispose();
     if (this.group.parent) this.group.parent.remove(this.group);
   }

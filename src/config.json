@@ -161,6 +161,25 @@
       "backstabMultiplier": 2.0
     }
   },
+  "physicsJuice": {
+    "ragdoll": {
+      "kickSpeed": 4.5,
+      "kickLift": 0.25,
+      "spinSpeed": 5.0,
+      "mass": 70,
+      "linearDamping": 0.5,
+      "angularDamping": 1.5
+    },
+    "knockback": {
+      "decayPerSecond": 4.5,
+      "hopFraction": 0.3
+    },
+    "explosion": {
+      "radius": 9.0,
+      "impulseSpeed": 7.5,
+      "upwardFraction": 0.35
+    }
+  },
   "enemies": {
     "trooper": {
       "maxHealth": 90,
@@ -226,6 +245,7 @@
       "shockwaveRadius": 22,
       "shockwaveDamage": 25,
       "shockwaveClearHeight": 0.45,
+      "shockwaveKnockback": 7.0,
       "enrageFraction": 0.5,
       "enragedCadence": 0.65,
       "enrageAdds": 4,

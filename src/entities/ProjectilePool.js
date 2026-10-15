@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseEntity } from './BaseEntity.js';
 import { Projectile } from './projectile-components/Projectile.js';
 import { DamageType } from './components/HealthComponent.js';
+import { WeaponEffects } from '../weapons/WeaponEffects.js';
 import config from '../config.json';
 
 /**
@@ -35,6 +36,7 @@ export class ProjectilePool extends BaseEntity {
     this._spreadDir = new THREE.Vector3();
     this._spreadUp = new THREE.Vector3();
     this._spreadRight = new THREE.Vector3();
+    this._blastDir = new THREE.Vector3();
 
     this._onHit = this._onHit.bind(this);
 
@@ -45,6 +47,9 @@ export class ProjectilePool extends BaseEntity {
     if (this.gameWorld && this.gameWorld.projectilesGroup) {
       this.gameWorld.projectilesGroup.add(this.mesh);
     }
+
+    // Artillery detonation VFX: fireballs (flashLight off: no extra permanent light in the scene)
+    this.effects = new WeaponEffects((this.gameWorld && this.gameWorld.effectsGroup) || this.mesh, { flashLight: false });
   }
 
   /**
@@ -326,16 +331,53 @@ export class ProjectilePool extends BaseEntity {
         }
       }
 
-      // No friendly fire: shots from a side never hurt that side
+      // No friendly fire: shots from a side never hurt that side (the shell still detonates below)
       const shooter = hit.damageInfo.source;
-      if (targetEntity && shooter && shooter.faction && targetEntity.faction === shooter.faction) {
-        return;
-      }
+      const friendly = targetEntity && shooter && shooter.faction && targetEntity.faction === shooter.faction;
 
-      if (targetEntity && targetEntity.health && typeof targetEntity.health.takeDamage === 'function') {
+      if (!friendly && targetEntity && targetEntity.health && typeof targetEntity.health.takeDamage === 'function') {
         const dealt = targetEntity.health.takeDamage(hit.damageInfo);
         console.log(`Projectile Hit: ${targetEntity.name} took ${dealt} ${hit.damageInfo.type} damage.`);
       }
+    }
+
+    // Artillery shells detonate: fireball, scorch mark and a shove for everything nearby
+    if (hit.projectile && hit.projectile.type === 'ARTILLERY' && hit.point) {
+      this._blast(hit);
+    }
+  }
+
+  /**
+   * Plays an artillery detonation: fireball, a scorch decal on static ground, and a radial
+   * shove that tosses ragdolls and staggers anyone still standing. Direct damage already landed.
+   */
+  _blast(hit) {
+    const cfg = config.physicsJuice.explosion;
+    const point = hit.point;
+
+    this.effects.blast(point);
+
+    // Scorch only on fixed surfaces: decks and characters move out from under a decal
+    const surface = hit.collider && hit.collider.rigidBody;
+    if (this.gameWorld.decals && surface && typeof surface.isFixed === 'function' && surface.isFixed() && hit.normal) {
+      this.gameWorld.decals.spawn(point, hit.normal, 'scorch');
+    }
+
+    if (!this.gameWorld.entities) return;
+    for (const entity of this.gameWorld.entities) {
+      if (entity === this) continue;
+      if (entity.ragdoll) {
+        entity.ragdoll.blastFrom(point);
+        continue;
+      }
+      if (typeof entity.applyKnockback !== 'function' || !entity.health || entity.health.isDead) continue;
+      const dx = entity.position.x - point.x;
+      const dz = entity.position.z - point.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance < 0.05 || distance >= cfg.radius) continue;
+      const falloff = 1 - distance / cfg.radius;
+      this._blastDir.set(dx / distance, 0, dz / distance);
+      entity.applyKnockback(this._blastDir, cfg.impulseSpeed * falloff);
     }
   }
 
@@ -362,6 +404,9 @@ export class ProjectilePool extends BaseEntity {
         this.activeProjectiles.pop();
       }
     }
+
+    // 2. Blast fireballs fade out
+    this.effects.update(delta);
   }
 
   /**
@@ -388,6 +433,11 @@ export class ProjectilePool extends BaseEntity {
     this.artilleryPool = [];
     this.plasmaPool = [];
     this.activeProjectiles = [];
+
+    if (this.effects) {
+      this.effects.dispose();
+      this.effects = null;
+    }
 
     super.dispose();
   }

@@ -188,6 +188,7 @@ export class AlienWarden extends AlienCombatant {
       maxRadius: cfg.shockwaveRadius,
       damage: cfg.shockwaveDamage,
       clearHeight: cfg.shockwaveClearHeight,
+      knockback: cfg.shockwaveKnockback,
       source: this
     });
     this.slams++;
