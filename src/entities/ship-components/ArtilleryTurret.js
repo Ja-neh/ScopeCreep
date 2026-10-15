@@ -54,9 +54,11 @@ export class ArtilleryTurret extends BaseStation {
     // --- Card 2.2: Firing state ---
     // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
     this._muzzleWorldPos = new THREE.Vector3();
+    this._spawnWorldPos = new THREE.Vector3();
     this._barrelWorldDir = new THREE.Vector3();
     this._targetLocalPos = new THREE.Vector3();
     this._turretLocalPos = new THREE.Vector3();
+    this.projectileSpawns = [];
 
     // Rate of fire (heavy naval cannon, slow reload)
     const artilleryCfg = config.turrets.artillery;
@@ -107,6 +109,15 @@ export class ArtilleryTurret extends BaseStation {
     this.pitchGroup = barrelMesh || this.mesh;
     if (this.turretMesh) this.turretMesh.userData.entity = this;
     if (this.barrelMesh) this.barrelMesh.userData.entity = this;
+
+    this.projectileSpawns = [];
+    if (this.barrelMesh) {
+      this.barrelMesh.traverse((child) => {
+        if (child !== this.barrelMesh && child.name && child.name.startsWith('ProjectileSpawn')) {
+          this.projectileSpawns.push(child);
+        }
+      });
+    }
 
     if (this.camera) {
       if (this.camera.parent) this.camera.parent.remove(this.camera);
@@ -208,14 +219,28 @@ export class ArtilleryTurret extends BaseStation {
 
     this._updateMuzzleTransform();
 
-    pool.fireArtillery({
-      origin: this._muzzleWorldPos,
-      direction: this._barrelWorldDir,
-      damage: this.damage,
-      source: this,
-      excludeCollider: this.battleship?.colliders?.collider || null,
-      excludeRigidBody: this.battleship?.colliders?.rigidBody || null
-    });
+    if (this.projectileSpawns && this.projectileSpawns.length > 0) {
+      for (const spawn of this.projectileSpawns) {
+        spawn.getWorldPosition(this._spawnWorldPos);
+        pool.fireArtillery({
+          origin: this._spawnWorldPos,
+          direction: this._barrelWorldDir,
+          damage: this.damage,
+          source: this,
+          excludeCollider: this.battleship?.colliders?.collider || null,
+          excludeRigidBody: this.battleship?.colliders?.rigidBody || null
+        });
+      }
+    } else {
+      pool.fireArtillery({
+        origin: this._muzzleWorldPos,
+        direction: this._barrelWorldDir,
+        damage: this.damage,
+        source: this,
+        excludeCollider: this.battleship?.colliders?.collider || null,
+        excludeRigidBody: this.battleship?.colliders?.rigidBody || null
+      });
+    }
 
     this._triggerRecoil();
   }

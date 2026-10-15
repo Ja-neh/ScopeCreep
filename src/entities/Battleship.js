@@ -140,6 +140,10 @@ export class Battleship extends BaseEntity {
       this.modelData = await loadBattleshipModel({ modelUrl });
       this.mesh.add(this.modelData.root);
 
+      if (this.modelData.areas) {
+        this.areas = this.modelData.areas;
+      }
+
       // Update station locations from the model if available
       if (this.modelData.stations) {
         if (this.modelData.stations.helmsman) {
@@ -236,6 +240,37 @@ export class Battleship extends BaseEntity {
     if (this.gameWorld && this.gameWorld.ui) {
       this.gameWorld.ui.updateHealthBar(this.health.currentHealth, this.health.maxHealth, this.isDestroyed);
     }
+  }
+
+  /**
+   * Retrieves the current world position of an Area empty (e.g. AreaFront, AreaBack, AreaHelm)
+   * @param {string} areaName
+   * @param {THREE.Vector3} [out]
+   * @returns {THREE.Vector3}
+   */
+  getAreaWorldPosition(areaName, out = new THREE.Vector3()) {
+    if (this.modelData?.root) {
+      const node = this.modelData.root.getObjectByName(areaName);
+      if (node) {
+        node.getWorldPosition(out);
+        return out;
+      }
+    }
+    const fallbacks = {
+      AreaFront: new THREE.Vector3(1.34, 5.30, -37.03),
+      AreaBack: new THREE.Vector3(5.32, 5.36, 34.93),
+      AreaHelm: new THREE.Vector3(5.47, 5.26, 17.22),
+      AreaAntiAirGun: new THREE.Vector3(0.46, 5.36, 25.63),
+      AreaMainGunFront: new THREE.Vector3(0.46, 5.30, -17.09),
+      AreaMainGunBack: new THREE.Vector3(0.46, 6.75, -5.82)
+    };
+    const local = fallbacks[areaName] || new THREE.Vector3(0, 5.3, 0);
+    if (this.mesh) {
+      this.mesh.localToWorld(out.copy(local));
+    } else {
+      out.copy(local);
+    }
+    return out;
   }
 
   /**

@@ -144,11 +144,20 @@ export async function loadBattleshipModel(options = {}) {
     return fallback;
   }
 
+  const areas = {
+    AreaFront: getAreaWorldPos('AreaFront', new THREE.Vector3(1.34, 5.30, -37.03)),
+    AreaBack: getAreaWorldPos('AreaBack', new THREE.Vector3(5.32, 5.36, 34.93)),
+    AreaHelm: getAreaWorldPos('AreaHelm', new THREE.Vector3(5.47, 5.26, 17.22)),
+    AreaAntiAirGun: getAreaWorldPos('AreaAntiAirGun', new THREE.Vector3(0.46, 5.36, 25.63)),
+    AreaMainGunFront: getAreaWorldPos('AreaMainGunFront', new THREE.Vector3(0.46, 5.30, -17.09)),
+    AreaMainGunBack: getAreaWorldPos('AreaMainGunBack', new THREE.Vector3(0.46, 6.75, -5.82))
+  };
+
   const stations = {
-    helmsman: getAreaWorldPos('AreaHelm', new THREE.Vector3(5.47, 5.26, 17.22)),
-    artilleryGunner: getAreaWorldPos('AreaMainGunFront', new THREE.Vector3(0.46, 5.30, -17.09)),
-    artilleryGunner2: getAreaWorldPos('AreaMainGunBack', new THREE.Vector3(0.46, 6.75, -5.82)),
-    flakGunner: getAreaWorldPos('AreaAntiAirGun', new THREE.Vector3(0.46, 5.36, 25.63)),
+    helmsman: areas.AreaHelm,
+    artilleryGunner: areas.AreaMainGunFront,
+    artilleryGunner2: areas.AreaMainGunBack,
+    flakGunner: areas.AreaAntiAirGun,
     engineer: new THREE.Vector3(0, 5.3, 0)
   };
 
@@ -157,6 +166,7 @@ export async function loadBattleshipModel(options = {}) {
     visualGroup: modelRoot.getObjectByName('Battleship') || modelRoot,
     dynamicGunColliders,
     areasGroup,
+    areas,
     stations,
     guns: {
       mainGunFront,

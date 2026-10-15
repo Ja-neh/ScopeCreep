@@ -16,8 +16,10 @@ test('Level 1: battleship starts at open sea and approaches the shores of the Le
   assert.ok(level.cover, 'island tropical cover and foliage are placed');
   assert.equal(level.hasReachedShore, false, 'ship starts well away from the shore');
 
-  // Verify player starts on the battleship deck in open sea
-  assert.ok(Math.abs(level.player.position.z - (950 - 14.0)) < 1.0, 'player spawned on the forward deck in open sea');
+  // Verify player starts at AreaFront on the battleship deck in open sea
+  const areaFrontWorld = level.battleship.getAreaWorldPosition('AreaFront');
+  assert.ok(Math.abs(level.player.position.z - areaFrontWorld.z) < 1.0, 'player spawned at AreaFront on the forward deck in open sea');
+  assert.ok(Math.abs(level.player.position.x - areaFrontWorld.x) < 1.0, 'player spawned at AreaFront X position');
 
   // Move the ship northward toward the island shores
   level.battleship.mesh.position.z = 500;

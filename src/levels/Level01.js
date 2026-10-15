@@ -121,8 +121,8 @@ export class Level01 extends BaseLevel {
       jumpForce: 10.0
     });
     this.battleship.mesh.updateMatrixWorld(true);
-    const spawnWorld = this.battleship.mesh.localToWorld(new THREE.Vector3(0.46, 6.2, -14.0));
-    this.player.setPosition(spawnWorld.x, spawnWorld.y, spawnWorld.z);
+    const spawnWorld = this.battleship.getAreaWorldPosition('AreaFront');
+    this.player.setPosition(spawnWorld.x, spawnWorld.y + 0.1, spawnWorld.z);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
@@ -309,10 +309,9 @@ export class Level01 extends BaseLevel {
       }
     }
 
-    // 3. Void fall recovery: respawn player back to forward walking deck if fallen below -15m
-    if (this.player && this.player.position && this.player.position.y < -15 && this.battleship && this.battleship.mesh) {
-      const respawnWorld = new THREE.Vector3(0.46, 6.2, -14.0);
-      this.battleship.mesh.localToWorld(respawnWorld);
+    // 3. Void fall recovery: respawn player back to AreaFront if fallen below -15m
+    if (this.player && this.player.position && this.player.position.y < -15 && this.battleship) {
+      const respawnWorld = this.battleship.getAreaWorldPosition('AreaFront');
       this.player.teleport(respawnWorld.x, respawnWorld.y + 0.2, respawnWorld.z);
     }
   }
