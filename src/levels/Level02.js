@@ -183,6 +183,12 @@ export class Level02 extends IslandLevel {
     return Object.values(LANES).map((lane) => ({ x: lane.spawn.x, z: lane.spawn.z, radius: 4 }));
   }
 
+  /** The beacon point is the map's objective pin until the mission ends. */
+  _mapMarkers() {
+    if (this.state === 'won' || this.state === 'lost') return [];
+    return [{ x: this._objectivePoint.x, z: this._objectivePoint.z, label: 'OBJECTIVE' }];
+  }
+
   /** Retunes the adaptive score to a mission state; a no-op where no music director exists. */
   _setMusic(state) {
     const music = this.gameWorld && this.gameWorld.music;

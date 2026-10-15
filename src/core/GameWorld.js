@@ -207,6 +207,7 @@ export class GameWorld {
     this.input.exitPointerLock();
 
     if (this.ui) {
+      this.ui.hideMap(); // The map and the pause menu never stack
       this.ui.showPauseMenu({
         onResume: () => this.resume(),
         onRestart: () => this.restartCurrentLevel(),
@@ -239,6 +240,26 @@ export class GameWorld {
       this.resume();
     } else {
       this.pause();
+    }
+  }
+
+  /**
+   * Opens or closes the island map ([M]). The chart comes from the level's own terrain sampler
+   * (`getMapTerrain`); the cursor is freed while it is open so clicks never fire the weapons,
+   * and the pointer locks again on close so looking and shooting resume in place.
+   */
+  toggleMap() {
+    if (!this.currentLevel || this.isLevelLoading || this.isPaused) return;
+    const player = this.currentLevel.player;
+    if (player && player.isDevSuspended) return; // Cinematics and the downed state own the screen
+    if (!this.ui) return;
+
+    if (this.ui.isMapOpen) {
+      this.ui.hideMap();
+      this.input.requestPointerLock(this.canvas);
+    } else {
+      this.ui.showMap(this.currentLevel.getMapTerrain());
+      this.input.exitPointerLock();
     }
   }
 
@@ -409,6 +430,9 @@ export class GameWorld {
     // =========================================================================
     if (this.input.isActionJustPressed('pause')) {
       this.togglePause();
+    }
+    if (this.input.isActionJustPressed('toggleMap')) {
+      this.toggleMap();
     }
     if (this.input.isActionJustPressed('toggleColliders')) {
       this.toggleColliderDebug();

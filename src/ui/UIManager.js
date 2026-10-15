@@ -5,6 +5,7 @@ import { HealthBar } from './components/HealthBar.js';
 import { ToastNotification } from './components/ToastNotification.js';
 import { StatusIndicator } from './components/StatusIndicator.js';
 import { WeaponHUD } from './components/WeaponHUD.js';
+import { MapOverlay } from './components/MapOverlay.js';
 import { PlayerHealthBar } from './components/PlayerHealthBar.js';
 import { BossHealthBar } from './components/BossHealthBar.js';
 import { Credits } from './components/Credits.js';
@@ -39,6 +40,7 @@ export class UIManager {
     this.toast = new ToastNotification(this.container);
     this.statusIndicator = new StatusIndicator(this.container);
     this.weaponHUD = new WeaponHUD(this.container);
+    this.mapOverlay = new MapOverlay(this.container);
     this.playerHealth = new PlayerHealthBar(this.container);
     this.bossHealth = new BossHealthBar(this.container);
     this.credits = new Credits(this.container);
@@ -368,6 +370,45 @@ export class UIManager {
   }
 
   // =========================================================================
+  // Island Map
+  // =========================================================================
+
+  /**
+   * Open the island map, painting the island from the level's chart data
+   * (see `mapTerrainFromEnvironment`). Pass null to keep the cached backdrop.
+   */
+  showMap(terrain) {
+    if (this.mapOverlay) {
+      this.mapOverlay.show(terrain);
+    }
+  }
+
+  /**
+   * Redraw the open map with fresh state from the level ({ player, mates, enemies, markers })
+   */
+  updateMap(state) {
+    if (this.mapOverlay) {
+      this.mapOverlay.update(state);
+    }
+  }
+
+  /**
+   * Close the island map
+   */
+  hideMap() {
+    if (this.mapOverlay) {
+      this.mapOverlay.hide();
+    }
+  }
+
+  /**
+   * True while the island map is on screen
+   */
+  get isMapOpen() {
+    return !!(this.mapOverlay && this.mapOverlay.isOpen);
+  }
+
+  // =========================================================================
   // Warship Health Bar
   // =========================================================================
 
@@ -595,6 +636,7 @@ export class UIManager {
     this.hideHealthBar();
     this.hideStatusIndicator();
     this.hideWeaponHUD();
+    this.hideMap();
     this.hidePlayerHealth();
     this.hideBossHealth();
     this.hideCredits();
@@ -656,6 +698,10 @@ export class UIManager {
     if (this.weaponHUD) {
       this.weaponHUD.dispose();
       this.weaponHUD = null;
+    }
+    if (this.mapOverlay) {
+      this.mapOverlay.dispose();
+      this.mapOverlay = null;
     }
     if (this.playerHealth) {
       this.playerHealth.dispose();

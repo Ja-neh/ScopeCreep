@@ -10,6 +10,7 @@ import { SquadMate } from '../entities/allies/SquadMate.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
 import { HumanSquad } from '../ai/HumanSquad.js';
 import { WeaponController } from '../weapons/WeaponController.js';
+import { mapTerrainFromEnvironment } from '../ui/components/MapOverlay.js';
 import config from '../config.json';
 
 // The ship's crew besides the player (call signs for messages)
@@ -25,6 +26,7 @@ export const CREW_NAMES = ['Okafor', 'Reyes', 'Novak', 'Chen'];
  * - _environmentOptions(), _coverOptions(): look and shadow area
  * - _buildWorld(): the level's own places (landing zone, village), before the trees are planted
  * - _clearings(): ground the trees and rocks must leave open
+ * - _mapMarkers(): objective pins drawn on the island map ([M])
  * - _playerSpawn(): where the player starts ({ position, yaw })
  * - _createProps(): things that need the player and weapons (supply crates)
  * - _startScenario() / _updateScenario(delta): the mission itself (state != won/lost)
@@ -59,6 +61,7 @@ export class IslandLevel extends BaseLevel {
     this._lowHealthWarned = false;
     this._squadmatesLost = 0;
     this._respawnTimer = -1;   // Counting down to a respawn (see _respawnPlayer)
+    this._mapRefreshTimer = 0; // Throttles redraws of an open island map
   }
 
   async init() {
@@ -148,6 +151,68 @@ export class IslandLevel extends BaseLevel {
     return [];
   }
 
+  /** Objective pins drawn on the island map. Levels with objectives override this. */
+  _mapMarkers() {
+    return [];
+  }
+
+  /** The island chart for the map overlay: world bounds around the playable scatter. */
+  getMapTerrain() {
+    return this.environment ? mapTerrainFromEnvironment(this.environment) : null;
+  }
+
+  /**
+   * The open map's snapshot: the player, the squad, the aliens still alive (the ones hunting
+   * us burn bright, the unaware ones are a dim rim to go and find), and the level's markers.
+   */
+  getMapData() {
+    const player = this.player;
+    if (!player || !this.environment) return null;
+
+    const mates = [];
+    if (this.allies) {
+      for (const member of this.allies.members) {
+        if (member === player) continue;
+        mates.push({
+          x: member.position.x,
+          z: member.position.z,
+          downed: !!(member.health && member.health.isDead)
+        });
+      }
+    }
+
+    const enemies = [];
+    if (this.squad) {
+      const bruteHealth = config.enemies.brute.maxHealth;
+      for (const alien of this.squad.members) {
+        if (!alien.health || alien.health.isDead) continue; // Corpses drop off the map
+        enemies.push({
+          x: alien.position.x,
+          z: alien.position.z,
+          big: alien.health.maxHealth >= bruteHealth,
+          alerted: !!(alien.perception && alien.perception.target)
+        });
+      }
+    }
+
+    return {
+      player: { x: player.position.x, z: player.position.z, yaw: player.yaw },
+      mates,
+      enemies,
+      markers: this._mapMarkers()
+    };
+  }
+
+  /** Keeps an open map fed: fresh markers a few times a second are plenty. */
+  _updateMap(delta) {
+    const ui = this.gameWorld.ui;
+    if (!ui || !ui.isMapOpen) return;
+    this._mapRefreshTimer -= delta;
+    if (this._mapRefreshTimer > 0) return;
+    this._mapRefreshTimer = 0.12;
+    ui.updateMap(this.getMapData());
+  }
+
   /** @returns {{position: THREE.Vector3, yaw: number}} */
   _playerSpawn() {
     return { position: new THREE.Vector3(0, this.environment.heightAt(0, 0) + 0.2, 0), yaw: 0 };
@@ -227,6 +292,7 @@ export class IslandLevel extends BaseLevel {
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['reload'], label: 'Reload' },
       { actions: ['weaponPrimary', 'weaponMelee', 'weaponBomb', 'quickMelee'], label: 'Gun, knife, bomb, quick knife' },
+      { actions: ['toggleMap'], label: 'Island map' },
       { actions: ['specialAction'], label: 'Hold: revive, patch up' },
       { actions: ['toggleCamera'], label: '1st / 3rd person' },
       { actions: ['pause'], label: 'Pause and options' }
@@ -292,6 +358,7 @@ export class IslandLevel extends BaseLevel {
     this.squad.update();
     this.allies.update(delta);
     this._updateWorld(delta);
+    this._updateMap(delta);
 
     this._updatePlayerDowned(delta);
     this._updatePlayerRevive(delta);
@@ -507,6 +574,7 @@ export class IslandLevel extends BaseLevel {
     if (!ui) return;
     ui.hideObjective();
     ui.hideStatusIndicator();
+    ui.hideMap();
 
     const minutes = Math.floor(this.elapsed / 60);
     const seconds = Math.floor(this.elapsed % 60).toString().padStart(2, '0');
@@ -534,6 +602,7 @@ export class IslandLevel extends BaseLevel {
       ui.hideMissionResult();
       ui.hideStatusIndicator();
       ui.hidePlayerHealth();
+      ui.hideMap();
       ui.hidePrompt(this);
     }
 

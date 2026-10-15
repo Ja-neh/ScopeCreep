@@ -79,6 +79,7 @@ export class InputManager {
       mouseLook: ['Mouse0', 'Mouse2'],
 
       toggleCamera: ['KeyV', 'Tab'],
+      toggleMap: ['KeyM'],
       toggleColliders: ['KeyB', 'F2'],
       devCamera: ['F1'],
       devSpawn: ['F3'],

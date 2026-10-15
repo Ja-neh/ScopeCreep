@@ -53,6 +53,22 @@ export class BaseLevel {
   }
 
   /**
+   * Chart data for the tactical map (world bounds plus the environment's height and path
+   * functions; see `mapTerrainFromEnvironment`), or null when the stage has no map.
+   */
+  getMapTerrain() {
+    return null;
+  }
+
+  /**
+   * A snapshot for the open map: `{ player, mates, enemies, markers }` (see `IslandLevel`).
+   * Null hides everything but the island.
+   */
+  getMapData() {
+    return null;
+  }
+
+  /**
    * Optional callback invoked when collider debug visualization is toggled.
    * @param {boolean} visible
    */
