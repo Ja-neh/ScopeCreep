@@ -1,6 +1,8 @@
 # Tests
 
-`npm test` runs every `tests/**/*.test.mjs` file with Node's built-in test runner (`node:test`, no extra packages). The tests use the real game code, real Three.js objects and real Rapier physics, without a browser or WebGL. The full suite takes about 30 seconds.
+`npm test` runs every `tests/**/*.test.mjs` file with Node's built-in test runner (`node:test`, no extra packages). The tests use the real game code, real Three.js objects and real Rapier physics, without a browser or WebGL. The full suite takes about 30 seconds on a desktop; expect several minutes on a phone.
+
+The script pins `--test-concurrency=1`. Node's default is one worker per core, and each worker is a separate process that compiles the Rapier WASM and builds real physics worlds - one test file peaks around 250 MB. Running all 24 files in parallel needs well over 1 GB, which is enough for Android's low-memory killer to take out the whole Termux app mid-run. Leave the cap in place; loosen it only if you have measured the headroom.
 
 Run it before every commit. If a test fails, either your change broke something that used to work, or you changed behaviour on purpose and must update that test in the same commit.
 
