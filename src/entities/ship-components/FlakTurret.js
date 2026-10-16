@@ -47,9 +47,11 @@ export class FlakTurret extends BaseStation {
     // --- Card 2.2: Firing state ---
     // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
     this._muzzleWorldPos = new THREE.Vector3();
+    this._spawnWorldPos = new THREE.Vector3();
     this._barrelWorldDir = new THREE.Vector3();
     this._targetLocalPos = new THREE.Vector3();
     this._turretLocalPos = new THREE.Vector3();
+    this.projectileSpawns = [];
 
     // Rate of fire (rapid anti-air battery)
     const flakCfg = config.turrets.flak;
@@ -101,6 +103,15 @@ export class FlakTurret extends BaseStation {
     this.pitchGroup = barrelMesh || this.mesh;
     if (this.turretMesh) this.turretMesh.userData.entity = this;
     if (this.barrelMesh) this.barrelMesh.userData.entity = this;
+
+    this.projectileSpawns = [];
+    if (this.barrelMesh) {
+      this.barrelMesh.traverse((child) => {
+        if (child !== this.barrelMesh && child.name && child.name.startsWith('ProjectileSpawn')) {
+          this.projectileSpawns.push(child);
+        }
+      });
+    }
 
     if (this.camera) {
       if (this.camera.parent) this.camera.parent.remove(this.camera);
@@ -299,13 +310,26 @@ export class FlakTurret extends BaseStation {
 
     this._updateMuzzleTransform();
 
-    pool.fireFlak({
-      origin: this._muzzleWorldPos,
-      direction: this._barrelWorldDir,
-      source: this,
-      excludeCollider: this.battleship?.colliders?.collider || null,
-      excludeRigidBody: this.battleship?.colliders?.rigidBody || null
-    });
+    if (this.projectileSpawns && this.projectileSpawns.length > 0) {
+      for (const spawn of this.projectileSpawns) {
+        spawn.getWorldPosition(this._spawnWorldPos);
+        pool.fireFlak({
+          origin: this._spawnWorldPos,
+          direction: this._barrelWorldDir,
+          source: this,
+          excludeCollider: this.battleship?.colliders?.collider || null,
+          excludeRigidBody: this.battleship?.colliders?.rigidBody || null
+        });
+      }
+    } else {
+      pool.fireFlak({
+        origin: this._muzzleWorldPos,
+        direction: this._barrelWorldDir,
+        source: this,
+        excludeCollider: this.battleship?.colliders?.collider || null,
+        excludeRigidBody: this.battleship?.colliders?.rigidBody || null
+      });
+    }
 
     this._triggerRecoil();
   }

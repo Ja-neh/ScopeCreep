@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { BaseLevel } from './BaseLevel.js';
-import { Ocean } from '../rendering/Ocean.js';
-import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 import { Battleship } from '../entities/Battleship.js';
 import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
@@ -10,21 +8,30 @@ import { PlayerJet } from '../entities/player-jet/PlayerJet.js';
 import { EnemyJet } from '../entities/enemies/EnemyJet.js';
 import { JetDefenseMission } from './JetDefenseMission.js';
 import { CAMPAIGN_ENDING, CAMPAIGN_CREDITS } from './level01/ending.js';
+import { BeachEnvironment } from './level02/BeachEnvironment.js';
+import { BeachCover } from './level02/BeachCover.js';
+import { Level02 } from './Level02.js';
 import config from '../config.json';
 
 /**
  * Level01
  * Act 1: Operation Retake - At Sea
  * Features:
- * - Custom GPU Gerstner Ocean Shader
- * - Floating battleship with wave buoyancy & kinematic physics
+ * - Starting far out in open sea and advancing toward the shores of Level 2's island
+ * - Procedural island terrain, beach waterline, and tropical foliage cover
+ * - Dynamic atmospheric progression blending open sea daylight into sunset on approach
+ * - Floating battleship with wave buoyancy, helm steering, and kinematic physics
+ * - AI ship crew operating unoccupied stations
  * - Human player avatar walking on deck
  * - Interactive gun turrets (ArtilleryTurret & FlakTurret)
+ * - Aerial jet defense dogfighting & flight deck launch
  * - Built-in Dev Tools to toggle between Player and Aerial Orbit Camera
  */
 export class Level01 extends BaseLevel {
   constructor(gameWorld) {
     super(gameWorld, 'Level 1: Operation Retake (At Sea)');
+    this.environment = null;
+    this.cover = null;
     this.water = null;
     this.battleship = null;
     this.player = null;
@@ -44,6 +51,11 @@ export class Level01 extends BaseLevel {
     this._launchPositionWorld = new THREE.Vector3();
     this.launchRadius = 5;
 
+    // Navigation: open sea start advancing toward the shores of the island
+    this.openSeaStartZ = 950;
+    this.shoreAnchorageZ = 225;
+    this.hasReachedShore = false;
+
     // Dev Tools Camera System
     this.cameraMode = 'PLAYER'; // 'PLAYER' | 'AERIAL'
     this.aerialCamera = null;
@@ -51,53 +63,64 @@ export class Level01 extends BaseLevel {
     this._onKeyDown = null;
   }
 
+  get controls() {
+    return [
+      { actions: ['forward', 'backward'], label: 'Walk forward / back' },
+      { actions: ['steerLeft', 'steerRight'], label: 'Walk left / right' },
+      { actions: ['jump'], label: 'Jump' },
+      { actions: ['specialAction'], label: 'Mount station / Launch jet' },
+      { actions: ['cycleShipOrder'], label: 'Cycle AI crew order' },
+      { actions: ['pause'], label: 'Pause and options' }
+    ];
+  }
+
   async init() {
     await super.init();
 
-    // 1. Atmosphere & Sky
-    this.gameWorld.scene.background = new THREE.Color(0x87ceeb); // Ocean daylight sky
-    this.gameWorld.scene.fog = new THREE.FogExp2(0x87ceeb, 0.0010);
+    // 1. Island, Coastal Terrain, Sea, Sky & Lighting (Optimized for Level 1 open sea approach)
+    this.environment = this.trackDisposable(new BeachEnvironment(this.gameWorld, {
+      look: 'daylight',
+      layout: 'beach',
+      waveScale: 0.5,
+      cellSize: 8,           // Lower ground mesh detail (8m grid vs 2m grid: 94% polygon reduction)
+      createCollider: false, // Player stays aboard/in jet; no ground collision needed
+      shadowCentre: new THREE.Vector3(0, 0, 300),
+      shadowHalfExtent: 400,
+      shadowFollowsCamera: true
+    }));
+    this.environment.build();
+    this.water = this.environment.ocean;
 
-    // 2. Directional Sun & Ambient Lighting
-    const sunDirection = new THREE.Vector3(150, 250, 100).normalize();
+    // 2. Island Cover: significantly fewer trees, no rocks, no bushes, no scenery colliders
+    this.cover = this.trackDisposable(new BeachCover(this.gameWorld, this.environment, [], {
+      includeRocks: false,   // No rocks
+      includeBushes: false,  // No bushes
+      treeDensity: 0.15,     // Significantly less trees
+      palmDensity: 0.20,     // Light palm fringe along shore
+      createColliders: false // Zero physics overhead for distant scenery
+    }));
+    this.cover.build();
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
-    this.gameWorld.environmentGroup.add(ambientLight);
-    this.trackDisposable(ambientLight);
-
-    const sunLight = new THREE.DirectionalLight(0xfff5e6, 1.4);
-    sunLight.position.set(150, 250, 100);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.bias = -0.0005;
-    // The shadow square follows the player: fitted depth range, snapped to shadow-map texels
-    this.sunShadow = new ShadowFrustum(sunLight, { halfExtent: 400 });
-    this.gameWorld.environmentGroup.add(sunLight);
-    this.trackDisposable(sunLight);
-
-    // 3. Custom Ocean Mesh & Shader
-    this.water = new Ocean({
-      size: 2600,
-      segments: 200,
-      sunDirection: sunDirection
-    });
-    this.gameWorld.environmentGroup.add(this.water.mesh);
-    this.trackDisposable(this.water);
-
-    // 3.5 High-Performance Projectile Object Pool
+    // 3. High-Performance Projectile Object Pool
     this.projectilePool = new ProjectilePool(this.gameWorld);
     this.gameWorld.addEntity(this.projectilePool);
     this.gameWorld.projectilePool = this.projectilePool;
 
-    // 4. Instantiate Modern Battleship with Ocean Buoyancy
+    // 4. Instantiate Modern Battleship at Open Sea facing toward the Island (heading 0 = -Z)
     this.battleship = new Battleship(this.gameWorld, {
-      position: new THREE.Vector3(0, 0, 0),
-      water: this.water
+      position: new THREE.Vector3(0, 0, this.openSeaStartZ),
+      water: this.water,
+      crewAI: true
     });
     await this.battleship.ready;
     this.gameWorld.addEntity(this.battleship);
     this.battleship.initPhysics(this.gameWorld.physics);
+
+    // Initial cruising way forward towards the island
+    if (this.battleship.shipController) {
+      this.battleship.shipController.speed = 6.0;
+      this.battleship.shipController.heading = 0;
+    }
 
     // 5. Spawn Player Character Controller on the Battleship Walking Deck
     this.player = new Player(this.gameWorld, {
@@ -105,8 +128,9 @@ export class Level01 extends BaseLevel {
       sprintSpeed: 14.0,
       jumpForce: 10.0
     });
-    // Position player on forward walking deck
-    this.player.setPosition(0.46, 6.2, -14.0);
+    this.battleship.mesh.updateMatrixWorld(true);
+    const spawnWorld = this.battleship.getAreaWorldPosition('AreaFront');
+    this.player.setPosition(spawnWorld.x, spawnWorld.y + 0.1, spawnWorld.z);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
 
@@ -114,8 +138,8 @@ export class Level01 extends BaseLevel {
     this._preflightTimer = config.enemyJet.preflightDefense.firstWaveDelaySeconds;
     if (this.gameWorld.ui) {
       this.gameWorld.ui.showObjective(
-        'SHIP DEFENSE',
-        `Man the aft flak battery and destroy ${config.enemyJet.preflightDefense.fighters} incoming aircraft.`
+        'APPROACH THE ISLAND',
+        `Advance northward toward the island shores. Distance: ${Math.round(this.openSeaStartZ - this.shoreAnchorageZ)}m.`
       );
     }
 
@@ -125,10 +149,10 @@ export class Level01 extends BaseLevel {
     // 7. Initialize Dev Tools UI Overlay & Keybinds
     this._initDevTools();
 
-    // 8. Ocean surface safety floor (catches players falling overboard so they don't fall into the void)
+    // 8. Ocean surface safety floor
     this.oceanSafetyCollider = this.gameWorld.physics.createGround(3000, -1.0);
 
-    console.log(`${this.name} initialized with Battleship, Deck Player, and Dev Camera Tools.`);
+    console.log(`${this.name} initialized with Island Shores, Battleship at Open Sea, Deck Player, and Dev Camera Tools.`);
   }
 
   _createJetLaunchMarker() {
@@ -164,17 +188,21 @@ export class Level01 extends BaseLevel {
       0.1,
       3000
     );
-    this.aerialCamera.position.set(0, 52, 105);
-    this.aerialCamera.lookAt(0, 5, 0);
+    this.aerialCamera.position.set(0, 52, this.openSeaStartZ + 105);
+    this.aerialCamera.lookAt(0, 5, this.openSeaStartZ);
 
-    this.orbitControls = new OrbitControls(this.aerialCamera, this.gameWorld.renderer.domElement);
-    this.orbitControls.enableDamping = true;
-    this.orbitControls.dampingFactor = 0.05;
-    this.orbitControls.maxPolarAngle = Math.PI / 2 - 0.02; // Keep camera above water
-    this.orbitControls.minDistance = 5;
-    this.orbitControls.maxDistance = 2500;
-    this.orbitControls.target.set(0, 5, 0);
-    this.orbitControls.enabled = false; // Disabled by default in player mode
+    if (this.gameWorld.renderer?.domElement) {
+      this.orbitControls = new OrbitControls(this.aerialCamera, this.gameWorld.renderer.domElement);
+      this.orbitControls.enableDamping = true;
+      this.orbitControls.dampingFactor = 0.05;
+      this.orbitControls.maxPolarAngle = Math.PI / 2 - 0.02; // Keep camera above water
+      this.orbitControls.minDistance = 5;
+      this.orbitControls.maxDistance = 2500;
+      this.orbitControls.target.set(0, 5, this.openSeaStartZ);
+      this.orbitControls.enabled = false; // Disabled by default in player mode
+    } else {
+      this.orbitControls = null;
+    }
   }
 
   /**
@@ -185,17 +213,14 @@ export class Level01 extends BaseLevel {
     this.cameraMode = mode;
 
     if (mode === 'AERIAL') {
-      // Exit pointer lock for smooth orbit mouse interaction
       if (document.exitPointerLock) {
         document.exitPointerLock();
       }
 
-      // Suspend player controller input and updates
       if (this.player) {
         this.player.isDevSuspended = true;
       }
 
-      // Enable OrbitControls and target the battleship
       if (this.orbitControls) {
         this.orbitControls.enabled = true;
         if (this.battleship && this.battleship.mesh) {
@@ -207,11 +232,8 @@ export class Level01 extends BaseLevel {
         }
       }
 
-      // Switch rendering to Aerial camera
       this.gameWorld.setActiveCamera(this.aerialCamera);
-      console.log('Level1 DevTools: Switched to [AERIAL ORBIT CAMERA].');
     } else {
-      // Return to PLAYER mode
       if (this.orbitControls) {
         this.orbitControls.enabled = false;
       }
@@ -220,9 +242,7 @@ export class Level01 extends BaseLevel {
         this.player.isDevSuspended = false;
       }
 
-      // Restore active camera to null (master player camera)
       this.gameWorld.setActiveCamera(null);
-      console.log('Level1 DevTools: Switched to [PLAYER CONTROLLER CAMERA].');
     }
 
     if (this.gameWorld && this.gameWorld.ui) {
@@ -230,9 +250,6 @@ export class Level01 extends BaseLevel {
     }
   }
 
-  /**
-   * Creates the on-screen Dev Tools widget and attaches hotkey listeners
-   */
   _initDevTools() {
     if (this.gameWorld && this.gameWorld.ui) {
       this.gameWorld.ui.showDevTools({
@@ -247,9 +264,7 @@ export class Level01 extends BaseLevel {
       });
     }
 
-    // Keyboard shortcuts listener for Level 1 camera modes: 'Digit1', 'Digit2', 'F1', 'KeyO'
     this._onKeyDown = (e) => {
-      // Don't trigger if typing in an input
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
       if (e.code === 'Digit1') {
@@ -273,11 +288,10 @@ export class Level01 extends BaseLevel {
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     super.gameplayUpdate(delta, gameWorld);
 
-    // Keep the sun's shadow square on the player
-    if (this.sunShadow) this.sunShadow.update(this.player || null);
-
-    // 1. Animate the custom ocean wave displacement
-    if (this.water) {
+    // 1. Animate island environment (waves, clouds, cloud shadows, sun)
+    if (this.environment) {
+      this.environment.update(delta);
+    } else if (this.water) {
       this.water.update(delta);
     }
 
@@ -285,12 +299,12 @@ export class Level01 extends BaseLevel {
     this._updatePreflightDefense(delta);
     if (this.defenseMission) this.defenseMission.update(delta);
     this._updateCampaignEnding(delta);
+    this._updateIslandApproach();
 
     // 2. Update aerial orbit controls when in AERIAL mode
     if (this.orbitControls && this.cameraMode === 'AERIAL') {
       this.orbitControls.update();
 
-      // Smoothly follow battleship position while floating
       if (this.battleship && this.battleship.mesh) {
         this.orbitControls.target.lerp(
           new THREE.Vector3(
@@ -303,11 +317,45 @@ export class Level01 extends BaseLevel {
       }
     }
 
-    // 3. Void fall recovery: respawn player back to forward walking deck if fallen below -15m
-    if (this.player && this.player.position && this.player.position.y < -15 && this.battleship && this.battleship.mesh) {
-      const respawnWorld = new THREE.Vector3(0.46, 6.2, -14.0);
-      this.battleship.mesh.localToWorld(respawnWorld);
+    // 3. Void fall recovery: respawn player back to AreaFront if fallen below -15m
+    if (this.player && this.player.position && this.player.position.y < -15 && this.battleship) {
+      const respawnWorld = this.battleship.getAreaWorldPosition('AreaFront');
       this.player.teleport(respawnWorld.x, respawnWorld.y + 0.2, respawnWorld.z);
+    }
+  }
+
+  _updateIslandApproach() {
+    if (!this.battleship?.mesh) return;
+
+    const currentZ = this.battleship.mesh.position.z;
+    const distToShore = Math.max(0, Math.round(currentZ - this.shoreAnchorageZ));
+
+    // Dynamic atmospheric progression: blend from sea daylight into island sunset
+    if (this.environment) {
+      const progress = THREE.MathUtils.clamp(
+        (this.openSeaStartZ - currentZ) / (this.openSeaStartZ - this.shoreAnchorageZ),
+        0,
+        1
+      );
+      this.environment.blendLook('daylight', 'sunset', progress);
+    }
+
+    // Check arrival at the island shore anchorage
+    if (distToShore <= 15) {
+      if (!this.hasReachedShore) {
+        this.hasReachedShore = true;
+        if (this.battleship.shipController) {
+          this.battleship.shipController.speed = 0;
+          this.battleship.shipController.rudderAngle = 0;
+        }
+        this.gameWorld.ui?.showToast('ISLAND SHORES REACHED: Battleship anchored off southern beach.', 'success', 5000);
+      }
+
+      // Prevent the warship from running up onto dry sand
+      if (this.battleship.mesh.position.z < this.shoreAnchorageZ) {
+        this.battleship.mesh.position.z = this.shoreAnchorageZ;
+        if (this.battleship.shipController) this.battleship.shipController.speed = 0;
+      }
     }
   }
 
@@ -349,11 +397,14 @@ export class Level01 extends BaseLevel {
 
     if (this._preflightStarted) {
       const remaining = config.enemyJet.preflightDefense.fighters - this.preflightKillCount;
+      const currentZ = this.battleship?.mesh?.position?.z ?? this.openSeaStartZ;
+      const distToShore = Math.max(0, Math.round(currentZ - this.shoreAnchorageZ));
+
       this.gameWorld.ui?.showObjective(
-        'SHIP DEFENSE',
+        'DEFEND & APPROACH ISLAND',
         remaining > 0
-          ? `Man the aft flak battery and destroy the incoming aircraft. ${remaining} remaining.`
-          : 'Airspace clear. Report to the marked flight deck to launch jet defense.'
+          ? `Flak battery: destroy incoming aircraft (${remaining} left). Distance to shore: ${distToShore}m.`
+          : `Airspace clear. Distance to shore: ${distToShore}m. Report to flight deck to launch jet defense.`
       );
     }
   }
@@ -362,7 +413,7 @@ export class Level01 extends BaseLevel {
     const defense = config.enemyJet.preflightDefense;
     this.gameWorld.ui?.showToast('Hostile aircraft inbound! Man the aft flak battery!', 'danger', 3500);
     this.gameWorld.ui?.showObjective(
-      'SHIP DEFENSE',
+      'DEFEND WARSHIP & APPROACH ISLAND',
       `Man the aft flak battery and destroy ${defense.fighters} incoming aircraft.`
     );
 
@@ -394,10 +445,12 @@ export class Level01 extends BaseLevel {
 
     if (this.preflightKillCount >= config.enemyJet.preflightDefense.fighters) {
       this.preflightDefenseComplete = true;
-      this.gameWorld.ui?.showToast('Ship defense complete. Proceed to the flight deck.', 'success', 3500);
+      const currentZ = this.battleship?.mesh?.position?.z ?? this.openSeaStartZ;
+      const distToShore = Math.max(0, Math.round(currentZ - this.shoreAnchorageZ));
+      this.gameWorld.ui?.showToast('Airspace secured! Island shores ahead.', 'success', 3500);
       this.gameWorld.ui?.showObjective(
-        'SHIP DEFENSE COMPLETE',
-        'Report to the marked flight deck to launch jet defense.'
+        'APPROACH THE ISLAND',
+        `Distance to shore: ${distToShore}m. Report to flight deck to launch jet defense.`
       );
     }
   }
@@ -447,7 +500,7 @@ export class Level01 extends BaseLevel {
     if (this.playerJet) this.playerJet.isDevSuspended = true;
     if (this.gameWorld.ui) {
       this.gameWorld.ui.hideObjective();
-      this.gameWorld.ui.showCinematic('AIRSPACE SECURE', 'The battleship is safe. Operation Retake is complete.');
+      this.gameWorld.ui.showCinematic('AIRSPACE SECURE', 'The battleship is safe. Island shores reached.');
     }
   }
 
@@ -473,9 +526,10 @@ export class Level01 extends BaseLevel {
       this.gameWorld.ui?.showMissionResult({
         ...this._endingResult,
         title: 'OPERATION RETAKE COMPLETE',
-        message: 'Enemy airspace is clear and the battleship is safe.',
+        message: 'Enemy airspace is clear and the battleship has arrived at the island shores.',
         actions: [
           { label: 'Play again', onClick: () => this.gameWorld.restartCurrentLevel() },
+          { label: 'Proceed to Level 2: The Beach', onClick: () => this.gameWorld.loadLevel(new Level02(this.gameWorld)) },
           { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
         ]
       });
@@ -485,13 +539,15 @@ export class Level01 extends BaseLevel {
   dispose() {
     console.log(`Disposing ${this.name}...`);
 
-    // Teardown ocean safety collider
     if (this.oceanSafetyCollider && this.gameWorld.physics) {
-      this.gameWorld.physics.removeCollider(this.oceanSafetyCollider);
+      if (this.oceanSafetyCollider.rigidBody) {
+        this.gameWorld.physics.removeRigidBody(this.oceanSafetyCollider.rigidBody);
+      } else {
+        this.gameWorld.physics.removeCollider(this.oceanSafetyCollider);
+      }
       this.oceanSafetyCollider = null;
     }
 
-    // Teardown Dev Tools UI & listeners
     if (this._onKeyDown) {
       window.removeEventListener('keydown', this._onKeyDown);
       this._onKeyDown = null;
@@ -515,7 +571,6 @@ export class Level01 extends BaseLevel {
       this.orbitControls = null;
     }
 
-    // Restore master camera
     this.gameWorld.setActiveCamera(null);
 
     if (this.gameWorld.projectilePool === this.projectilePool) {
@@ -526,6 +581,15 @@ export class Level01 extends BaseLevel {
     this.playerJet = null;
     this.launchMarker = null;
     this.battleship = null;
+
+    if (this.cover) {
+      this.cover.dispose();
+      this.cover = null;
+    }
+    if (this.environment) {
+      this.environment.dispose();
+      this.environment = null;
+    }
 
     super.dispose();
     this.water = null;

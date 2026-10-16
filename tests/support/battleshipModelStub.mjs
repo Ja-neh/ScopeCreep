@@ -79,5 +79,92 @@ export async function loadBattleshipModel() {
     root.add(mesh);
   }
 
-  return { root, visualGroup: root, dynamicGunColliders: [], areasGroup: null, stations: {}, guns: {} };
+  const areasGroup = new THREE.Group();
+  areasGroup.name = 'Areas';
+  const areaFront = new THREE.Object3D();
+  areaFront.name = 'AreaFront';
+  areaFront.position.set(-1.340257, 5.303711, 37.034672);
+  areasGroup.add(areaFront);
+  root.add(areasGroup);
+
+  const areas = {
+    AreaFront: new THREE.Vector3(1.34, 5.30, -37.03),
+    AreaBack: new THREE.Vector3(5.32, 5.36, 34.93),
+    AreaHelm: new THREE.Vector3(5.47, 5.26, 17.22),
+    AreaAntiAirGun: new THREE.Vector3(0.46, 5.36, 25.63),
+    AreaMainGunFront: new THREE.Vector3(0.46, 5.30, -17.09),
+    AreaMainGunBack: new THREE.Vector3(0.46, 6.75, -5.82)
+  };
+
+  const mainGunFront = new THREE.Group();
+  mainGunFront.name = 'MainGunFront';
+  const mainGunFrontBarrel = new THREE.Group();
+  mainGunFrontBarrel.name = 'MainGunFrontBarrel';
+  const spawnMF1 = new THREE.Object3D();
+  spawnMF1.name = 'ProjectileSpawnMF1';
+  spawnMF1.position.set(-0.873, -0.222, 6.47);
+  const spawnMF2 = new THREE.Object3D();
+  spawnMF2.name = 'ProjectileSpawnMF2';
+  spawnMF2.position.set(0.905, -0.222, 6.47);
+  mainGunFrontBarrel.add(spawnMF1, spawnMF2);
+  mainGunFront.add(mainGunFrontBarrel);
+  root.add(mainGunFront);
+
+  const mainGunBack = new THREE.Group();
+  mainGunBack.name = 'MainGunBack';
+  const mainGunBackBarrel = new THREE.Group();
+  mainGunBackBarrel.name = 'MainGunBackBarrel';
+  const spawnMB1 = new THREE.Object3D();
+  spawnMB1.name = 'ProjectileSpawnMB1';
+  spawnMB1.position.set(-0.869, -0.233, 6.51);
+  const spawnMB2 = new THREE.Object3D();
+  spawnMB2.name = 'ProjectileSpawnMB2';
+  spawnMB2.position.set(0.902, -0.233, 6.51);
+  mainGunBackBarrel.add(spawnMB1, spawnMB2);
+  mainGunBack.add(mainGunBackBarrel);
+  root.add(mainGunBack);
+
+  const antiAirGun = new THREE.Group();
+  antiAirGun.name = 'AntiAirGun';
+  const antiAirBarrels = new THREE.Group();
+  antiAirBarrels.name = 'AntiAirBarrels';
+  const spawnAA1 = new THREE.Object3D();
+  spawnAA1.name = 'ProjectileSpawnAA1';
+  spawnAA1.position.set(-0.493, 0.979, -5.19);
+  const spawnAA2 = new THREE.Object3D();
+  spawnAA2.name = 'ProjectileSpawnAA2';
+  spawnAA2.position.set(-0.493, 0.073, -5.19);
+  const spawnAA3 = new THREE.Object3D();
+  spawnAA3.name = 'ProjectileSpawnAA3';
+  spawnAA3.position.set(0.529, 0.979, -5.19);
+  const spawnAA4 = new THREE.Object3D();
+  spawnAA4.name = 'ProjectileSpawnAA4';
+  spawnAA4.position.set(0.529, 0.073, -5.19);
+  antiAirBarrels.add(spawnAA1, spawnAA2, spawnAA3, spawnAA4);
+  antiAirGun.add(antiAirBarrels);
+  root.add(antiAirGun);
+
+  const guns = {
+    mainGunFront,
+    mainGunFrontBarrel,
+    mainGunBack,
+    mainGunBackBarrel,
+    antiAirGun,
+    antiAirBarrels
+  };
+
+  return {
+    root,
+    visualGroup: root,
+    dynamicGunColliders: [],
+    areasGroup,
+    areas,
+    stations: {
+      helmsman: areas.AreaHelm,
+      artilleryGunner: areas.AreaMainGunFront,
+      artilleryGunner2: areas.AreaMainGunBack,
+      flakGunner: areas.AreaAntiAirGun
+    },
+    guns
+  };
 }
