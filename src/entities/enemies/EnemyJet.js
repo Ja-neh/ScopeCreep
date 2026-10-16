@@ -1,10 +1,23 @@
 import * as THREE from 'three';
 import { BaseEntity } from '../BaseEntity.js';
 import { HealthComponent } from '../components/HealthComponent.js';
+import { StateMachine } from '../../ai/StateMachine.js';
 import { createPlayerJetModel } from '../models/PlayerJetModel.js';
 import config from '../../config.json';
 
 const FORWARD = new THREE.Vector3(0, 0, 1);
+
+/**
+ * AI brain states, mirroring the battleship's StateMachine architecture:
+ * navigation runs in Phase 2 (prePhysicsUpdate -> brain.update), firing in
+ * Phase 5 (gameplayUpdate) while the brain sits in ATTACK.
+ */
+export const JetAIState = {
+  APPROACH: 'approach',
+  ATTACK: 'attack',
+  BREAKAWAY: 'breakaway',
+  DEAD: 'dead'
+};
 
 /**
  * Pursuit-and-attack aircraft for the jet combat sandbox.
@@ -29,6 +42,7 @@ export class EnemyJet extends BaseEntity {
     this.mesh.position.copy(options.position ?? new THREE.Vector3(0, 100, -370));
 
     this.health = new HealthComponent(options.maxHealth ?? variantSettings.health ?? settings.health);
+    this._defaultMaxHealth = this.health.maxHealth;
     this.isDestroyed = false;
     this.health.onDeath = () => {
       this.isDestroyed = true;
@@ -39,6 +53,7 @@ export class EnemyJet extends BaseEntity {
         this.rigidBody = null;
         this.collider = null;
       }
+      if (this.brain) this.brain.change(JetAIState.DEAD);
       if (this.onDestroyed) this.onDestroyed(this);
     };
     this._hitFlash = 0;
@@ -72,7 +87,6 @@ export class EnemyJet extends BaseEntity {
     this.attackStyle = options.attackStyle ?? (this.variant === 'ace' ? 'weave' : 'direct');
     this.breakawaySide = options.breakawaySide ?? (this.variant === 'ace' ? -1 : 1);
     this._maneuverElapsed = 0;
-    this.maneuverState = 'approach';
     this._maneuverTimer = 0;
     this._burstShotsRemaining = this.burstSize;
     this._fireCooldown = 0;
@@ -93,10 +107,18 @@ export class EnemyJet extends BaseEntity {
 
     this.rigidBody = null;
     this.collider = null;
-    this._setupPhysics();
+    // Pool spares are built without physics; the first lease creates the body.
+    if (!options.deferPhysics) this._setupPhysics();
+
+    // 1. AI State Machine (Phase 2 navigation; Phase 5 firing reads brain state)
+    this.brain = new StateMachine(this, this._buildStateHandlers(), options.initialState || JetAIState.APPROACH);
+    // 2. Pool bookkeeping: when set, dispose() is a no-op (the pool owns teardown).
+    this._pooled = false;
+    this._disposed = false;
   }
 
   _setupPhysics() {
+    if (this.rigidBody) return;
     const physics = this.gameWorld.physics;
     if (!physics?.world) return;
 
@@ -162,44 +184,105 @@ export class EnemyJet extends BaseEntity {
     return true;
   }
 
-  prePhysicsUpdate(delta) {
-    if (this.isDestroyed || !this._getTargetPosition()) {
-      this.velocity.set(0, 0, 0);
-      return;
-    }
+  /**
+   * Constructs the tactical state handlers for the StateMachine.
+   */
+  _buildStateHandlers() {
+    return {
+      [JetAIState.APPROACH]: {
+        enter: (jet) => {
+          jet._burstShotsRemaining = jet.burstSize;
+        },
+        update: (jet, delta) => {
+          if (jet.isDestroyed) return JetAIState.DEAD;
+          if (!jet._getTargetPosition()) {
+            jet.velocity.set(0, 0, 0);
+            return;
+          }
 
-    this._maneuverElapsed += delta;
-    if (this.maneuverState === 'breakaway') {
-      this._maneuverTimer -= delta;
-      this._desiredDirection.subVectors(this.mesh.position, this._targetPosition);
-      if (this._desiredDirection.lengthSq() < 1e-6) this._desiredDirection.set(0, 0, -1);
-      this._desiredDirection.normalize();
-      this._desiredDirection.x += this.breakawaySide * this.breakawaySideStrength;
-      this._desiredDirection.y += Math.max(
-        0,
-        this._targetPosition.y + this.repositionAltitude - this.mesh.position.y
-      ) / this.repositionAltitude;
-      this._desiredDirection.normalize();
-      if (this._maneuverTimer <= 0) {
-        this.maneuverState = 'approach';
-        this._burstShotsRemaining = this.burstSize;
+          const distance = jet._pursuitSteering(delta);
+          if (distance <= jet.attackRange) return JetAIState.ATTACK;
+        }
+      },
+
+      [JetAIState.ATTACK]: {
+        update: (jet, delta) => {
+          if (jet.isDestroyed) return JetAIState.DEAD;
+          if (!jet._getTargetPosition()) {
+            jet.velocity.set(0, 0, 0);
+            return;
+          }
+
+          const distance = jet._pursuitSteering(delta);
+          if (distance > jet.attackRange) return JetAIState.APPROACH;
+        }
+      },
+
+      [JetAIState.BREAKAWAY]: {
+        enter: (jet) => {
+          jet._maneuverTimer = jet.breakawaySeconds;
+        },
+        update: (jet, delta) => {
+          if (jet.isDestroyed) return JetAIState.DEAD;
+          jet._maneuverTimer -= delta;
+          if (jet._maneuverTimer <= 0) return JetAIState.APPROACH;
+          jet._breakawaySteering(delta);
+        }
+      },
+
+      [JetAIState.DEAD]: {
+        update: () => {
+          // Inert; teardown already happened in health.onDeath.
+        }
       }
-    } else {
-      const distance = this.mesh.position.distanceTo(this._targetPosition);
-      const flightTime = distance / this.projectileSpeed;
-      if (this.target.velocity) {
-        this._aimPosition.copy(this.target.velocity).multiplyScalar(flightTime);
-        this._targetPosition.add(this._aimPosition);
-      }
-      const navigationTarget = this._aimPosition.copy(this._targetPosition);
-      if (this.attackStyle === 'weave') {
-        navigationTarget.x += Math.sin(this._maneuverElapsed * this.weaveFrequency) * this.weaveAmplitude;
-      }
-      this._desiredDirection.subVectors(navigationTarget, this.mesh.position);
+    };
+  }
+
+  /**
+   * Pursuit steering: slews the nose toward the (lead-compensated, weave-offset)
+   * target point and commits kinematic flight. Returns the pre-lead distance,
+   * which the states use for their transition bands.
+   */
+  _pursuitSteering(delta) {
+    const distance = this.mesh.position.distanceTo(this._targetPosition);
+    const flightTime = distance / this.projectileSpeed;
+    if (this.target.velocity) {
+      this._aimPosition.copy(this.target.velocity).multiplyScalar(flightTime);
+      this._targetPosition.add(this._aimPosition);
     }
+    const navigationTarget = this._aimPosition.copy(this._targetPosition);
+    if (this.attackStyle === 'weave') {
+      navigationTarget.x += Math.sin(this._maneuverElapsed * this.weaveFrequency) * this.weaveAmplitude;
+    }
+    this._desiredDirection.subVectors(navigationTarget, this.mesh.position);
+    this._commitFlight(delta);
+    return distance;
+  }
+
+  /**
+   * Breakaway steering: away from the target, biased to one side and climbing
+   * toward the reposition altitude.
+   */
+  _breakawaySteering(delta) {
+    this._desiredDirection.subVectors(this.mesh.position, this._targetPosition);
+    if (this._desiredDirection.lengthSq() < 1e-6) this._desiredDirection.set(0, 0, -1);
+    this._desiredDirection.normalize();
+    this._desiredDirection.x += this.breakawaySide * this.breakawaySideStrength;
+    this._desiredDirection.y += Math.max(
+      0,
+      this._targetPosition.y + this.repositionAltitude - this.mesh.position.y
+    ) / this.repositionAltitude;
+    this._desiredDirection.normalize();
+    this._commitFlight(delta);
+  }
+
+  /**
+   * Rotates toward the desired direction at the turn rate, then advances at
+   * cruise speed and syncs the kinematic body.
+   */
+  _commitFlight(delta) {
     if (this._desiredDirection.lengthSq() < 1e-6) return;
     this._desiredDirection.normalize();
-
     this._targetRotation.setFromUnitVectors(FORWARD, this._desiredDirection);
     this.mesh.quaternion.rotateTowards(this._targetRotation, this.turnRate * delta);
     this._forward.copy(FORWARD).applyQuaternion(this.mesh.quaternion);
@@ -212,6 +295,19 @@ export class EnemyJet extends BaseEntity {
     }
   }
 
+  /**
+   * Phase 2 (Pre-Physics): advance the AI State Machine (navigational steering).
+   */
+  prePhysicsUpdate(delta) {
+    if (this.isDestroyed) return;
+    this._maneuverElapsed += delta;
+    if (this.brain) this.brain.update(delta);
+  }
+
+  /**
+   * Phase 5 (Gameplay): hit flash and guns. Firing only happens while the
+   * brain sits in ATTACK; the burst counter drops the jet into BREAKAWAY.
+   */
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     if (this.isDestroyed) return;
     if (this._hitFlash > 0) {
@@ -221,7 +317,12 @@ export class EnemyJet extends BaseEntity {
         entry.material.emissive.copy(entry.emissive).lerp(this._hitFlashColor, flash * 0.9);
       }
     }
-    if (this.maneuverState === 'breakaway' || !this._getTargetPosition()) return;
+    if (!this.brain.is(JetAIState.ATTACK)) return;
+    this._updateGuns(delta, gameWorld);
+  }
+
+  _updateGuns(delta, gameWorld) {
+    if (!this._getTargetPosition()) return;
 
     this._fireCooldown = Math.max(0, this._fireCooldown - delta);
     this._desiredDirection.subVectors(this._targetPosition, this.mesh.position);
@@ -259,13 +360,62 @@ export class EnemyJet extends BaseEntity {
     this._fireCooldown = this.fireCadence;
     this._burstShotsRemaining--;
     if (this._burstShotsRemaining <= 0) {
-      this.maneuverState = 'breakaway';
-      this._maneuverTimer = this.breakawaySeconds;
+      this.brain.change(JetAIState.BREAKAWAY);
       this._fireCooldown = 0;
     }
   }
 
+  /**
+   * Resets the jet for a fresh lease from the pool: health, visibility,
+   * hit-flash emissives, brain, timers, position/heading, and physics.
+   */
+  _resetForLease({ position, target, onDestroyed = null, maxHealth } = {}) {
+    this._pooled = false;
+    this._disposed = false;
+    this.target = target ?? null;
+    this.onDestroyed = onDestroyed;
+    this.isDestroyed = false;
+    this.health.maxHealth = this._defaultMaxHealth;
+    this.health.reset();
+    if (maxHealth !== undefined) {
+      this.health.maxHealth = maxHealth;
+      this.health.currentHealth = maxHealth;
+    }
+    this.mesh.visible = true;
+    this.mesh.quaternion.identity();
+    if (position) this.mesh.position.copy(position);
+    this.velocity.set(0, 0, 0);
+    this._hitFlash = 0;
+    for (const entry of this._materials) {
+      entry.material.emissive.copy(entry.emissive);
+    }
+    this._maneuverElapsed = 0;
+    this._maneuverTimer = 0;
+    this._fireCooldown = 0;
+    this._burstShotsRemaining = this.burstSize;
+    this.brain = new StateMachine(this, this._buildStateHandlers(), JetAIState.APPROACH);
+    this._setupPhysics();
+  }
+
+  /**
+   * Soft teardown when the jet is returned to the pool: hidden, inert, physics
+   * body released. dispose() no-ops while `_pooled` is set, so
+   * GameWorld.removeEntity cannot destroy the model the pool owns.
+   */
+  _retire() {
+    this._pooled = true;
+    this.velocity.set(0, 0, 0);
+    if (this.rigidBody) {
+      this.gameWorld.physics.removeRigidBody(this.rigidBody);
+      this.rigidBody = null;
+      this.collider = null;
+    }
+    this.mesh.visible = false;
+  }
+
   dispose() {
+    if (this._pooled || this._disposed) return;
+    this._disposed = true;
     if (this.rigidBody && this.gameWorld.physics) {
       this.gameWorld.physics.removeRigidBody(this.rigidBody);
       this.rigidBody = null;

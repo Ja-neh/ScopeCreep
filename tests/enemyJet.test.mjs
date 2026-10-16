@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { EnemyJet } from '../src/entities/enemies/EnemyJet.js';
+import { EnemyJet, JetAIState } from '../src/entities/enemies/EnemyJet.js';
 import { PlayerJet } from '../src/entities/player-jet/PlayerJet.js';
 import { ProjectilePool } from '../src/entities/ProjectilePool.js';
 import { createTestWorld, stepWorld, bodyCount } from './support/testWorld.mjs';
@@ -90,11 +90,13 @@ test('EnemyJet breaks away after a burst to reset its attack rhythm', async () =
   enemyJet.burstSize = 1;
   enemyJet._burstShotsRemaining = 1;
   enemyJet._fireCooldown = 0;
-  enemyJet.maneuverState = 'approach';
+  enemyJet.brain.change(JetAIState.APPROACH);
+  assert.ok(enemyJet.brain.is(JetAIState.APPROACH), 'jet starts its attack run in APPROACH');
   enemyJet.prePhysicsUpdate(0.016);
+  assert.ok(enemyJet.brain.is(JetAIState.ATTACK), 'closing inside attack range transitions to ATTACK');
   enemyJet.gameplayUpdate(0.016, world);
 
-  assert.equal(enemyJet.maneuverState, 'breakaway');
+  assert.ok(enemyJet.brain.is(JetAIState.BREAKAWAY), 'a completed burst transitions to BREAKAWAY');
   assert.equal(enemyJet._fireCooldown, 0, 'a completed burst must reset its firing cadence before re-engaging');
 
   enemyJet.dispose();

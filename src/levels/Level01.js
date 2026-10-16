@@ -6,7 +6,8 @@ import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { PlayerJet } from '../entities/player-jet/PlayerJet.js';
 import { EnemyJet } from '../entities/enemies/EnemyJet.js';
-import { JetDefenseMission } from './JetDefenseMission.js';
+import { EnemyJetManager } from '../entities/enemies/EnemyJetManager.js';
+import { EnemyBattleshipManager } from '../entities/enemies/EnemyBattleshipManager.js';
 import { CAMPAIGN_ENDING, CAMPAIGN_CREDITS } from './level01/ending.js';
 import { BeachEnvironment } from './level02/BeachEnvironment.js';
 import { BeachCover } from './level02/BeachCover.js';
@@ -38,6 +39,7 @@ export class Level01 extends BaseLevel {
     this.playerJet = null;
     this.projectilePool = null;
     this.defenseMission = null;
+    this.fleetAssault = null;
     this.launchMarker = null;
     this.preflightJets = new Set();
     this.preflightKillCount = 0;
@@ -151,6 +153,19 @@ export class Level01 extends BaseLevel {
 
     // 8. Ocean surface safety floor
     this.oceanSafetyCollider = this.gameWorld.physics.createGround(3000, -1.0);
+
+    // 9. Enemy fleet assault: 5 + 10 battleship waves (wave 1 ringing the island, wave 2 from the map edges)
+    this.fleetAssault = new EnemyBattleshipManager(this.gameWorld, {
+      battleship: this.battleship,
+      water: this.water,
+      islandAnchor: new THREE.Vector3(0, 0, -150),
+      island: { inland: (x, z) => this.environment.inlandDistance(x, z) },
+      onVictory: () => {
+        this.gameWorld.ui?.hideObjective();
+        this.gameWorld.ui?.showToast('ENEMY FLEET DESTROYED: all hostile warships sunk.', 'success', 5000);
+      }
+    });
+    this.fleetAssault.start();
 
     console.log(`${this.name} initialized with Island Shores, Battleship at Open Sea, Deck Player, and Dev Camera Tools.`);
   }
@@ -298,6 +313,7 @@ export class Level01 extends BaseLevel {
     this._updateJetLaunch();
     this._updatePreflightDefense(delta);
     if (this.defenseMission) this.defenseMission.update(delta);
+    if (this.fleetAssault) this.fleetAssault.update(delta);
     this._updateCampaignEnding(delta);
     this._updateIslandApproach();
 
@@ -470,7 +486,8 @@ export class Level01 extends BaseLevel {
     this.playerJet = new PlayerJet(this.gameWorld, { position: spawnPosition, rotation: launchRotation });
     this.gameWorld.addEntity(this.playerJet);
 
-    this.defenseMission = new JetDefenseMission(this.gameWorld, this.battleship, {
+    this.defenseMission = new EnemyJetManager(this.gameWorld, {
+      battleship: this.battleship,
       onVictory: (result) => this._beginCampaignEnding(result)
     });
     this.defenseMission.start(this.playerJet);
@@ -564,6 +581,10 @@ export class Level01 extends BaseLevel {
     if (this.defenseMission) {
       this.defenseMission.dispose();
       this.defenseMission = null;
+    }
+    if (this.fleetAssault) {
+      this.fleetAssault.dispose();
+      this.fleetAssault = null;
     }
     this.preflightJets.clear();
     if (this.orbitControls) {
