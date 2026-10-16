@@ -125,6 +125,10 @@ test('call-out: a trooper that spots the player alerts squadmates nearby', () =>
   placePlayer(0, 150);
   const spotter = spawn(0, 125, player.position);
   const buddy = spawn(10, 112); // Facing away, 39 m from the player, 16 m from the spotter
+  // The spotter's first timed sight check runs on the first frame rather than at an arbitrary
+  // phase, before a patrol turn can face it away: the sighting (and its call-out) still goes
+  // through its own gameplayUpdate
+  spotter.perception._checkTimer = 0;
   run(1);
   assert.equal(spotter.brain.current, 'engage');
   assert.notEqual(buddy.brain.current, 'patrol', 'squadmate reacted');

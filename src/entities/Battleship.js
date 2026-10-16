@@ -33,6 +33,13 @@ export class Battleship extends BaseEntity {
       if (this.mesh) this.mesh.visible = false;
       this._updateHealth();
     };
+    // A hit that finds the hull throws up a cloud of smoke where it landed
+    this.health.onDamage = (info) => {
+      const fx = this.gameWorld?.projectilePool?.effects;
+      if (fx && info && info.point) {
+        fx.smokeCloud(info.point, 2.4);
+      }
+    };
 
     // Platform dimensions from config
     const platCfg = config.ship.platform || { halfWidth: 12.0, halfLength: 52.0, minHeight: -6.0, maxHeight: 40.0 };

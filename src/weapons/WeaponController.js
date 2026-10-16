@@ -224,6 +224,8 @@ export class WeaponController extends BaseEntity {
     this._visibleMuzzle(this._muzzle);
     this.effects.muzzleFlash(this._muzzle, result.point);
     this.effects.tracer(this._muzzle, result.point);
+    this._tmp.subVectors(result.point, this._muzzle).normalize();
+    this.effects.muzzleSmoke(this._muzzle, this._tmp, 0.45);
     if (result.hit) {
       const surface = result.entity ? 'hit' : (result.collider.userData && result.collider.userData.isTerrain ? 'dust' : 'spark');
       this.effects.impact(result.point, surface);
