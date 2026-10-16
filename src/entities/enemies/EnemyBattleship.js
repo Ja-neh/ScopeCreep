@@ -120,6 +120,13 @@ export class EnemyBattleship extends BaseEntity {
       }
       console.log('[EnemyBattleship] Hull destroyed! Sinking initiated.');
     };
+    // A hit that finds the hull throws up a cloud of smoke where it landed
+    this.health.onDamage = (info) => {
+      const fx = this.gameWorld?.projectilePool?.effects;
+      if (fx && info && info.point) {
+        fx.smokeCloud(info.point, 2.4);
+      }
+    };
 
     // Relative operational station coordinates matching imported model
     this.stations = {
