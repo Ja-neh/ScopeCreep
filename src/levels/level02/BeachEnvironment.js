@@ -43,9 +43,9 @@ const SEED = 7;
 const LOOKS = {
   // Level 1: open sea daylight, bright azure sky and sun
   daylight: {
-    sky: 0x87ceeb, fogDensity: 0.0010,
-    light: 0xfff5e6, lightIntensity: 1.4, direction: new THREE.Vector3(0.5, 0.8, 0.3).normalize(),
-    hemiSky: 0xb1e1ff, hemiGround: 0x3a4a3a, hemiIntensity: 0.65,
+    sky: 0x87ceeb, fogDensity: 0.0008,
+    light: 0xfff5e6, lightIntensity: 2.0, direction: new THREE.Vector3(0.5, 0.8, 0.3).normalize(),
+    hemiSky: 0xb1e1ff, hemiGround: 0x3a4a3a, hemiIntensity: 0.95,
     glow: 0x9be2ff, upper: 0x76b5d8, zenith: 0x4a8eb8, disc: 0xfffae0, stars: 0,
     cloud: 0xffffff, cloudGlow: 0xd8e8f0, cloudShadow: 0.25
   },

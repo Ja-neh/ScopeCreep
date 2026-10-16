@@ -91,13 +91,25 @@ test('banking turns the jet and the wings level smoothly after roll input is rel
   const turnedHeading = jet.rotationEuler.y;
 
   assert.ok(bankedRoll > 0, 'roll input banks the aircraft');
-  assert.ok(turnedHeading < 0, 'left bank curves the jet into a left turn');
+  assert.ok(jet.rotationEuler.z < 0, 'left roll banks left (negative Euler z)');
+  assert.ok(turnedHeading > 0, 'left bank curves the jet into a left turn (positive Euler y)');
 
   actions.delete('rollLeft');
   for (let i = 0; i < 90; i++) jet.prePhysicsUpdate(1 / 60);
 
   assert.ok(Math.abs(jet.rotationEuler.z) < bankedRoll * 0.1, 'wings return close to level');
-  assert.ok(jet.rotationEuler.y < turnedHeading, 'jet keeps turning while it levels');
+  assert.ok(jet.rotationEuler.y > turnedHeading, 'jet keeps turning while it levels');
+  jet.dispose();
+});
+
+test('right roll and right yaw turn the jet to the right', () => {
+  const actions = new Set(['rollRight', 'yawRight']);
+  const gameWorld = createGameWorld(createInput(actions));
+  const jet = new PlayerJet(gameWorld);
+
+  jet.prePhysicsUpdate(0.25);
+  assert.ok(jet.rotationEuler.z > 0, 'right roll banks right (positive Euler z)');
+  assert.ok(jet.rotationEuler.y < 0, 'right roll and yaw turn right (negative Euler y)');
   jet.dispose();
 });
 
