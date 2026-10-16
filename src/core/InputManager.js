@@ -48,8 +48,8 @@ export class InputManager {
       throttleDown: ['KeyS'],
       pitchUp: ['ArrowDown'],
       pitchDown: ['ArrowUp'],
-      rollLeft: ['KeyA'],
-      rollRight: ['KeyD'],
+      rollLeft: ['KeyA', 'ArrowLeft'],
+      rollRight: ['KeyD', 'ArrowRight'],
       yawLeft: ['KeyQ'],
       yawRight: ['KeyE'],
 

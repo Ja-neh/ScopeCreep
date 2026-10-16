@@ -96,8 +96,8 @@ export class PlayerJet extends BaseEntity {
     );
 
     const pitchInput = input.getAxis('pitchDown', 'pitchUp');
-    const rollInput = input.getAxis('rollRight', 'rollLeft');
-    const yawInput = input.getAxis('yawRight', 'yawLeft');
+    const rollInput = input.getAxis('rollLeft', 'rollRight');
+    const yawInput = input.getAxis('yawLeft', 'yawRight');
 
     this.rotationEuler.setFromQuaternion(this.mesh.quaternion, 'YXZ');
     const controlAuthority = THREE.MathUtils.clamp(

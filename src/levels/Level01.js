@@ -347,12 +347,13 @@ export class Level01 extends BaseLevel {
     const distToShore = Math.max(0, Math.round(currentZ - this.shoreAnchorageZ));
 
     // Dynamic atmospheric progression: blend from sea daylight into island sunset
+    // (capped so the level stays bright; only a warm hint of dusk near the shore)
     if (this.environment) {
       const progress = THREE.MathUtils.clamp(
         (this.openSeaStartZ - currentZ) / (this.openSeaStartZ - this.shoreAnchorageZ),
         0,
         1
-      );
+      ) * 0.35;
       this.environment.blendLook('daylight', 'sunset', progress);
     }
 
