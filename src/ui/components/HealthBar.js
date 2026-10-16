@@ -1,6 +1,6 @@
 /**
  * HealthBar.js
- * On-screen warship hull durability indicator (Top Center HUD).
+ * On-screen warship hull durability indicator (Bottom Center HUD).
  */
 export class HealthBar {
   /**
