@@ -7,6 +7,8 @@ import { LandingCinematic } from './level02/LandingCinematic.js';
 import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
 import config from '../config.json';
+import { BeachCombatEffects } from './level02/BeachCombatEffects.js';
+import { BeachThrowables } from './level02/BeachThrowables.js';
 import { BeachDetails } from './level02/BeachDetails.js';
 
 // Where each attack lane comes out of the jungle (on the way down from the village) and what it
@@ -110,6 +112,12 @@ export class Level02 extends IslandLevel {
 
   /** Supply crate between the helicopters. It yields [E] while the player is reviving a squadmate. */
   _createProps() {
+    this.combatEffects = this.trackDisposable(new BeachCombatEffects(this.gameWorld, this.player));
+    this.weapons.throwables = new BeachThrowables(this.gameWorld, this.player, this.weapons, this);
+    this.player.health.onDamage = (info, applied) => {
+      this._onPlayerHurt();
+      if (applied > 0) this.combatEffects.hit(info);
+    };
     this.supplyCrate = new SupplyCrate(this.gameWorld, {
       position: this.landingZone.spawnPoints.supplyCrate,
       player: this.player,
@@ -119,7 +127,12 @@ export class Level02 extends IslandLevel {
     this.gameWorld.addEntity(this.supplyCrate);
   }
 
+  get controls() {
+    return [...super.controls, { actions: ['weaponThrowable'], label: 'Select grenade; click to throw (1 / 2 to cancel)' }];
+  }
+
   _updateWorld(delta) {
+    this.combatEffects?.update(delta);
     this.landingZone.update(delta);
     this.beachDetails?.update(delta);
     this._sendCrewAshore();
@@ -470,6 +483,7 @@ export class Level02 extends IslandLevel {
   }
 
   dispose() {
+    this.gameWorld.ui?.clearBlood?.();
     this.waves = null;
     this.ambush = null;
     this.supplyCrate = null; // Entities: the GameWorld disposes them

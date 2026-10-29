@@ -1213,3 +1213,26 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* Level 2 actual-hit blood: edge droplets preserve a clear aiming area. */
+.ui-blood-splash {
+  position: absolute; inset: 0; pointer-events: none; z-index: 16; opacity: 0;
+  background:
+    radial-gradient(ellipse at 7% 29%, #631012cc 0 1.3%, transparent 1.6%),
+    radial-gradient(ellipse at 11% 35%, #8a1115bb 0 .5%, transparent .8%),
+    radial-gradient(ellipse at 4% 48%, #720c10cc 0 2%, transparent 2.4%),
+    radial-gradient(ellipse at 16% 19%, #8a1115aa 0 .35%, transparent .6%),
+    radial-gradient(ellipse at 88% 74%, #690c12bb 0 1.2%, transparent 1.5%),
+    radial-gradient(ellipse at 93% 60%, #8a1115bb 0 .5%, transparent .8%),
+    radial-gradient(ellipse at 84% 84%, #720c10aa 0 .7%, transparent 1%),
+    radial-gradient(ellipse at center, transparent 48%, #58060a66 100%);
+}
+.ui-blood-splash.active { animation: beach-blood-fade 1.7s ease-out forwards; }
+.ui-blood-splash.blood-right { transform: scaleX(-1); }
+.ui-blood-splash.blood-centre { transform: rotate(180deg); }
+@keyframes beach-blood-fade {
+  0%, 12% { opacity: .85; } 48% { opacity: .45; } 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-blood-splash.active { animation-duration: .7s; }
+}

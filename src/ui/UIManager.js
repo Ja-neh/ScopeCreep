@@ -8,6 +8,7 @@ import { WeaponHUD } from './components/WeaponHUD.js';
 import { PlayerHealthBar } from './components/PlayerHealthBar.js';
 import { BossHealthBar } from './components/BossHealthBar.js';
 import { Credits } from './components/Credits.js';
+import { BloodOverlay } from './components/BloodOverlay.js';
 import { DamageFlash } from './components/DamageFlash.js';
 import { ObjectivePanel } from './components/ObjectivePanel.js';
 import { MissionResult } from './components/MissionResult.js';
@@ -259,6 +260,15 @@ export class UIManager {
   /**
    * Red flash around the screen edges (the player was hurt)
    */
+  flashBlood(side = 'centre') {
+    if (!this.bloodOverlay) this.bloodOverlay = new BloodOverlay(this.container);
+    this.bloodOverlay.flash(side);
+  }
+
+  clearBlood() {
+    this.bloodOverlay?.clear();
+  }
+
   flashDamage() {
     if (this.damageFlash) {
       this.damageFlash.flash();
@@ -602,6 +612,7 @@ export class UIManager {
     this.hideMissionResult();
     this.hideCinematic();
     if (this.damageFlash) this.damageFlash.clear();
+    this.clearBlood();
     this.hidePauseMenu();
     this.hidePauseButton();
     this.hideDevTools();
@@ -629,6 +640,8 @@ export class UIManager {
    * Tear down and remove all UI elements
    */
   dispose() {
+    this.bloodOverlay?.dispose();
+    this.bloodOverlay = null;
     if (this.prompt) {
       this.prompt.dispose();
       this.prompt = null;

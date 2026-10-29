@@ -361,6 +361,12 @@
   },
   "levels": {
     "level02": {
+      "grenade": {
+        "count": 4, "capacity": 4, "throwSeconds": 0.95, "releaseSeconds": 0.48,
+        "speed": 19, "upwardSpeed": 5, "gravity": 9.81, "fuseSeconds": 3,
+        "radius": 8, "damage": 120, "restitution": 0.38, "friction": 0.65,
+        "projectileRadius": 0.1, "maxStep": 0.016666667
+      },
       "firstWaveTriggerSeconds": 30,
       "betweenWavesSeconds": 8,
       "spawnIntervalSeconds": 0.8,

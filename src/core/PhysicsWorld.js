@@ -159,6 +159,16 @@ export class PhysicsWorld {
   /**
    * Casts a ray and returns the impact normal along with the hit info.
    */
+  traceSegment(from, to, excludeCollider) {
+    const dx = to.x - from.x, dy = to.y - from.y, dz = to.z - from.z;
+    const length = Math.hypot(dx, dy, dz);
+    if (length < 1e-6) return null;
+    const ray = this._segmentRay || (this._segmentRay = new this.RAPIER.Ray(from, { x: 0, y: 0, z: 1 }));
+    Object.assign(ray.origin, { x: from.x, y: from.y, z: from.z });
+    Object.assign(ray.dir, { x: dx / length, y: dy / length, z: dz / length });
+    return this.castRayAndGetNormal(ray, length, true, undefined, undefined, excludeCollider);
+  }
+
   castRayAndGetNormal(ray, maxToi = 100, solid = true, flags, groups, excludeCollider, excludeRigidBody) {
     if (!this.world) return null;
     return this.world.castRayAndGetNormal(ray, maxToi, solid, flags, groups, excludeCollider, excludeRigidBody);

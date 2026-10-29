@@ -117,6 +117,7 @@ export class WeaponController extends BaseEntity {
     const input = gameWorld.input;
     const player = this.player;
 
+    this.throwables?.gameplayUpdate(delta, gameWorld);
     this.rifle.update(delta);
     if (this.knife.update(delta)) this._resolveStrike(gameWorld);
     if (this.switchTimer > 0) this.switchTimer -= delta;
@@ -125,7 +126,7 @@ export class WeaponController extends BaseEntity {
       if (this.quickMeleeTimer <= 0) this._showModels();
     }
 
-    const canAct = input.isPointerLocked && !player.isDevSuspended && !player.isMounted;
+    const canAct = input.isPointerLocked && !player.isDevSuspended && !player.isMounted && !this.throwables?.blocksWeapons;
     this.isAiming = canAct && this.activeWeapon === 'rifle' && input.isActionDown('aimDownSights');
 
     if (canAct) {
@@ -330,6 +331,7 @@ export class WeaponController extends BaseEntity {
     this.viewKnife.mesh.rotation.x = -arc * 1.2;
     this.viewKnife.mesh.position.z = -arc * 0.25;
 
+    this.throwables?.lateUpdate(delta, gameWorld);
     this.effects.update(delta);
 
     if (gameWorld.ui && this.activeWeapon === 'rifle') {
@@ -375,6 +377,8 @@ export class WeaponController extends BaseEntity {
   }
 
   dispose() {
+    this.throwables?.dispose();
+    this.throwables = null;
     const camera = this.gameWorld.camera;
     camera.fov = this._baseFov;
     camera.updateProjectionMatrix();
