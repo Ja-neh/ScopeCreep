@@ -7,6 +7,7 @@ import { LandingCinematic } from './level02/LandingCinematic.js';
 import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
 import config from '../config.json';
+import { BeachDetails } from './level02/BeachDetails.js';
 
 // Where each attack lane comes out of the jungle (on the way down from the village) and what it
 // pushes to (the beach). Five lanes spread along the treeline, 60-100 m from the beach, so a
@@ -95,6 +96,7 @@ export class Level02 extends IslandLevel {
   async _buildWorld() {
     this.landingZone = this.trackDisposable(new LandingZone(this.gameWorld, this.environment));
     await this.landingZone.build();
+    this.beachDetails = this.trackDisposable(new BeachDetails(this.gameWorld, this.environment));
   }
 
   _clearings() {
@@ -119,6 +121,7 @@ export class Level02 extends IslandLevel {
 
   _updateWorld(delta) {
     this.landingZone.update(delta);
+    this.beachDetails?.update(delta);
     this._sendCrewAshore();
 
     // The crew wait on the sand until the player is ashore, then fall in behind them
@@ -473,5 +476,6 @@ export class Level02 extends IslandLevel {
     super.dispose(); // Also the landing zone and the beacon (tracked)
     this.beacon = null;
     this.landingZone = null;
+    this.beachDetails = null;
   }
 }
