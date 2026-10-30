@@ -7,6 +7,12 @@ import {
   loadDoorSlidingUp,
   loadBigDoorSlidingUp
 } from '../entities/doors/index.js';
+import { WeaponController } from '../weapons/WeaponController.js';
+import { ProjectilePool } from '../entities/ProjectilePool.js';
+import { AlienSquad } from '../ai/AlienSquad.js';
+import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
+import { AlienModel } from '../entities/models/AlienModel.js';
+import config from '../config.json';
 
 const SPACESHIP_MODEL_URL = './assets/inside-spaceship.glb';
 const SPACESHIP_FALLBACK_URL = '/assets/inside-spaceship.glb';
@@ -61,6 +67,12 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.spaceshipMesh = null;
     this.levelRigidBody = null;
     this.doors = [];
+    this.weapons = null;
+    this.projectilePool = null;
+    this.enemySquad = null;
+    this.alienSpawns = [];
+    this.missionStage = 'holdingBay';
+    this.missionComplete = false;
 
     // Performance Optimization structures:
     this.levelLights = [];
@@ -122,6 +134,7 @@ export class Level01InsideSpaceship extends BaseLevel {
 
     // 4. Parse Nodes, Colliders, Empties & Lighting Anchors
     const doorSpawnNodes = [];
+    const alienSpawnNodes = [];
     const lightFixtureNodes = [];
 
     this.spaceshipMesh.traverse((node) => {
@@ -148,6 +161,11 @@ export class Level01InsideSpaceship extends BaseLevel {
       }
       if (/^SPAWN-Player-Checkpoint2$/i.test(name)) {
         node.getWorldPosition(this.checkpoint2);
+        node.visible = false;
+        return;
+      }
+      if (/^SPAWN-Alien/i.test(name)) {
+        alienSpawnNodes.push(node);
         node.visible = false;
         return;
       }
@@ -282,7 +300,8 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.player = new Player(this.gameWorld, {
       walkSpeed: 8.5,
       sprintSpeed: 14.0,
-      jumpForce: 10.5
+      jumpForce: 10.5,
+      maxHealth: config.player.vitals.maxHealth
     });
 
     this.player.setPosition(this.spawnPlayer.x, this.spawnPlayer.y, this.spawnPlayer.z);
@@ -290,6 +309,23 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.player.yaw = -Math.PI / 2;
     this.gameWorld.addEntity(this.player);
     this.gameWorld.player = this.player;
+
+    this.weapons = new WeaponController(this.gameWorld, this.player);
+    this.gameWorld.addEntity(this.weapons);
+    this.projectilePool = new ProjectilePool(this.gameWorld);
+    this.gameWorld.addEntity(this.projectilePool);
+    this.gameWorld.projectilePool = this.projectilePool;
+
+    this.enemySquad = this.trackDisposable(new AlienSquad(this.gameWorld, {
+      targets: [this.player],
+      alertRadius: 60,
+      corpseSeconds: 8
+    }));
+    this._spawnMissionAliens(alienSpawnNodes);
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showPlayerHealth();
+      this.gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
+    }
 
     // Attach subtle personal chest light for dark corridor navigation
     const suitLight = new THREE.PointLight(0xffffff, 1.1, 10);
@@ -300,6 +336,34 @@ export class Level01InsideSpaceship extends BaseLevel {
     this._startIntroCutscene();
 
     console.log(`${this.name} initialized with ${doorSpawnNodes.length} doors, ${lightFixtureNodes.length} corridor fixtures, and red staircase lighting.`);
+  }
+
+  _spawnMissionAliens(spawnNodes = []) {
+    const positions = [];
+    for (const node of spawnNodes) {
+      positions.push(node.getWorldPosition(new THREE.Vector3()));
+    }
+    if (!positions.length) {
+      positions.push(
+        new THREE.Vector3(12, 1, -38),
+        new THREE.Vector3(4, 1, -28),
+        new THREE.Vector3(1, 1, 16),
+        new THREE.Vector3(-4, 11, 0),
+        new THREE.Vector3(5, 11, 18)
+      );
+    }
+
+    for (let i = 0; i < positions.length; i++) {
+      const position = positions[i];
+      const model = new AlienModel({ characterId: 'gorr', characterOptions: {
+        assetUrl: `${this.gameWorld.assetBaseUrl || '/'}assets/alien-level1.glb`
+      } });
+      const alien = new AlienTrooper(this.gameWorld, { position, squad: this.enemySquad, model });
+      alien.missionFloor = position.y > 7 ? 2 : 1;
+      alien.missionStage = i < 3 ? 'holdingBay' : 'lab';
+      this.enemySquad.add(alien);
+      this.alienSpawns.push(alien);
+    }
   }
 
   /**
@@ -468,6 +532,12 @@ export class Level01InsideSpaceship extends BaseLevel {
       }
     }
 
+    if (this.enemySquad) this.enemySquad.update();
+    this._updateMissionProgress(delta);
+    if (this.player?.health && gameWorld.ui) {
+      gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
+    }
+
     // Checkpoint navigation shortcuts for easy stage testing
     if (gameWorld && gameWorld.input && this.player) {
       if (gameWorld.input.isKeyJustPressed('Digit1')) {
@@ -483,11 +553,56 @@ export class Level01InsideSpaceship extends BaseLevel {
     }
   }
 
+  _updateMissionProgress(delta) {
+    if (this.missionComplete || this.isIntroPlaying || !this.enemySquad) return;
+    const floorEnemies = this.enemySquad.members.filter((alien) => !alien.isDead && alien.missionStage === this.missionStage);
+
+    if (this.missionStage === 'holdingBay' && floorEnemies.length === 0) {
+      this.missionStage = 'stairwell';
+      this.gameWorld.ui?.showObjective('REACH THE STAIRWELL', 'Clear the holding bay, then climb to Floor 2.');
+    } else if (this.missionStage === 'stairwell' && this.player.position.y >= 7 && this.player.position.z < 55) {
+      this.missionStage = 'lab';
+      this.gameWorld.ui?.showObjective('SECURE THE LAB', 'Eliminate the remaining aliens in the research lab.');
+    } else if (this.missionStage === 'lab' && !this.enemySquad.members.some((alien) => !alien.isDead && alien.missionStage === 'lab')) {
+      this.missionStage = 'controlRoom';
+      this.gameWorld.ui?.showObjective('REACH THE CONTROL ROOM', 'The ship systems can be shut down from the upper control room.');
+    } else if (this.missionStage === 'controlRoom' && this.player.position.distanceTo(this.checkpoint2) < 5) {
+      this.missionComplete = true;
+      this.gameWorld.ui?.hideObjective?.();
+      this.gameWorld.ui?.showMissionResult?.({
+        title: 'MISSION COMPLETE',
+        message: 'Alien control of the spaceship has been broken.',
+        actions: [
+          { label: 'Play again', onClick: () => this.gameWorld.restartCurrentLevel() },
+          { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
+        ]
+      });
+    }
+
+    if (this.player.health?.isDead && !this._respawning) {
+      this._respawning = true;
+      this._respawnTimer = config.player.vitals.respawnSeconds;
+    }
+    if (this._respawning) {
+      this._respawnTimer -= delta;
+      if (this._respawnTimer <= 0) {
+        this._respawning = false;
+        const respawnPoint = this.missionStage === 'lab' || this.player.position.y > 7 ? this.checkpoint2 : this.spawnPlayer;
+        this.player.teleport(respawnPoint.x, respawnPoint.y, respawnPoint.z);
+        this.player.health.reset();
+        this.player.model.character.resetPose();
+      }
+    }
+  }
+
   get controls() {
     return [
       { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Move' },
       { actions: ['jump'], label: 'Jump' },
       { actions: ['sprint'], label: 'Sprint' },
+      { actions: ['aimDownSights'], label: 'Aim' },
+      { actions: ['firePrimary'], label: 'Fire' },
+      { actions: ['reload'], label: 'Reload' },
       { actions: ['toggleCamera'], label: 'Toggle View (V)' },
       { actions: ['toggleColliders'], label: 'Toggle Colliders Wireframe (B / F2)' }
     ];
@@ -666,6 +781,7 @@ export class Level01InsideSpaceship extends BaseLevel {
         this.gameWorld.ui.hideCinematic();
         this.gameWorld.ui.hideFade(false);
         this.gameWorld.ui.showToast('Find a way out of the Stasis Holding Bay.', 'info', 4000);
+        this.gameWorld.ui.showObjective('ESCAPE THE HOLDING BAY', 'Clear the aliens and find the exit.');
       }
 
       // Resume ambient score for level exploration

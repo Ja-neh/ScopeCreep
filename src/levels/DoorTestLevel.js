@@ -3,6 +3,10 @@ import { BaseLevel } from './BaseLevel.js';
 import { Player } from '../entities/Player.js';
 import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 import { WeaponController } from '../weapons/WeaponController.js';
+import { ProjectilePool } from '../entities/ProjectilePool.js';
+import { AlienSquad } from '../ai/AlienSquad.js';
+import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
+import { AlienModel } from '../entities/models/AlienModel.js';
 import config from '../config.json';
 import {
   DoorSlidingSideways,
@@ -31,6 +35,8 @@ export class DoorTestLevel extends BaseLevel {
 
     this.player = null;
     this.weapons = null;
+    this.projectilePool = null;
+    this.enemySquad = null;
     this.doorSideways = null;
     this.doorUp = null;
     this.bigDoorUp = null;
@@ -148,6 +154,29 @@ export class DoorTestLevel extends BaseLevel {
     this.weapons = new WeaponController(this.gameWorld, this.player);
     this.gameWorld.addEntity(this.weapons);
 
+    this.projectilePool = new ProjectilePool(this.gameWorld);
+    this.gameWorld.addEntity(this.projectilePool);
+    this.gameWorld.projectilePool = this.projectilePool;
+
+    this.enemySquad = this.trackDisposable(new AlienSquad(this.gameWorld, {
+      targets: [this.player],
+      alertRadius: 60,
+      corpseSeconds: 8
+    }));
+    const alienModelOptions = {
+      characterOptions: { assetUrl: `${this.gameWorld.assetBaseUrl || '/'}assets/alien-level1.glb` }
+    };
+    this.enemySquad.add(new AlienTrooper(this.gameWorld, {
+      position: new THREE.Vector3(-6, 0, -28),
+      squad: this.enemySquad,
+      model: new AlienModel(alienModelOptions)
+    }));
+    this.enemySquad.add(new AlienTrooper(this.gameWorld, {
+      position: new THREE.Vector3(6, 0, -28),
+      squad: this.enemySquad,
+      model: new AlienModel(alienModelOptions)
+    }));
+
     if (this.gameWorld.ui) {
       this.gameWorld.ui.showPlayerHealth();
       this.gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
@@ -239,6 +268,10 @@ export class DoorTestLevel extends BaseLevel {
 
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     super.gameplayUpdate(delta, gameWorld);
+
+    if (this.enemySquad) {
+      this.enemySquad.update();
+    }
 
     if (this.sunShadow && this.player) {
       this.sunShadow.update(this.player);
