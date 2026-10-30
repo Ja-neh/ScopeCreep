@@ -61,6 +61,8 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.spaceshipMesh = null;
     this.levelRigidBody = null;
     this.doors = [];
+    this._fallDeathY = -20;
+    this._fallDeathTriggered = false;
 
     // Performance Optimization structures:
     this.levelLights = [];
@@ -95,6 +97,7 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.gameWorld.scene.background = new THREE.Color(0x0f172a);
     this._originalFog = this.gameWorld.scene.fog;
     this.gameWorld.scene.fog = null; // Disable outdoor daylight fog for crisp indoor visibility
+    this._createSpaceBackdrop();
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
     this.gameWorld.environmentGroup.add(ambientLight);
@@ -119,6 +122,10 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.spaceshipMesh.updateMatrixWorld(true);
     this.gameWorld.environmentGroup.add(this.spaceshipMesh);
     this.trackDisposable(this.spaceshipMesh);
+    const shipBounds = new THREE.Box3().setFromObject(this.spaceshipMesh);
+    if (Number.isFinite(shipBounds.min.y)) {
+      this._fallDeathY = shipBounds.min.y - 5;
+    }
 
     // 4. Parse Nodes, Colliders, Empties & Lighting Anchors
     const doorSpawnNodes = [];
@@ -302,6 +309,89 @@ export class Level01InsideSpaceship extends BaseLevel {
     console.log(`${this.name} initialized with ${doorSpawnNodes.length} doors, ${lightFixtureNodes.length} corridor fixtures, and red staircase lighting.`);
   }
 
+  _createSpaceBackdrop() {
+    const starCount = 1400;
+    const starRadius = 1500;
+    const positions = new Float32Array(starCount * 3);
+    const colors = new Float32Array(starCount * 3);
+    const starColors = [0xffffff, 0xc9e3ff, 0xffe6c2];
+    let seed = 0x5eed1234;
+    const random = () => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return (seed >>> 0) / 0x100000000;
+    };
+
+    for (let i = 0; i < starCount; i++) {
+      const z = random() * 2 - 1;
+      const angle = random() * Math.PI * 2;
+      const radial = Math.sqrt(1 - z * z);
+      positions[i * 3] = starRadius * radial * Math.cos(angle);
+      positions[i * 3 + 1] = starRadius * z;
+      positions[i * 3 + 2] = starRadius * radial * Math.sin(angle);
+
+      const color = new THREE.Color(starColors[Math.floor(random() * starColors.length)]);
+      const brightness = 0.65 + random() * 0.35;
+      colors[i * 3] = color.r * brightness;
+      colors[i * 3 + 1] = color.g * brightness;
+      colors[i * 3 + 2] = color.b * brightness;
+    }
+
+    const starGeometry = new THREE.BufferGeometry();
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const stars = new THREE.Points(
+      starGeometry,
+      new THREE.PointsMaterial({
+        size: 1.25,
+        vertexColors: true,
+        sizeAttenuation: true,
+        depthWrite: false,
+        fog: false
+      })
+    );
+    stars.name = 'SpaceshipExteriorStars';
+    this.gameWorld.environmentGroup.add(stars);
+    this.trackDisposable(stars);
+
+    const bodies = [
+      { name: 'DistantMoon', position: [310, 170, -530], radius: 48, color: 0xc9cbd0 },
+      { name: 'DistantBluePlanet', position: [-700, 360, -920], radius: 72, color: 0x4389c4 },
+      { name: 'DistantRingedPlanet', position: [640, -250, -980], radius: 44, color: 0xd88755 }
+    ];
+
+    for (const body of bodies) {
+      const planet = new THREE.Mesh(
+        new THREE.SphereGeometry(body.radius, 32, 24),
+        new THREE.MeshBasicMaterial({ color: body.color })
+      );
+      planet.name = body.name;
+      planet.position.set(...body.position);
+      this.gameWorld.environmentGroup.add(planet);
+      this.trackDisposable(planet);
+
+      if (body.name === 'DistantRingedPlanet') {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(body.radius * 1.35, body.radius * 2.1, 48),
+          new THREE.MeshBasicMaterial({
+            color: 0xd8b37c,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.85,
+            depthWrite: false
+          })
+        );
+        ring.name = 'DistantPlanetRings';
+        ring.position.copy(planet.position);
+        ring.lookAt(0, 0, 0);
+        ring.rotateZ(0.35);
+        this.gameWorld.environmentGroup.add(ring);
+        this.trackDisposable(ring);
+      }
+    }
+  }
+
   /**
    * Spawns the appropriate modular door entity matching the SPAWN-* empty name
    * and attaches its collider to the level compound rigid body.
@@ -429,6 +519,8 @@ export class Level01InsideSpaceship extends BaseLevel {
       return;
     }
 
+    if (this._checkPlayerFall()) return;
+
     // Performance Optimization A & D: Dynamic Light Culling & Floor Occlusion Culling
     if (this.player && this.player.position) {
       const px = this.player.position.x;
@@ -483,6 +575,27 @@ export class Level01InsideSpaceship extends BaseLevel {
     }
   }
 
+  _checkPlayerFall() {
+    if (this._fallDeathTriggered || !this.player || this.player.position.y >= this._fallDeathY) {
+      return false;
+    }
+
+    this._fallDeathTriggered = true;
+    this.player.setFrozen(true);
+    this.gameWorld.input?.exitPointerLock();
+    this.gameWorld.isPaused = true;
+    this.gameWorld.ui?.showMissionResult({
+      outcome: 'defeat',
+      title: 'LOST IN SPACE',
+      message: 'You fell off the spaceship.',
+      actions: [
+        { label: 'Restart level', onClick: () => this.gameWorld.restartCurrentLevel() },
+        { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
+      ]
+    });
+    return true;
+  }
+
   get controls() {
     return [
       { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Move' },
@@ -509,7 +622,7 @@ export class Level01InsideSpaceship extends BaseLevel {
 
     // Create perspective camera inside sleeping capsule
     if (!this.introCamera) {
-      this.introCamera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 500);
+      this.introCamera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 2000);
       this.introCamera.name = 'IntroPodCamera';
       this.gameWorld.environmentGroup.add(this.introCamera);
       this.trackDisposable(this.introCamera);
