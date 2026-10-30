@@ -286,6 +286,10 @@ export class InputManager {
     return this.keysDown.has(code);
   }
 
+  isKeyJustPressed(code) {
+    return this.keysJustPressed.has(code);
+  }
+
   /**
    * Check mouse buttons
    */

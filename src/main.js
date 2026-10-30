@@ -1,4 +1,6 @@
 import { GameWorld } from './core/GameWorld.js';
+import { Level01InsideSpaceship } from './levels/Level01InsideSpaceship.js';
+import { DoorTestLevel } from './levels/DoorTestLevel.js';
 import { Level01 } from './levels/Level01.js';
 import { Level01TestLevel } from './levels/Level01ShipTestLevel.js';
 import { Level01JetTestLevel } from './levels/Level01JetTestLevel.js';
@@ -12,6 +14,16 @@ import { Level03TestLevel } from './levels/Level03TestLevel.js';
  * Level Registry defining all available stages in ScopeCreep
  */
 const AVAILABLE_LEVELS = [
+  {
+    id: 'level01_inside_spaceship',
+    title: 'Level 1: Inside Spaceship',
+    create: (gw) => new Level01InsideSpaceship(gw)
+  },
+  {
+    id: 'door_test',
+    title: 'Doors Test: Modular Sliding Doors',
+    create: (gw) => new DoorTestLevel(gw)
+  },
   {
     id: 'level01',
     title: 'Level 1: Operation Retake',

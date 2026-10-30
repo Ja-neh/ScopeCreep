@@ -201,6 +201,36 @@ export class PhysicsWorld {
   }
 
   /**
+   * Creates a cuboid collider attached to a rigid body in the physics simulation.
+   * @param {{x: number, y: number, z: number}} halfExtents - Half extents along local X, Y, Z
+   * @param {RAPIER.RigidBody} rigidBody - Body to attach collider to
+   * @param {{x: number, y: number, z: number}} [translation] - Local translation wrt rigid body
+   * @param {{x: number, y: number, z: number, w: number}} [rotation] - Local rotation quaternion wrt rigid body
+   * @returns {RAPIER.Collider|null}
+   */
+  createCuboidCollider(halfExtents, rigidBody, translation = { x: 0, y: 0, z: 0 }, rotation = { x: 0, y: 0, z: 0, w: 1 }) {
+    if (!this.world || !rigidBody) return null;
+    const desc = this.RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z)
+      .setTranslation(translation.x, translation.y, translation.z)
+      .setRotation(rotation);
+    const collider = this.world.createCollider(desc, rigidBody);
+    collider.rigidBody = rigidBody;
+    return collider;
+  }
+
+  /**
+   * Updates a collider's relative translation and rotation with respect to its rigid body.
+   * @param {RAPIER.Collider} collider
+   * @param {{x: number, y: number, z: number}} [translation]
+   * @param {{x: number, y: number, z: number, w: number}} [rotation]
+   */
+  updateColliderTransform(collider, translation, rotation) {
+    if (!collider) return;
+    if (translation) collider.setTranslationWrtParent(translation);
+    if (rotation) collider.setRotationWrtParent(rotation);
+  }
+
+  /**
    * Creates a position-based kinematic rigid body.
    */
   createKinematicRigidBody({ position = { x: 0, y: 0, z: 0 }, rotation = { x: 0, y: 0, z: 0, w: 1 } } = {}) {
