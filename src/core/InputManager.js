@@ -75,6 +75,9 @@ export class InputManager {
       weaponNext: ['WheelDown'],
       weaponPrev: ['WheelUp'],
       quickMelee: ['KeyQ'],
+      characterPower: ['KeyH'],
+      inspectPlayer: ['KeyO'],
+      freeLook: ['KeyZ'],
       aimDownSights: ['Mouse2'],
 
       mouseLook: ['Mouse0', 'Mouse2'],

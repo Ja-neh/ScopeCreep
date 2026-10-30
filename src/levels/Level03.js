@@ -17,7 +17,7 @@ import config from '../config.json';
 
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
-const DOME_RADIUS = 22;      // The force field covers the hall and a little of the ground round it
+const DOME_RADIUS = 38;      // Covers the enlarged final-battle hall.
 const GUARD_DISTANCE = 6;    // Generator guards start this far from their generator
 const GUARD_POST_TRIES = 30; // Attempts to find each hall guard a post
 const HOSTAGE_NAMES = ['Ama', 'Tomas', 'Lena', 'Kofi'];
@@ -295,6 +295,8 @@ export class Level03 extends IslandLevel {
 
   /** The force fields shimmer (and collapse) every frame. */
   _updateWorld(delta) {
+    const inside=this.player && this.village.hall.contains(this.player.position.x,this.player.position.z);
+    this.gameWorld.ui?.setHallMode?.(!!inside);
     if (this.dome) this.dome.update(delta);
     if (this.doorSeal) this.doorSeal.update(delta);
   }
@@ -311,7 +313,7 @@ export class Level03 extends IslandLevel {
     if (!back) return;
     const p = this.player.position;
     this.allies.mates.forEach((mate, i) => {
-      if (mate.isDead) return;
+      if (mate.isDead) mate.revive(mate.health.maxHealth);
       const angle = (i / Math.max(1, this.allies.mates.length)) * Math.PI * 2;
       const x = p.x + Math.cos(angle) * 3;
       const z = p.z + Math.sin(angle) * 3;

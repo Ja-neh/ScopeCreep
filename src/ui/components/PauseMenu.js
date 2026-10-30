@@ -29,6 +29,8 @@ export class PauseMenu {
         <h2 class="ui-minimal-title">Options</h2>
         <div class="ui-minimal-list">
           <button class="ui-minimal-btn" id="pause-btn-continue" type="button">Continue</button>
+          <button class="ui-minimal-btn" id="pause-btn-instructions" type="button" aria-expanded="false">Instructions</button>
+          <section id="pause-instructions" class="ui-hidden" aria-label="Instructions"></section>
           <button class="ui-minimal-btn" id="pause-btn-restart" type="button">Restart Level</button>
           <button class="ui-minimal-btn" id="pause-btn-mainmenu" type="button">Main Menu</button>
         </div>
@@ -36,6 +38,11 @@ export class PauseMenu {
     `;
 
     const continueBtn = this.element.querySelector('#pause-btn-continue');
+    this.element.querySelector('#pause-btn-instructions').addEventListener('click',()=>{
+      const panel=this.element.querySelector('#pause-instructions');
+      panel.classList.toggle('ui-hidden');
+      this.element.querySelector('#pause-btn-instructions').setAttribute('aria-expanded',String(!panel.classList.contains('ui-hidden')));
+    });
     const restartBtn = this.element.querySelector('#pause-btn-restart');
     const mainMenuBtn = this.element.querySelector('#pause-btn-mainmenu');
 
@@ -70,6 +77,8 @@ export class PauseMenu {
   show(callbacks = {}) {
     this._callbacks = callbacks;
     this.graphics.bind(callbacks.graphics || null);
+    this.element.querySelector('#pause-instructions').classList.add('ui-hidden');
+    this.element.querySelector('#pause-btn-instructions').setAttribute('aria-expanded','false');
     this.element.classList.remove('ui-hidden');
   }
 
@@ -78,6 +87,10 @@ export class PauseMenu {
    */
   hide() {
     this.element.classList.add('ui-hidden');
+  }
+
+  setInstructions(element) {
+    this.element.querySelector('#pause-instructions').appendChild(element);
   }
 
   /**

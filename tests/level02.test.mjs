@@ -95,7 +95,7 @@ test('Level 2: ashore -> three waves -> the hunt -> the gate ambush -> the gate 
   assert.equal(level.state, 'gate', 'the fight is at the gate');
   assert.equal(level._heavy.name, 'AlienHeavy');
   assert.equal(level._heavy.isBoss, true);
-  assert.ok(world.ui.callsTo('showBossHealth').some((call) => call.args[0] === 'THE GATE WALKER'), 'the walker brings its bar');
+  assert.ok(!world.ui.callsTo('showBossHealth').some((call) => call.args[0] === 'THE GATE WALKER'), 'the red walker uses its overhead health bar');
   assert.ok(world.ui.callsTo('updateBossHealth').length > 0, 'the bar tracks the fight');
   assert.ok(world.ui.callsTo('hideBossHealth').length > 0, 'and comes down with the walker');
 
@@ -402,25 +402,23 @@ test('Level 2: the first wave also starts if the player stays aboard', async () 
   assert.equal(teardown(world, level), 0);
 });
 
-test('Level 2: going down with nobody left standing fails the mission; Retry restarts it', async () => {
+test('Level 2: a squad wipe restores everyone at the checkpoint with full health and standing poses', async () => {
   const { world, level } = await loadLevel(Level02);
   stepWorld(world, 0.5, { level });
-  level.allies.removeAllMates();
+  for(const mate of level.allies.mates)mate.health.takeDamage({amount:10000});
   level.player.health.takeDamage({ amount: 1000 });
-  stepWorld(world, 0.2, { level });
-  assert.equal(level.state, 'lost');
-  assert.equal(world.music.callsTo('stinger').at(-1).args[0], 'defeat', 'the defeat sting lands the ending');
-  assert.ok(world.music.callsTo('stop').length >= 1, 'the bed stops on defeat');
-
-  const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
-  assert.equal(result.outcome, 'defeat');
-  assert.match(result.message, /whole squad/);
-  result.actions.find((action) => action.label === 'Retry').onClick();
-  assert.equal(world.restartRequested, true);
+  stepWorld(world, config.player.vitals.respawnSeconds+0.5, { level });
+  assert.notEqual(level.state,'lost');
+  for(const member of level.allies.members){
+    assert.equal(member.health.currentHealth,member.health.maxHealth);
+    assert.equal(member.health.isDead,false);
+    assert.ok(Math.abs(member.mesh.rotation.x)<0.01,'standing again');
+  }
+  assert.ok(level.player.position.distanceTo(level._checkpoint)<2,'player returns to checkpoint');
   assert.equal(teardown(world, level), 0);
 });
 
-test('Level 2: a squadmate revives the downed player; out of reach of everyone, the player bleeds out', async () => {
+test('Level 2: teammate revive restores full health; an isolated downed player waits for rescue', async () => {
   const { world, level } = await loadLevel(Level02);
   world.input.press('skipCutscene');
   stepWorld(world, 12, { level }); // Crew down the gangway and at the rally
@@ -447,13 +445,14 @@ test('Level 2: a squadmate revives the downed player; out of reach of everyone, 
   level.player.teleport(x, level.environment.heightAt(x, z) + 0.05, z);
   stepWorld(world, 0.3, { level });
   level.player.health.takeDamage({ amount: 1000 });
-  stepWorld(world, config.revive.bleedOutSeconds + 1, { level });
-  assert.equal(level.state, 'lost');
+  stepWorld(world, 2, { level });
+  assert.notEqual(level.state, 'lost');
+  assert.equal(level.player.health.isDead,true,'still waiting for a teammate');
   assert.ok(
-    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: bleeding out — nobody can reach you/.test(call.args[0])),
+    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: waiting for a teammate/.test(call.args[0])),
     'nobody in reach: the indicator says so honestly'
   );
-  assert.match(world.ui.callsTo('showMissionResult').at(-1).args[0].message, /bled out/);
+  assert.equal(world.ui.callsTo('showMissionResult').length,0);
   assert.equal(teardown(world, level), 0);
 });
 

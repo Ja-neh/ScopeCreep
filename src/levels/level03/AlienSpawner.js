@@ -89,6 +89,18 @@ export class AlienSpawner {
   /** A spot on the ring: open ground, not too close to the player, out of their sight if possible. */
   _findSpot() {
     const level = this.level;
+    const ships=level.village?.ships;
+    if(ships?.length){
+      const centre=this.centre();
+      const ordered=[...ships].sort((a,b)=>Math.hypot(a.x-centre.x,a.z-centre.z)-Math.hypot(b.x-centre.x,b.z-centre.z));
+      for(let i=0;i<ordered.length;i++){
+        const ship=ordered[(this.spawned+i)%ordered.length];
+        const x=ship.x+Math.sin(ship.yaw)*(ship.radius+2),z=ship.z+Math.cos(ship.yaw)*(ship.radius+2);
+        if(Math.hypot(x-level.player.position.x,z-level.player.position.z)<3)continue;
+        return this._spot.set(x,level.environment.heightAt(x,z)+0.1,z);
+      }
+      return null;
+    }
     const centre = this.centre();
     const player = level.player.position;
     const physics = level.gameWorld.physics;

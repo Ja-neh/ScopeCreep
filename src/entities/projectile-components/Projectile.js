@@ -53,6 +53,7 @@ export class Projectile {
     drag = 0.005,
     maxLifeTime = 3.0,
     damage = 25,
+    fraction = 0,
     damageType = DamageType.KINETIC,
     source = null,
     excludeCollider = null,
@@ -72,6 +73,7 @@ export class Projectile {
     this.excludeRigidBody = excludeRigidBody;
 
     this.damageInfo.amount = damage;
+    this.damageInfo.fraction = fraction;
     this.damageInfo.type = damageType;
     this.damageInfo.source = source;
 

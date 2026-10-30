@@ -203,7 +203,10 @@ export class MapOverlay {
    * Samples the island into a cached offscreen chart (sea, beach, hills, the jungle path).
    */
   _paintTerrain(terrain) {
-    const bounds = terrain.bounds;
+    const source=terrain.bounds;
+    const side=Math.max(source.maxX-source.minX,source.maxZ-source.minZ);
+    const cx=(source.minX+source.maxX)/2,cz=(source.minZ+source.maxZ)/2;
+    const bounds={minX:cx-side/2,maxX:cx+side/2,minZ:cz-side/2,maxZ:cz+side/2};
     this.bounds = bounds;
 
     const metresWide = bounds.maxX - bounds.minX;
@@ -219,7 +222,7 @@ export class MapOverlay {
     }
 
     // The corner chart shares this backdrop, drawn small: size it to the island's shape
-    const miniHeight = Math.max(1, Math.round(MINI_WIDTH * height / width));
+    const miniHeight = MINI_WIDTH;
     if (this.miniCanvas.width !== MINI_WIDTH || this.miniCanvas.height !== miniHeight) {
       this.miniCanvas.width = MINI_WIDTH;
       this.miniCanvas.height = miniHeight;
@@ -253,6 +256,23 @@ export class MapOverlay {
     const bg = this._background.getContext('2d');
     bg.imageSmoothingEnabled = true;
     bg.drawImage(sample, 0, 0, width, height);
+    const scale=width/side;
+    for(const street of terrain.streets || []){
+      const a=projectPoint(bounds,width,height,street.from.x,street.from.z,{}),b=projectPoint(bounds,width,height,street.to.x,street.to.z,{});
+      bg.strokeStyle='#a4a394';bg.lineWidth=street.width*scale;bg.beginPath();bg.moveTo(a.x,a.y);bg.lineTo(b.x,b.y);bg.stroke();
+    }
+    for(const building of terrain.buildings || []){
+      const p=projectPoint(bounds,width,height,building.x,building.z,{});
+      bg.save();bg.translate(p.x,p.y);bg.rotate(-building.yaw);
+      bg.shadowColor='#111b1c';bg.shadowBlur=2;bg.shadowOffsetX=2;bg.shadowOffsetY=2;
+      bg.fillStyle=building.boss ? '#a896c4' : '#b7b0a0';
+      bg.fillRect(-building.width*scale/2,-building.depth*scale/2,building.width*scale,building.depth*scale);bg.restore();
+    }
+    for(const ship of terrain.ships || []){
+      const p=projectPoint(bounds,width,height,ship.x,ship.z,{});
+      bg.fillStyle='#6cb9c1';bg.beginPath();bg.ellipse(p.x,p.y,ship.radius*scale,ship.radius*scale*0.7,-ship.yaw,0,Math.PI*2);bg.fill();
+      bg.strokeStyle='#d8eff0';bg.stroke();
+    }
   }
 
   /** Zone boundaries: a faint dashed line across the island, labelled on the inland side. */

@@ -3,11 +3,13 @@ import { BaseLevel } from './BaseLevel.js';
 import { BeachEnvironment } from './level02/BeachEnvironment.js';
 import { BeachCover } from './level02/BeachCover.js';
 import { Player } from '../entities/Player.js';
+import { WeaponPickup } from '../entities/WeaponPickup.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
 import { AlienBrute } from '../entities/enemies/AlienBrute.js';
 import { AlienSniper } from '../entities/enemies/AlienSniper.js';
 import { AlienHeavy } from '../entities/enemies/AlienHeavy.js';
+import { AlienModel } from '../entities/models/AlienModel.js';
 import { SquadMate } from '../entities/allies/SquadMate.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
 import { HumanSquad } from '../ai/HumanSquad.js';
@@ -93,6 +95,7 @@ export class IslandLevel extends BaseLevel {
 
     // 4. Player
     this._createPlayer();
+    this._checkpoint=this.player.position.clone();
 
     // 5. Machine gun and knife (after the player, so its camera work runs after the player's).
     //    Every shot is a noise the aliens can hear, and every landing shot is reported back to
@@ -102,6 +105,10 @@ export class IslandLevel extends BaseLevel {
       ...this._weaponOptions()
     });
     this.gameWorld.addEntity(this.weapons);
+    const pickupPosition = this.player.position.clone();
+    pickupPosition.x += 4;
+    pickupPosition.y = this.environment.heightAt(pickupPosition.x, pickupPosition.z) + 0.12;
+    this.gameWorld.addEntity(new WeaponPickup(this.gameWorld, this.player, this.weapons, pickupPosition));
 
     // 6. Projectiles for the aliens' plasma rifles
     this.projectilePool = new ProjectilePool(this.gameWorld);
@@ -180,7 +187,13 @@ export class IslandLevel extends BaseLevel {
 
   /** The island chart for the map overlay: world bounds around the playable scatter. */
   getMapTerrain() {
-    return this.environment ? mapTerrainFromEnvironment(this.environment) : null;
+    if(!this.environment)return null;
+    const terrain=mapTerrainFromEnvironment(this.environment);
+    terrain.buildings=this.village ? [...this.village.houses.map(h=>({x:h.x,z:h.z,width:h.w,depth:h.d,yaw:h.yaw})),
+      {x:this.village.hall.centre.x,z:this.village.hall.centre.z,width:this.village.hall.width,depth:this.village.hall.depth,yaw:0,boss:true}] : [];
+    terrain.ships=this.village?.ships || [];
+    terrain.streets=this.village?.streets || [];
+    return terrain;
   }
 
   /**
@@ -261,7 +274,7 @@ export class IslandLevel extends BaseLevel {
    * Called every frame from then on. Missions fail; sandboxes respawn instead.
    */
   _onPlayerKilled(delta) {
-    this._finish(false);
+    this._respawnPlayer(delta,()=>this._checkpoint,'SQUAD DOWN: returning to the checkpoint');
   }
 
   _resultText(victory) {
@@ -321,6 +334,7 @@ export class IslandLevel extends BaseLevel {
       { actions: ['firePrimary'], label: 'Fire (click to lock the mouse)' },
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['reload'], label: 'Reload' },
+      { actions: ['characterPower'], label: 'Character power (cooldown)' },
       { actions: ['weaponPrimary', 'weaponMelee', 'weaponBomb', 'quickMelee'], label: 'Gun, knife, bomb, quick knife' },
       { actions: ['toggleMap'], label: 'Expand island chart' },
       { actions: ['specialAction'], label: 'Hold: revive, patch up' },
@@ -357,7 +371,9 @@ export class IslandLevel extends BaseLevel {
   createAlien(type, x, z, y = null) {
     const position = new THREE.Vector3(x, y === null ? this.environment.heightAt(x, z) + 0.1 : y, z);
     const AlienType = ALIEN_TYPES[type] || AlienTrooper;
-    return this.squad.add(new AlienType(this.gameWorld, { position, squad: this.squad }));
+    const characterId=type==='brute' ? 'gorr' : this.village && type==='sniper' ? 'bahamut-nt' : 'galiant';
+    const model=new AlienModel({characterId,scale:type==='heavy' ? 1.6 : type==='brute' ? 1.45 : 1});
+    return this.squad.add(new AlienType(this.gameWorld, { position, squad: this.squad,model }));
   }
 
   _onMemberDowned(member) {
@@ -366,6 +382,7 @@ export class IslandLevel extends BaseLevel {
   }
 
   _onMemberRevived(member, by) {
+    if(member===this.player)this.shield?.charge();
     const ui = this.gameWorld.ui;
     if (!ui) return;
     if (member === this.player) ui.showToast(`${by.name} got you back on your feet!`, 'success', 2500);
@@ -435,8 +452,8 @@ export class IslandLevel extends BaseLevel {
       const reviver = this.allies.reviverFor(player);
       this.gameWorld.ui.showStatusIndicator(
         reviver
-          ? `DOWNED: ${reviver.name} is coming to revive you (${left}s)`
-          : `DOWNED: bleeding out — nobody can reach you (${left}s)`,
+          ? `DOWNED: ${reviver.name} is coming to revive you`
+          : 'DOWNED: waiting for a teammate to revive you',
         'danger'
       );
     }
@@ -466,6 +483,19 @@ export class IslandLevel extends BaseLevel {
     const spawn = point();
     player.teleport(spawn.x, spawn.y, spawn.z);
     player.health.reset();
+    player.model.character.resetPose();
+    player.mesh.rotation.x=player.mesh.rotation.z=0;
+    player.isLost=false;
+    this.shield?.charge();
+    for(const [i,mate] of this.allies.mates.entries()){
+      mate.isLost=false;mate.lostTime=0;
+      if(mate.isDead) mate.revive(mate.health.maxHealth);
+      else mate.health.reset();
+      mate.model.character?.resetPose();
+      const x=spawn.x+Math.cos(i*1.6)*3,z=spawn.z+Math.sin(i*1.6)*3;
+      mate.teleport(x,this.environment.heightAt(x,z)+0.1,z);
+    }
+    this._playerGetsUp();
     player.isDevSuspended = this._shouldStaySuspended();
     this._wasConcealed = false;
     if (ui) {

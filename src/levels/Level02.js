@@ -656,7 +656,7 @@ export class Level02 extends IslandLevel {
     this._heavy.assault(this.gate.approach);
     const ui = this.gameWorld.ui;
     if (ui) {
-      ui.showBossHealth(this._heavy.displayName);
+      // The red alien uses an overhead bar; the large boss panel belongs to the hall Warden.
       ui.showToast('The gate walker comes out!', 'danger', 4000);
     }
   }
@@ -1016,6 +1016,7 @@ export class Level02 extends IslandLevel {
     const zone = this._currentZone();
     if (zone === this._zone) return;
     this._zone = zone;
+    this._checkpoint.copy(this.player.position);
     const ui = this.gameWorld.ui;
     if (ui) ui.showToast(`${zone.name.toUpperCase()} — ${ZONE_FLAVOUR[zone.id]}`, 'info', 4000);
     const music = this.gameWorld.music;

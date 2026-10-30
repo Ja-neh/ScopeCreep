@@ -56,7 +56,7 @@ const LOOKS = {
     light: 0xff9a5a, lightIntensity: 2.0, direction: new THREE.Vector3(-0.96, 0.24, -0.12).normalize(),
     hemiSky: 0xffc59a, hemiGround: 0x3a4a3a, hemiIntensity: 0.6,
     glow: 0xff9a5c, upper: 0xc58aa0, zenith: 0x4a4f86, disc: 0xffe3b0, stars: 0,
-    cloud: 0xf6dccf, cloudGlow: 0x6e4f63, cloudShadow: 0.32
+    cloud: 0xf6dccf, cloudGlow: 0x6e4f63, cloudShadow: 0 // Cloud shade off: the original lighting look
   },
   // Level 3: moonlight from high in the south-east, behind the squad as it heads north through
   // the village (so the house fronts and the hall face the light), a deep blue sky full of
@@ -66,7 +66,7 @@ const LOOKS = {
     light: 0xa9bde0, lightIntensity: 1.0, direction: new THREE.Vector3(0.4, 0.7, 0.6).normalize(),
     hemiSky: 0x4a5d88, hemiGround: 0x1a2018, hemiIntensity: 0.8,
     glow: 0x2c3d63, upper: 0x162139, zenith: 0x060a16, disc: 0xeef2ff, stars: 1,
-    cloud: 0x55617d, cloudGlow: 0x0d1322, cloudShadow: 0.2
+    cloud: 0x55617d, cloudGlow: 0x0d1322, cloudShadow: 0
   },
   // Level 3's ending: the sun coming up in the east over the freed village, a rose and gold
   // horizon, the last stars fading
@@ -75,7 +75,7 @@ const LOOKS = {
     light: 0xffc58a, lightIntensity: 1.7, direction: new THREE.Vector3(0.9, 0.2, -0.38).normalize(),
     hemiSky: 0xffd8b8, hemiGround: 0x48503e, hemiIntensity: 0.75,
     glow: 0xffa36e, upper: 0xa58fb8, zenith: 0x4f5f9c, disc: 0xfff0c8, stars: 0,
-    cloud: 0xf3d2c2, cloudGlow: 0x6f4e5c, cloudShadow: 0.28
+    cloud: 0xf3d2c2, cloudGlow: 0x6f4e5c, cloudShadow: 0
   }
 };
 const _colorA = new THREE.Color();

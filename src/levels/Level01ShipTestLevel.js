@@ -120,8 +120,6 @@ export class Level01TestLevel extends BaseLevel {
 
     // 5. Spawn Player Character Controller on the Battleship Walking Deck
     this.player = new Player(this.gameWorld, {
-      walkSpeed: 8.0,
-      sprintSpeed: 14.0,
       jumpForce: 10.0
     });
     // Position player on forward walking deck

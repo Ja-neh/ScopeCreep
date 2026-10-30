@@ -76,8 +76,6 @@ export class TestLevel extends BaseLevel {
 
     // 5. Spawn Human Player on the Battleship Walking Deck
     this.player = new Player(this.gameWorld, {
-      walkSpeed: 9.0,
-      sprintSpeed: 16.0,
       jumpForce: 11.0
     });
     // Position player on forward walking deck

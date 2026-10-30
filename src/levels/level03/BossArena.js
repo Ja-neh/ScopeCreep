@@ -10,8 +10,6 @@ const ENRAGED_CRYSTALS = [2, 5];  // The front pillars, by the door
 const CRYSTAL_HEIGHT = 3.2;       // Above the pillar's base
 const CRYSTAL_INSET = 1.3;        // Out from the pillar towards the middle of the hall
 const GUARD_DISTANCE = 6;         // The Warden holds the floor this far in front of its dais
-const ADD_SPREAD = 4;             // Troopers come in through the door this far apart...
-const ADD_DISTANCE = 14;          // ...running in from the square, this far out
 
 /**
  * BossArena
@@ -45,6 +43,8 @@ export class BossArena {
     this.started = false;
     this.defeated = false;
     this.shieldDrops = 0; // Times the player has brought the shield down
+    this.resurrectionTimer=config.bossPowers.resurrectCooldown;
+    this.resurrectionCasts=0;
   }
 
   /** The Warden, dormant, in front of its dais, facing the door (once). */
@@ -84,10 +84,14 @@ export class BossArena {
    * Phase 5: drops the shield when its crystals are gone, enrages the Warden at half health,
    * updates the boss bar, and notices the end.
    */
-  update() {
+  update(delta=0) {
     if (!this.started || this.defeated) return;
     const warden = this.warden;
     const ui = this.gameWorld.ui;
+    this.resurrectionTimer-=delta;
+    if(this.resurrectionTimer<=0 && !warden.isDead){
+      this._resurrect();this.resurrectionTimer=config.bossPowers.resurrectCooldown;
+    }
 
     if (warden.shielded && this.crystalsLeft === 0) {
       warden.setShielded(false);
@@ -131,18 +135,28 @@ export class BossArena {
     this.warden.setShielded(true);
   }
 
+  _resurrect(){
+    const squad=this.level.squad;
+    let count=0;
+    while(count<config.bossPowers.resurrectCount && squad.fallen.length){
+      const record=squad.fallen.pop();
+      if(record.actor && !record.actor.isDead)continue;
+      const angle=count*Math.PI*2/config.bossPowers.resurrectCount;
+      const x=this.hall.centre.x+Math.cos(angle)*8,z=this.hall.centre.z+Math.sin(angle)*8;
+      if(!this.hall.contains(x,z))continue;
+      if(record.actor && squad.members.includes(record.actor))squad.remove(record.actor);
+      const type=record.id==='gorr' ? 'brute' : record.id==='bahamut-nt' ? 'sniper' : 'trooper';
+      const alien=this.level.createAlien(type,x,z,this.hall.centre.y+0.2);
+      alien.assault(this.level.player.position);this.adds.push(alien);count++;
+    }
+    if(count){this.resurrectionCasts++;this.gameWorld.ui?.showToast(`The Warden resurrected ${count} aliens!`,'danger',2500);}
+    return count;
+  }
+
   /** Troopers run in through the hall door after the player. */
   _callAdds() {
-    const hall = this.hall;
-    const across = new THREE.Vector3(hall.forward.z, 0, -hall.forward.x);
-    for (let i = 0; i < this.cfg.enrageAdds; i++) {
-      const offset = (i - (this.cfg.enrageAdds - 1) / 2) * ADD_SPREAD;
-      const x = hall.entrance.x + across.x * offset + hall.forward.x * ADD_DISTANCE;
-      const z = hall.entrance.z + across.z * offset + hall.forward.z * ADD_DISTANCE;
-      const trooper = this.level.createAlien('trooper', x, z);
-      trooper.assault(this.level.player.position);
-      this.adds.push(trooper);
-    }
+    this._resurrect();
+    this.resurrectionTimer=config.bossPowers.resurrectCooldown;
   }
 
   dispose() {

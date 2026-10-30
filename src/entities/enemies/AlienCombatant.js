@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GroundCombatant } from '../GroundCombatant.js';
 import { Perception } from '../../ai/Perception.js';
 import { StateMachine } from '../../ai/StateMachine.js';
+import config from '../../config.json';
 
 const PATROL_RADIUS = 15;
 const PATROL_WAIT_SECONDS = 2.5;
@@ -39,6 +40,33 @@ export class AlienCombatant extends GroundCombatant {
     this._point = new THREE.Vector3();
 
     this.brain = new StateMachine(this, { ...SHARED_STATES, engage: engageState, ...states }, initialState);
+    this.isFlying = false;
+    this._flightRay = null;
+  }
+
+  /** Flight uses the same collision sweep as walking, including ceilings and landing. */
+  _updateVerticalVelocity(delta) {
+    if (!this.model.canFly) { super._updateVerticalVelocity(delta); return; }
+    const cfg=config.alienPowers.flight;
+    const approaching=this.name==='AlienWarden' ? !!this.perception.target && this.brain.is('engage') :
+      !!this.perception.target || this.hasMoveTarget || this.perception.hasLastKnown;
+    const wantsFlight=approaching &&
+      this.attackPhase!=='windup' && this.attackPhase!=='recover' &&
+      (this._slamTimer===undefined || this._slamTimer>cfg.landBeforeSlamSeconds);
+    const physics=this.physicsWorld;
+    if (!this._flightRay) this._flightRay=new physics.RAPIER.Ray({x:0,y:0,z:0},{x:0,y:-1,z:0});
+    Object.assign(this._flightRay.origin,{x:this.position.x,y:this.position.y+0.2,z:this.position.z});
+    const hit=physics.castRay(this._flightRay,cfg.groundProbe,true,undefined,undefined,this.collider);
+    if (wantsFlight && hit) {
+      const ground=this._flightRay.origin.y-hit.timeOfImpact;
+      const heightError=ground+cfg.altitude-this.position.y;
+      this.verticalVelocity=THREE.MathUtils.clamp(heightError*cfg.response,-cfg.climbSpeed,cfg.climbSpeed);
+      this.isFlying=true;
+    } else {
+      this.isFlying=!this.isGrounded;
+      super._updateVerticalVelocity(delta);
+      if (!this.isGrounded) this.verticalVelocity=Math.max(-cfg.climbSpeed,this.verticalVelocity);
+    }
   }
 
   onDamaged(info) {

@@ -67,7 +67,8 @@ test('Level 3: up the avenue to the square, where the force field bars the way i
   const waypoints = [level.village.gate, { x: square.x, z: square.z + 8 }, { x: square.x + 6, z: square.z }, hall.doorway];
   let index = 0;
   world.input.hold('forward');
-  stepWorld(world, 85, {
+  const routeLength=waypoints.reduce((sum,p,i)=>sum+flat(p,i ? waypoints[i-1] : level.player.position),0);
+  stepWorld(world, routeLength/level.player.walkSpeed*1.5+10, {
     level,
     onFrame: () => {
       const target = waypoints[Math.min(index, waypoints.length - 1)];
@@ -80,7 +81,7 @@ test('Level 3: up the avenue to the square, where the force field bars the way i
   world.input.release('forward');
   assert.equal(index, waypoints.length - 1, 'made it up the avenue and across the square');
   const fromDome = flat(level.player.position, level.dome.centre);
-  assert.ok(fromDome > level.dome.radius - 0.5 && fromDome < level.dome.radius + 2, `stopped at the force field (${fromDome.toFixed(1)} m from its middle)`);
+  assert.ok(fromDome > level.dome.radius - 0.5 && fromDome < level.dome.radius + 2, `stopped at the force field (${fromDome.toFixed(1)} m from its middle; y=${level.player.position.y.toFixed(1)}; centre=${level.dome.centre.toArray()}; state=${level.dome.state})`);
   assert.equal(level.state, 'generators', 'no way into the hall yet');
 
   stepWorld(world, 6, { level });
@@ -97,7 +98,8 @@ test('Level 3: the crew follow the player round a street corner, past the houses
   const waypoints = [level.village.gate, cross, end];
   let index = 0;
   world.input.hold('forward');
-  stepWorld(world, 30, {
+  const routeLength=waypoints.reduce((sum,p,i)=>sum+flat(p,i ? waypoints[i-1] : level.player.position),0);
+  stepWorld(world, routeLength/level.player.walkSpeed*1.5+10, {
     level,
     onFrame: () => {
       const target = waypoints[Math.min(index, waypoints.length - 1)];

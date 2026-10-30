@@ -205,7 +205,7 @@ test('the supply crate patches the player up while they hold [E] beside it', asy
   const crate = level.supplyCrate;
   const rifle = level.weapons.rifle;
   rifle.reserve = 10;
-  level.player.health.takeDamage({ amount: 75 });
+  level.player.health.takeDamage({ fraction: 0.75 });
   assert.ok(world.ui.callsTo('showToast').some((call) => /^Low health!/.test(call.args[0])), 'low health points to the crate');
 
   const spot = crate.position;
