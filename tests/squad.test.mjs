@@ -196,7 +196,7 @@ test('aliens hunt squadmates too; a squadmate shot from behind turns and fights 
   assert.ok(mate.brain.is('engage') || trooper.isDead, `turned to fight (${mate.brain.current})`);
 });
 
-test('a downed squadmate is revived by the nearest squadmate, back up with half health', () => {
+test('a downed squadmate is revived by the nearest squadmate, back up with full health', () => {
   const downed = [];
   const revived = [];
   humans.onMemberDowned = (member) => downed.push(member.name);
@@ -208,18 +208,18 @@ test('a downed squadmate is revived by the nearest squadmate, back up with half 
 
   okafor.health.takeDamage({ amount: 9999 });
   run(0.5);
-  assert.deepEqual(downed, ['Okafor']);
+  assert.deepEqual(downed, [okafor.name]);
   assert.ok(humans.isDowned(okafor));
   assert.equal(okafor.collider.isEnabled(), false, 'the downed do not block the way');
 
   run(12, () => !okafor.isDead);
   assert.equal(okafor.isDead, false);
-  assert.deepEqual(revived, ['Reyes revived Okafor']);
+  assert.deepEqual(revived, [`${humans.mates[1].name} revived ${okafor.name}`]);
   assert.equal(okafor.health.currentHealth, config.allies.squadMate.maxHealth * config.revive.healthFraction);
   assert.equal(okafor.collider.isEnabled(), true);
   run(0.5);
   assert.ok(okafor.brain.is('follow') || okafor.brain.is('engage'), `back to work (${okafor.brain.current})`);
-  assert.deepEqual(downed, ['Okafor'], 'reported once');
+  assert.deepEqual(downed, [okafor.name], 'reported once');
 });
 
 test('the downed player is not shot at any more, and a squadmate revives them', () => {
@@ -238,7 +238,7 @@ test('the downed player is not shot at any more, and a squadmate revives them', 
 
   run(12, () => !player.health.isDead);
   assert.equal(player.health.isDead, false);
-  assert.deepEqual(revived, ['Novak']);
+  assert.deepEqual(revived, [humans.mates[0].name]);
   assert.equal(player.health.currentHealth, 100 * config.revive.healthFraction);
 });
 
@@ -255,9 +255,9 @@ test('a downed squadmate nobody revives bleeds out: reported once, cleared away;
   run(0.5);
   assert.deepEqual(killed, [], 'downed, not yet lost');
   run(1.2);
-  assert.deepEqual(killed, ['Okafor']);
+  assert.deepEqual(killed, [mate.name]);
   run(2.5);
-  assert.deepEqual(killed, ['Okafor'], 'reported once');
+  assert.deepEqual(killed, [mate.name], 'reported once');
   assert.equal(humans.mates.length, 0);
   assert.ok(!humans.members.includes(mate) && humans.members.includes(player));
   assert.equal(world.entities.has(mate), false);

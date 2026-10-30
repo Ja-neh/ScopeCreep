@@ -21,7 +21,7 @@ export class AlienModel {
    */
   constructor({ armorColor = 0x5d5480, scale = 1, backpack = false, crest = false, characterId = 'galiant', characterOptions = {} } = {}) {
     this.hasGun = characterId === 'gorr';
-    this.canFly = !this.hasGun;
+    this.canFly = characterId.startsWith('bahamut');
     this.mesh = new THREE.Group();
     this.mesh.name = 'Alien';
     this.body = new THREE.Group(); // Leans and falls as one piece
@@ -120,7 +120,7 @@ export class AlienModel {
     for (const part of [this.body, ...this.legs, ...this.arms]) {
       for (const child of part.children) if (child.isMesh) hide.push(child);
     }
-    this.character = new CharacterVisual(this.body, characterId, { ...characterOptions, height: 2, hide, weakSpot: backpack });
+    this.character = new CharacterVisual(this.body, characterId, { ...characterOptions, height: 2, hide, weakSpot: false });
     this.character.setArmed(this.hasGun);
     this.character.ready.then((loaded) => {
       if (!loaded || this.character.disposed) return;

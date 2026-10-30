@@ -54,11 +54,11 @@ test('simultaneous slime, fire and bullets keep distinct visuals and percentage 
  w.clearEntities();
 });
 
-test('Gorr sword deals 25% final health damage; winged red and black aliens can fly',async()=>{
+test('Gorr sword deals 25% final health damage; only black and white winged aliens can fly',async()=>{
  const w=await createTestWorld(),gorr=new AlienBrute(w,{position:new THREE.Vector3(),squad:{targets:[]}});
  const target={position:new THREE.Vector3(0,0,1),health:new HealthComponent(200)};target.health.damageMultiplier=.7;
  gorr._slam(target);assert.equal(target.health.currentHealth,150);
- for(const id of ['galiant','bahamut-nt','bahamut-xvi']){const m=new AlienModel({characterId:id});assert.equal(m.canFly,true);assert.equal(m.hasGun,false);m.dispose();}
+ for(const id of ['galiant','bahamut-nt','bahamut-xvi']){const m=new AlienModel({characterId:id});assert.equal(m.canFly,id!=='galiant');assert.equal(m.hasGun,false);m.dispose();}
  gorr.dispose();
 });
 

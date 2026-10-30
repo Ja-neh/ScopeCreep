@@ -18,6 +18,7 @@ import { FPSDisplay } from './components/FPSDisplay.js';
 import { ControlsHelper } from './components/ControlsHelper.js';
 import { DevToolsWidget } from './components/DevToolsWidget.js';
 import { MainMenu } from './components/MainMenu.js';
+import { StoryIntro } from './components/StoryIntro.js';
 import { PauseMenu } from './components/PauseMenu.js';
 import { PauseButton } from './components/PauseButton.js';
 import { CombatRoster } from './components/CombatRoster.js';
@@ -47,6 +48,7 @@ export class UIManager {
     this.playerHealth = new PlayerHealthBar(this.container);
     this.bossHealth = new BossHealthBar(this.container);
     this.credits = new Credits(this.container);
+    this.storyIntro = new StoryIntro(this.container);
     this.damageFlash = new DamageFlash(this.container);
     this.objectivePanel = new ObjectivePanel(this.container);
     this.missionResult = new MissionResult(this.container);
@@ -256,9 +258,9 @@ export class UIManager {
    * @param {number} seconds - How long the roll takes
    * @param {string} [hint] - e.g. '[Space] Skip'
    */
-  showCredits(sections, seconds, hint = '') {
+  showCredits(sections, seconds, hint = '', onClose = null) {
     if (this.credits) {
-      this.credits.show(sections, seconds, hint);
+      this.credits.show(sections, seconds, hint, onClose);
       this.container.classList.add('ui-credits-active'); // The gameplay HUD steps aside
     }
   }
@@ -648,9 +650,9 @@ export class UIManager {
    * @param {Array<Object>} levels
    * @param {Function} onSelectLevel
    */
-  showMainMenu(levels, onSelectLevel) {
+  showMainMenu(levels, onSelectLevel, onCredits = null) {
     if (this.mainMenu) {
-      this.mainMenu.show(levels, onSelectLevel);
+      this.mainMenu.show(levels, onSelectLevel, onCredits);
     }
   }
 
@@ -796,6 +798,7 @@ export class UIManager {
     }
     if (this.credits) {
       this.credits.dispose();
+      this.storyIntro.dispose();
       this.credits = null;
     }
     if (this.damageFlash) {

@@ -124,6 +124,7 @@ export class IslandLevel extends BaseLevel {
       onGunshot: (position) => this.squad.reportNoise(position),
       onMemberDowned: (member) => this._onMemberDowned(member),
       onMemberRevived: (member, by) => this._onMemberRevived(member, by),
+      onMemberExpired: member=>this._recoverAtCheckpoint(member),
       onMateKilled: (mate) => this._onSquadmateKilled(mate),
       onLeaderLost: () => { this._playerLost = true; }
     }));
@@ -382,12 +383,34 @@ export class IslandLevel extends BaseLevel {
   }
 
   _onMemberRevived(member, by) {
-    if(member===this.player)this.shield?.charge();
+    this._restoreCombatState(member);
     const ui = this.gameWorld.ui;
     if (!ui) return;
-    if (member === this.player) ui.showToast(`${by.name} got you back on your feet!`, 'success', 2500);
+    if (member === this.player) ui.showToast(`${by?.name || 'A teammate'} got you back on your feet!`, 'success', 2500);
     else if (by === this.player) ui.showToast(`You revived ${member.name}.`, 'success', 2000);
     else ui.showToast(`${by.name} revived ${member.name}.`, 'info', 2000);
+  }
+
+  _restoreCombatState(member) {
+    member.model?.character?.resetPose();
+    if(member.power) member.power.remaining=member.power.cooldown=member.power.shield=0;
+    if(member.weapon){member.weapon.ammo=member.weapon.magazineSize;member.weapon.cancelReload();}
+    if(member===this.player){this.weapons?.restoreAmmo();this.shield?.clear();}
+  }
+
+  _recoverAtCheckpoint(member) {
+    const spawn=this.lastRevivePoint?.respawnPosition || this._checkpoint;
+    if(member===this.player){
+      member.health.revive(member.health.maxHealth);
+      member.teleport(spawn.x,spawn.y,spawn.z);this._playerGetsUp();
+    }else{
+      member.isLost=false;member.lostTime=0;member.revive(member.health.maxHealth);
+      const angle=(member.slotIndex || 0)*1.6;
+      const x=spawn.x+Math.cos(angle)*3,z=spawn.z+Math.sin(angle)*3;
+      member.teleport(x,this.environment.heightAt(x,z)+0.1,z);
+    }
+    this._restoreCombatState(member);member.reviveSecondsLeft=0;
+    this.gameWorld.ui?.showToast(`${member===this.player ? 'You' : member.name} returned to the checkpoint with full health and ammunition.`,'info',2500);
   }
 
   _onSquadmateKilled(mate) {
@@ -440,20 +463,14 @@ export class IslandLevel extends BaseLevel {
     }
     player.isDevSuspended = true; // Every frame: e.g. a camera sequence ending must not free a downed player
 
-    if (this._playerLost || !this.allies.canBeRevived(player)) {
-      this._playerLost = true;
-      this._onPlayerKilled(delta);
-      return;
-    }
-
     const left = Math.ceil(this.allies.bleedOutLeft(player));
     if (left !== this._downedShown && this.gameWorld.ui) {
       this._downedShown = left;
       const reviver = this.allies.reviverFor(player);
       this.gameWorld.ui.showStatusIndicator(
         reviver
-          ? `DOWNED: ${reviver.name} is coming to revive you`
-          : 'DOWNED: waiting for a teammate to revive you',
+          ? `DOWNED: ${reviver.name} is coming — checkpoint in ${left}s`
+          : `DOWNED: rescue window — checkpoint in ${left}s`,
         'danger'
       );
     }
@@ -486,12 +503,13 @@ export class IslandLevel extends BaseLevel {
     player.model.character.resetPose();
     player.mesh.rotation.x=player.mesh.rotation.z=0;
     player.isLost=false;
-    this.shield?.charge();
+    this.weapons?.restoreAmmo();this.shield?.clear();
     for(const [i,mate] of this.allies.mates.entries()){
       mate.isLost=false;mate.lostTime=0;
       if(mate.isDead) mate.revive(mate.health.maxHealth);
       else mate.health.reset();
       mate.model.character?.resetPose();
+      this._restoreCombatState(mate);
       const x=spawn.x+Math.cos(i*1.6)*3,z=spawn.z+Math.sin(i*1.6)*3;
       mate.teleport(x,this.environment.heightAt(x,z)+0.1,z);
     }

@@ -407,7 +407,7 @@ test('Level 2: a squad wipe restores everyone at the checkpoint with full health
   stepWorld(world, 0.5, { level });
   for(const mate of level.allies.mates)mate.health.takeDamage({amount:10000});
   level.player.health.takeDamage({ amount: 1000 });
-  stepWorld(world, config.player.vitals.respawnSeconds+0.5, { level });
+  stepWorld(world, config.revive.bleedOutSeconds+0.5, { level });
   assert.notEqual(level.state,'lost');
   for(const member of level.allies.members){
     assert.equal(member.health.currentHealth,member.health.maxHealth);
@@ -431,7 +431,7 @@ test('Level 2: teammate revive restores full health; an isolated downed player w
   assert.notEqual(level.state, 'lost');
   assert.equal(level.player.isDevSuspended, true, 'downed: lying still');
   assert.ok(
-    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: [A-Za-z]+ is coming to revive you/.test(call.args[0])),
+    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: .+ is coming — checkpoint in/.test(call.args[0])),
     'the rescuer is named'
   );
   stepWorld(world, 15, { level, onFrame: () => !level.player.health.isDead });
@@ -449,7 +449,7 @@ test('Level 2: teammate revive restores full health; an isolated downed player w
   assert.notEqual(level.state, 'lost');
   assert.equal(level.player.health.isDead,true,'still waiting for a teammate');
   assert.ok(
-    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: waiting for a teammate/.test(call.args[0])),
+    world.ui.callsTo('showStatusIndicator').some((call) => /^DOWNED: rescue window — checkpoint in/.test(call.args[0])),
     'nobody in reach: the indicator says so honestly'
   );
   assert.equal(world.ui.callsTo('showMissionResult').length,0);
@@ -629,7 +629,7 @@ test('Level 2 test level: dummies, a respawning alien group including a brute, r
   world.input.press('devSquad');
   stepWorld(world, 0.1, { level });
   level.player.health.takeDamage({ amount: 1000 });
-  stepWorld(world, config.player.vitals.respawnSeconds + 0.5, { level });
+  stepWorld(world, config.revive.bleedOutSeconds + 0.5, { level });
   assert.equal(level.player.health.isDead, false, 'respawned');
   assert.equal(level.player.health.currentHealth, level.player.health.maxHealth);
   assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'no mission failure in the sandbox');

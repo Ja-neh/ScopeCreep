@@ -8,6 +8,8 @@
     "bob": { "name": "Iron Shield", "kind": "shield", "cooldown": 20, "duration": 5, "shield": 100 },
     "mr-overalls": { "name": "Adrenaline", "kind": "heal", "cooldown": 15, "duration": 4, "healPerSecond": 10 }
   },
+  "alienTactics": { "strafeDistance": 4, "strafeSeconds": 1.2, "repositionSeconds": 3.2, "dodgeDistance": 5, "dodgeSeconds": 0.7, "dodgeCooldown": 2.5, "dodgeSpeedMultiplier": 1.4, "meleeDistance": 5, "probeHeight": 1, "maxDrop": 0.55 },
+  "extraFlyingFraction": 0.2,
   "alienPowers": {
     "gorr": { "name": "Shadow Blade", "cooldown": 0.5, "fractionMin": 0.03, "fractionMax": 0.05, "swordFraction": 0.25, "speed": 460, "range": 70, "healOnSlam": 18 },
     "galiant": { "name": "Acid Slime", "cooldown": 2.4, "fractionMin": 0.10, "fractionMax": 0.10, "speed": 35, "range": 55 },
@@ -431,7 +433,7 @@
     }
   },
   "revive": {
-    "bleedOutSeconds": null,
+    "bleedOutSeconds": 30,
     "holdSeconds": 3,
     "healthFraction": 1.0,
     "radius": 2.5,
@@ -484,9 +486,9 @@
         "callOutIntervalSeconds": 40
       },
       "waves": [
-        { "trooper": 20, "brute": 0, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
-        { "trooper": 22, "brute": 2, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
-        { "trooper": 24, "brute": 4, "lanes": ["centre", "west", "east", "farWest", "farEast"] }
+        { "trooper": 8, "brute": 0, "lanes": ["beachWest", "beachCentre", "beachEast"] },
+        { "trooper": 6, "brute": 1, "lanes": ["midWest", "midCentre", "midEast"] },
+        { "trooper": 4, "brute": 1, "lanes": ["flankWest", "flankEast", "pursuit"] }
       ],
       "finalAmbush": {
         "triggerDistance": 45,
@@ -543,7 +545,6 @@
         "brutes": 3,
         "postMinDistance": 6,
         "postMaxDistance": 30,
-        "killsToOpen": 30,
         "sideMaxAlive": 6,
         "reinforceSeconds": 2.5,
         "sideDistance": 10,

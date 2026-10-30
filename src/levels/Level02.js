@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { IslandLevel, CREW_NAMES } from './IslandLevel.js';
 import { LandingZone } from './level02/LandingZone.js';
 import { BeachWreckage } from './level02/BeachWreckage.js';
+import { IslandBattlefield } from './level02/IslandBattlefield.js';
 import { DestructibleCover } from './level02/DestructibleCover.js';
 import { ObjectiveBeacon } from './level02/ObjectiveBeacon.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
@@ -9,21 +10,26 @@ import { IntelTrail } from './level02/IntelTrail.js';
 import { VillageSmoke } from './level02/VillageSmoke.js';
 import { BeachGulls } from './level02/BeachGulls.js';
 import { LandingCinematic } from './level02/LandingCinematic.js';
+import { OperatorIntroAura } from './level02/OperatorIntroAura.js';
 import { VillageGate } from './level02/VillageGate.js';
 import { Level03 } from './Level03.js';
+import { SquadTransport } from './level02/SquadTransport.js';
 import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
 import config from '../config.json';
 
-// Where each attack lane comes out of the jungle (on the way down from the village) and what it
-// pushes to (the beach). Five lanes spread along the treeline, 60-100 m from the beach, so a
-// wave comes at the squad from everywhere at once.
+// The assaults progress from the beach to the middle ground and flanks; the last includes
+// pursuers who spawn near the squad so the player has to keep moving.
 const LANES = {
-  farWest: { name: 'the far west', spawn: { x: -130, z: 100 }, assault: { x: -70, z: 160 } },
-  west: { name: 'the west', spawn: { x: -70, z: 92 }, assault: { x: -35, z: 165 } },
-  centre: { name: 'the jungle path', spawn: { x: 16, z: 88 }, assault: { x: 0, z: 168 } },
-  east: { name: 'the east', spawn: { x: 75, z: 90 }, assault: { x: 35, z: 165 } },
-  farEast: { name: 'the far east', spawn: { x: 130, z: 100 }, assault: { x: 70, z: 160 } }
+  beachWest: { name: 'the west beach', spawn: { x: -125, z: 100 }, assault: { x: -75, z: 162 } },
+  beachCentre: { name: 'the beach landing', spawn: { x: 0, z: 88 }, assault: { x: 0, z: 165 } },
+  beachEast: { name: 'the east beach', spawn: { x: 125, z: 100 }, assault: { x: 75, z: 162 } },
+  midWest: { name: 'the west middle ground', spawn: { x: -145, z: -72 }, assault: { x: -82, z: -28 } },
+  midCentre: { name: 'the middle trail', spawn: { x: 0, z: -118 }, assault: { x: 0, z: -42 } },
+  midEast: { name: 'the east middle ground', spawn: { x: 145, z: -72 }, assault: { x: 82, z: -28 } },
+  flankWest: { name: 'the west flank', spawn: { x: -210, z: -75 }, assault: { x: -115, z: 36 } },
+  flankEast: { name: 'the east flank', spawn: { x: 210, z: -75 }, assault: { x: 115, z: 36 } },
+  pursuit: { name: 'around your position', spawn: { x: 0, z: -100 }, assault: { x: 0, z: -100 } }
 };
 const SPAWN_SPREAD_X = 22;        // Meters of random scatter around a lane's spawn point, across...
 const SPAWN_SPREAD_Z = 10;        // ...and along the island
@@ -225,6 +231,8 @@ export class Level02 extends IslandLevel {
       clearings: [...this.landingZone.clearings, ...this._extraClearings()]
     }));
     this.wreckage.build();
+    this.battlefield = this.trackDisposable(new IslandBattlefield(this.gameWorld, this.environment, [...this.landingZone.clearings, ...this._extraClearings()]));
+    this.battlefield.build();
     // The village gate on the plateau rim: where the path leaves the beach for the village, and
     // where the level's last fight happens (see VillageGate)
     this.gate = this.trackDisposable(new VillageGate(this.gameWorld, this.environment));
@@ -286,6 +294,7 @@ export class Level02 extends IslandLevel {
 
   _updateWorld(delta) {
     this.landingZone.update(delta);
+    if (this.battlefield) this.battlefield.update(delta);
     if (this.destructibleCover) this.destructibleCover.update(delta);
     this._sendCrewAshore();
     this._updateZones();
@@ -494,10 +503,10 @@ export class Level02 extends IslandLevel {
     const ui = this.gameWorld.ui;
     if (!ui) return;
     const wave = this.cfg.waves[this.waves.waveIndex];
-    const lanes = wave.lanes || ['centre'];
+    const lanes = wave.lanes || ['beachCentre'];
     const from = lanes.length >= 4
       ? 'all along the treeline'
-      : `from ${lanes.map((lane) => (LANES[lane] || LANES.centre).name).join(', ')}`;
+      : `from ${lanes.map((lane) => (LANES[lane] || LANES.beachCentre).name).join(', ')}`;
     const count = (wave.trooper || 0) + (wave.brute || 0);
     const brutes = wave.brute ? ` — ${wave.brute} brute${wave.brute > 1 ? 's' : ''} among them` : '';
     const massing = this._shipPressureActive() ? ' They are making for the gangway!' : '';
@@ -777,7 +786,7 @@ export class Level02 extends IslandLevel {
       aimPoint: this._villageLook,
       aimTowards: 0.25,
       onFrame: (t, elapsed) => this._walkIntoVillage(elapsed),
-      onFinished: () => this._onGateEntryFinished()
+      onFinished: () => this._beginTransportDeparture()
     });
     this.gameWorld.addEntity(this.cinematic);
   }
@@ -843,6 +852,51 @@ export class Level02 extends IslandLevel {
     this._gateEntryFade = GATE_ENTRY.fadeSeconds;
   }
 
+  _beginTransportDeparture() {
+    const gate = this.gate.centre;
+    const ground = this.environment.heightAt(gate.x + 18, gate.z - 20);
+    const pad = new THREE.Vector3(gate.x + 18, ground + 3, gate.z - 20);
+    this.transport = this.trackDisposable(new SquadTransport(this.gameWorld.scene, pad));
+    const boarding = pad.clone().add(new THREE.Vector3(0, -2, 6));
+    const start = this.player.position.clone();
+    const crew = this.allies.members.filter(Boolean);
+    const crewStarts = crew.map((mate) => mate.position.clone());
+    this.cinematic = new LandingCinematic(this.gameWorld, {
+      player: this.player,
+      title: 'TO THE VILLAGE',
+      subtitle: 'Squad aboard. The landing craft heads inland.',
+      duration: 9,
+      endOnPlayer: false,
+      flightPath: [pad.clone().add(new THREE.Vector3(16, 9, 22)), pad.clone().add(new THREE.Vector3(-14, 12, 15)), pad.clone().add(new THREE.Vector3(8, 24, -30))],
+      focus: (out) => out.copy(this.transport.mesh.position),
+      onFrame: (t, elapsed) => {
+        const board = THREE.MathUtils.smoothstep(elapsed, 0.5, 3.5);
+        this.player.teleport(
+          THREE.MathUtils.lerp(start.x, boarding.x, board),
+          THREE.MathUtils.lerp(start.y, boarding.y, board),
+          THREE.MathUtils.lerp(start.z, boarding.z, board)
+        );
+        for (let i = 0; i < crew.length; i++) {
+          const from = crewStarts[i];
+          const destination = boarding.clone().add(new THREE.Vector3((i - (crew.length - 1) / 2) * 1.4, 0, 0));
+          const step = THREE.MathUtils.smoothstep(elapsed, 0.8 + i * 0.2, 3.8 + i * 0.2);
+          crew[i].teleport(THREE.MathUtils.lerp(from.x, destination.x, step), THREE.MathUtils.lerp(from.y, destination.y, step), THREE.MathUtils.lerp(from.z, destination.z, step));
+          crew[i].mesh.visible = elapsed < 4.8;
+        }
+        this.player.mesh.visible = elapsed < 4.8;
+        const lift = THREE.MathUtils.smoothstep(elapsed, 4.5, 8.5);
+        this.transport.mesh.position.copy(pad).add(new THREE.Vector3(0, lift * 35, -lift * 75));
+        this.transport.mesh.rotation.x = -lift * 0.14;
+      },
+      onFinished: () => {
+        this.player.mesh.visible = true;
+        for (const mate of crew) mate.mesh.visible = true;
+        this._onGateEntryFinished();
+      }
+    });
+    this.gameWorld.addEntity(this.cinematic);
+  }
+
   /**
    * The stage the beach hands over to: the village at night. Level 3 opens out of the black
    * with its own sweep (the hall, the village, and down to the gate where its squad stands).
@@ -862,13 +916,84 @@ export class Level02 extends IslandLevel {
     this.spawnCrew({ onGangway: true });
     this.landingZone.flyInHelicopters({ onTouchdown: (bay, index) => this._pilotClimbsOut(bay, index) });
 
+    const operators = this.allies.members.filter((member) => member && member.mesh);
+    const squadCenter = new THREE.Vector3();
+    const bounds = new THREE.Box3();
+    for (const operator of operators) {
+      squadCenter.add(operator.position);
+      bounds.expandByPoint(operator.position);
+    }
+    squadCenter.multiplyScalar(1 / Math.max(1, operators.length));
+    squadCenter.y += 1.1;
+    const squadRadius = Math.max(13, bounds.getSize(new THREE.Vector3()).length() * 0.55 + 5);
+    const teamFacing = new THREE.Vector3();
+    for (const operator of operators) {
+      const yaw = operator.yaw ?? operator.mesh.rotation.y;
+      teamFacing.x -= Math.sin(yaw);
+      teamFacing.z -= Math.cos(yaw);
+    }
+    if (teamFacing.lengthSq() < 0.01) teamFacing.set(0, 0, -1);
+    teamFacing.normalize();
+    const teamRevealOrbit = {
+      center: squadCenter,
+      radius: Math.max(30, squadRadius * 1.9),
+      height: 7.5,
+      turns: 0.24,
+      startAngle: Math.atan2(teamFacing.x, teamFacing.z)
+    };
+    const squadReveal = new THREE.Vector3(
+      squadCenter.x + Math.sin(teamRevealOrbit.startAngle) * teamRevealOrbit.radius,
+      squadCenter.y + teamRevealOrbit.height,
+      squadCenter.z + Math.cos(teamRevealOrbit.startAngle) * teamRevealOrbit.radius
+    );
+    const islandOrbit = {
+      center: new THREE.Vector3(0, 22, -140),
+      radius: 420,
+      height: 84,
+      turns: 0.32,
+      seconds: 12.5,
+      startAngle: -1.05
+    };
+    const orbitExitAngle = islandOrbit.startAngle + Math.PI * 2 * islandOrbit.turns;
+    const orbitExit = new THREE.Vector3(
+      islandOrbit.center.x + Math.sin(orbitExitAngle) * islandOrbit.radius,
+      islandOrbit.center.y + islandOrbit.height,
+      islandOrbit.center.z + Math.cos(orbitExitAngle) * islandOrbit.radius
+    );
+    const islandView = new THREE.Vector3(0, 28, -110);
+
+    this.operatorAura = new OperatorIntroAura(operators, 26);
+    this.gameWorld.addEntity(this.operatorAura);
+
     this.cinematic = new LandingCinematic(this.gameWorld, {
       player: this.player,
-      title: 'THE BEACH',
-      subtitle: 'Land the squad and take back the coast',
-      focus: (out) => this.landingZone.helicopterFocus(out),
-      // The camera reaches the player: the intro groove stops and the scene is just surf and wind
-      onFinished: () => this._setMusic('ambient')
+      title: 'SQUAD DEPLOYMENT',
+      subtitle: 'GET READY. THE WAR FOR THE COAST BEGINS.',
+      duration: 25,
+      handover: [0.97, 0.998],
+      endHoldSeconds: 6,
+      endOrbit: teamRevealOrbit,
+      easing: 'inOut',
+      holdSeconds: 1.4,
+      aimTowards: 0.08,
+      operatorOrbit: islandOrbit,
+      flightPath: [
+        orbitExit,
+        new THREE.Vector3(457, 106, -66),
+        new THREE.Vector3(210, 60, 140),
+        squadReveal
+      ],
+      focus: (out) => {
+        const shotProgress = THREE.MathUtils.smoothstep(this.cinematic?.elapsed || 0, 12.2, 16.4);
+        return out.lerpVectors(islandView, squadCenter, shotProgress);
+      },
+      onFinished: () => {
+        if (this.operatorAura) {
+          this.gameWorld.removeEntity(this.operatorAura);
+          this.operatorAura = null;
+        }
+        this._setMusic('ambient');
+      }
     });
     this.gameWorld.addEntity(this.cinematic);
   }
@@ -1067,40 +1192,46 @@ export class Level02 extends IslandLevel {
   // ---------------------------------------------------------------------------
 
   /**
-   * Spawns one alien in `laneName` and sends it at the beach (or at `assaultPoint`; or, while the
-   * player camps aboard during the waves, at the bottom of the gangway).
+   * Spawns one alien in its assigned attack band, or around the squad for a moving pursuit.
    * @param {THREE.Vector3} [assaultPoint] - Where it should push to and hold (default: the lane's beach point)
    * @returns {AlienCombatant|null}
    */
   spawnAlien(type, laneName, assaultPoint = null) {
-    // String lanes are the beach's own five; a lane object is passed in directly (the gate
-    // ambush's posts on the ridges are not on the beach grid)
-    const base = typeof laneName === 'string' ? (LANES[laneName] || LANES.centre) : laneName;
-    // Ambushers hold the point they were sent to (the beacon), not the lane's beach point; while
-    // the player is aboard, wave aliens make for the bottom of the gangway instead
-    const shipMassing = !assaultPoint && this._shipPressureActive();
-    let target = assaultPoint || base.assault;
-    if (shipMassing) target = this._shipAssaultPoint();
-    const lane = { ...base, assault: target };
-    const spot = this._findSpawnSpot(lane.spawn);
+    // Gate ambush posts are lane objects; named lanes route the three assaults across the island.
+    const base = typeof laneName === 'string' ? (LANES[laneName] || LANES.beachCentre) : laneName;
+    const pursuit = laneName === 'pursuit';
+    const shipMassing = !assaultPoint && !pursuit && this._shipPressureActive();
+    const target = assaultPoint || (pursuit ? this.player.position : base.assault);
+    const spot = pursuit ? this._findPursuitSpawnSpot() : this._findSpawnSpot(base.spawn);
     if (!spot) return null;
 
     const alien = this.createAlien(type, spot.x, spot.z);
-
-    // The gangway point carries its own scatter: no beach jitter stacked on top of it
     if (shipMassing) {
-      alien.assault(target);
+      alien.assault(this._shipAssaultPoint());
       return alien;
     }
 
     const assault = new THREE.Vector3(
-      lane.assault.x + (Math.random() - 0.5) * 2 * ASSAULT_JITTER,
+      target.x + (Math.random() - 0.5) * 2 * ASSAULT_JITTER,
       0,
-      lane.assault.z + (Math.random() - 0.5) * ASSAULT_JITTER
+      target.z + (Math.random() - 0.5) * 2 * ASSAULT_JITTER
     );
     assault.y = this.environment.heightAt(assault.x, assault.z);
     alien.assault(assault);
     return alien;
+  }
+
+  /** Spawn pursuers on dry ground around the player, far enough away to approach visibly. */
+  _findPursuitSpawnSpot() {
+    const player = this.player.position;
+    for (let attempt = 0; attempt < 28; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 38 + Math.random() * 24;
+      const x = player.x + Math.cos(angle) * distance;
+      const z = Math.min(player.z + Math.sin(angle) * distance, LEFT_SHIP_Z - 18);
+      if (this.environment.heightAt(x, z) > 0.6 && this.cover.isClearOfSolids(x, z, 1.2)) return { x, z };
+    }
+    return this._findSpawnSpot({ x: player.x, z: Math.min(player.z - 35, LEFT_SHIP_Z - 18) }, 32, 18);
   }
 
   /**
