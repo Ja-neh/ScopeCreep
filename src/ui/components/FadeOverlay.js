@@ -21,15 +21,27 @@ export class FadeOverlay {
 
   /**
    * Fades the screen to black (the CSS transition owns the timing; see ui.css).
+   * @param {boolean} [slow=false] - Whether to use a slower, cinematic transition
    */
-  cover() {
+  cover(slow = false) {
+    if (slow) {
+      this.element.classList.add('ui-fade-slow');
+    } else {
+      this.element.classList.remove('ui-fade-slow');
+    }
     this.element.classList.add('ui-fade-covered');
   }
 
   /**
    * Lifts the black again.
+   * @param {boolean} [slow=false] - Whether to use a slower, cinematic transition
    */
-  reveal() {
+  reveal(slow = false) {
+    if (slow) {
+      this.element.classList.add('ui-fade-slow');
+    } else {
+      this.element.classList.remove('ui-fade-slow');
+    }
     this.element.classList.remove('ui-fade-covered');
   }
 

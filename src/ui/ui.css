@@ -1169,7 +1169,7 @@
   inset: 0;
   pointer-events: none;
   user-select: none;
-  z-index: 8000;
+  z-index: 13000;
   font-family: var(--font-family-ui);
   color: var(--text-main);
 }
@@ -1193,10 +1193,41 @@
   animation: ui-cinematic-fade-in 1.2s ease-out both;
 }
 
+.ui-cinematic.ui-cinematic-thought .ui-cinematic-caption {
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: clamp(14px, 5vh, 40px);
+  text-align: center;
+  box-sizing: border-box;
+  max-width: min(92vw, 680px);
+  width: 92vw;
+  background: rgba(4, 7, 18, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1.5px solid rgba(56, 189, 248, 0.55);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.95), 0 0 24px rgba(14, 165, 233, 0.28);
+  border-radius: 20px;
+  padding: clamp(10px, 2.2vh, 18px) clamp(14px, 3.5vw, 28px);
+  overflow: hidden;
+}
+
 .ui-cinematic-title {
   font-size: 34px;
   font-weight: 800;
   letter-spacing: 6px;
+}
+
+.ui-cinematic.ui-cinematic-thought .ui-cinematic-title {
+  font-size: clamp(16px, 3.8vw, 22px);
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #fbbf24;
+  line-height: 1.35;
+  -webkit-text-stroke: 0.5px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 1), 0 0 16px rgba(251, 191, 36, 0.4);
+  word-wrap: break-word;
 }
 
 .ui-cinematic-subtitle {
@@ -1206,13 +1237,60 @@
   color: var(--color-success);
 }
 
+.ui-cinematic.ui-cinematic-thought .ui-cinematic-subtitle {
+  font-size: clamp(13px, 3.0vw, 18px);
+  font-style: italic;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #38bdf8;
+  margin-top: clamp(4px, 1vh, 8px);
+  line-height: 1.35;
+  -webkit-text-stroke: 0.4px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 1), 0 0 16px rgba(56, 189, 248, 0.4);
+  word-wrap: break-word;
+}
+
 .ui-cinematic-hint {
   position: absolute;
   right: 4vw;
   bottom: 4vh;
   font-family: var(--font-family-mono);
-  font-size: 13px;
-  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  color: #cbd5e1;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* Compact screens & mobile landscape */
+@media (max-height: 520px) {
+  .ui-cinematic-bar {
+    height: 6vh;
+  }
+  .ui-cinematic.ui-cinematic-thought .ui-cinematic-caption {
+    bottom: 6px;
+    padding: 6px 14px;
+    border-radius: 12px;
+  }
+  .ui-cinematic.ui-cinematic-thought .ui-cinematic-title {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+  .ui-cinematic.ui-cinematic-thought .ui-cinematic-subtitle {
+    font-size: 12px;
+    margin-top: 3px;
+    line-height: 1.25;
+  }
+  .ui-cinematic-hint {
+    top: 6px;
+    bottom: auto;
+    right: 10px;
+    font-size: 10px;
+    padding: 3px 6px;
+  }
 }
 
 @keyframes ui-cinematic-fade-in {
@@ -1351,6 +1429,10 @@
   pointer-events: none;
   transition: opacity 0.9s ease;
   z-index: 12000;
+}
+
+.ui-fade.ui-fade-slow {
+  transition: opacity 5.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .ui-fade.ui-fade-covered {

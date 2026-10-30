@@ -68,6 +68,13 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.floor2Meshes = [];
     this._lastFloorState = -1;
 
+    // Awakening Intro Cutscene state
+    this.isIntroPlaying = false;
+    this.introElapsed = 0;
+    this.introStage = 0;
+    this.introCamera = null;
+    this.introCameraPos = new THREE.Vector3(18.0, 0.72, -52.0); // Inside Sleeping-Capsule.002
+
     // Spawn points extracted from model empties
     this.spawnPlayer = new THREE.Vector3(19, 1, -49);
     this.checkpoint1 = new THREE.Vector3(1, 1, 41);
@@ -289,6 +296,9 @@ export class Level01InsideSpaceship extends BaseLevel {
     suitLight.position.set(0, 1.35, 0.2);
     this.player.mesh.add(suitLight);
 
+    // 8. Awakening Intro Sequence
+    this._startIntroCutscene();
+
     console.log(`${this.name} initialized with ${doorSpawnNodes.length} doors, ${lightFixtureNodes.length} corridor fixtures, and red staircase lighting.`);
   }
 
@@ -413,6 +423,12 @@ export class Level01InsideSpaceship extends BaseLevel {
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     super.gameplayUpdate(delta, gameWorld);
 
+    // Awakening Intro cutscene progression
+    if (this.isIntroPlaying) {
+      this._updateIntroCutscene(delta);
+      return;
+    }
+
     // Performance Optimization A & D: Dynamic Light Culling & Floor Occlusion Culling
     if (this.player && this.player.position) {
       const px = this.player.position.x;
@@ -477,7 +493,195 @@ export class Level01InsideSpaceship extends BaseLevel {
     ];
   }
 
+  /**
+   * Initializes the awakening intro sequence inside Sleeping-Capsule.002.
+   * Starts with black screen with the speech/thought bubble visible immediately.
+   */
+  _startIntroCutscene() {
+    this.isIntroPlaying = true;
+    this.introElapsed = 0;
+    this.introStage = 0;
+
+    // Silence background music during the awakening cutscene
+    if (this.gameWorld && this.gameWorld.music) {
+      this.gameWorld.music.setState('silent');
+    }
+
+    // Create perspective camera inside sleeping capsule
+    if (!this.introCamera) {
+      this.introCamera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 500);
+      this.introCamera.name = 'IntroPodCamera';
+      this.gameWorld.environmentGroup.add(this.introCamera);
+      this.trackDisposable(this.introCamera);
+    }
+
+    // Place camera inside Sleeping-Capsule.002 looking up at the ceiling
+    this.introCamera.position.copy(this.introCameraPos);
+    // Looking directly upward through the capsule canopy towards ceiling fixtures
+    this.introCamera.rotation.set(Math.PI * 0.44, 0, 0);
+
+    // Freeze player avatar and inputs
+    if (this.player) {
+      this.player.setFrozen(true);
+    }
+
+    // Hand camera rendering to the pod camera
+    this.gameWorld.setActiveCamera(this.introCamera);
+
+    // Initial stage: screen is completely black with speech/thought bubble starting immediately
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showFade(false); // Screen covered in black
+      this.gameWorld.ui.showCinematic(
+        'Awww... where am I?',
+        'Why does my head hurt this much...?',
+        '[Space] Skip',
+        true
+      );
+    }
+  }
+
+  /**
+   * Advances the awakening dialogue and camera fade stages:
+   * - Starts in black with thought bubble
+   * - In the middle: ultra-slow fade (5.5s) from black to white (capsule ceiling)
+   * - After dialogue: everything turns completely black (text bubble disappears)
+   * - Player spawns while still in the dark and gains control
+   * - Screen fades back in with player already moving/in control
+   */
+  _updateIntroCutscene(delta) {
+    if (!this.isIntroPlaying) return;
+
+    // Allow skipping the cutscene immediately with Space / Enter
+    if (this.gameWorld.input && this.gameWorld.input.isActionJustPressed('skipCutscene')) {
+      this._endIntroCutscene();
+      return;
+    }
+
+    this.introElapsed += delta;
+
+    // Stage 0 -> 1 (t = 8.5s): Somewhere in the middle, ultra-slow fade to white/visibility begins
+    if (this.introElapsed >= 8.5 && this.introStage === 0) {
+      this.introStage = 1;
+      if (this.gameWorld.ui) {
+        this.gameWorld.ui.hideFade(true); // Ultra-slow 5.5s fade reveals the bright room overhead
+        this.gameWorld.ui.showCinematic(
+          'Did I party hard or what...?',
+          'Need... to take a dump.',
+          '[Space] Skip',
+          true
+        );
+      }
+    }
+    // Stage 1 -> 2 (t = 17.0s): Third thought looking up at the bright ceiling
+    else if (this.introElapsed >= 17.0 && this.introStage === 1) {
+      this.introStage = 2;
+      if (this.gameWorld.ui) {
+        this.gameWorld.ui.showCinematic(
+          'What a horrible way to feel first thing in the morning...',
+          '',
+          '[Space] Skip',
+          true
+        );
+      }
+    }
+    // Stage 2 -> 3 (t = 25.5s): Fourth thought
+    else if (this.introElapsed >= 25.5 && this.introStage === 2) {
+      this.introStage = 3;
+      if (this.gameWorld.ui) {
+        this.gameWorld.ui.showCinematic(
+          '...Why is this room so bright?',
+          "Wait... this isn't my room.",
+          '[Space] Skip',
+          true
+        );
+      }
+    }
+    // Stage 3 -> 4 (t = 34.0s): Dialogue finished -> EVERYTHING turns completely black
+    else if (this.introElapsed >= 34.0 && this.introStage === 3) {
+      this.introStage = 4;
+      if (this.gameWorld.ui) {
+        this.gameWorld.ui.hideCinematic(); // Thought bubble hides
+        this.gameWorld.ui.showFade(false); // Everything turns solid black
+      }
+    }
+    // Stage 4 -> 5 (t = 35.5s): While still pitch black, player has spawned and controls are handed over
+    else if (this.introElapsed >= 35.5 && this.introStage === 4) {
+      this.introStage = 5;
+
+      // Teleport player to initial spawn point in holding bay
+      if (this.player) {
+        this.player.teleport(this.spawnPlayer.x, this.spawnPlayer.y, this.spawnPlayer.z);
+        this.player.yaw = -Math.PI / 2;
+        this.player.pitch = -0.15;
+        this.player.setFrozen(false); // Player can now move and control immediately
+      }
+
+      // Hand view back to player spring-arm camera
+      if (this.gameWorld) {
+        if (this.gameWorld.activeCamera === this.introCamera) {
+          this.gameWorld.setActiveCamera(null);
+        }
+
+        // Lift screen fade so room reveals player already standing in control
+        if (this.gameWorld.ui) {
+          this.gameWorld.ui.hideFade(false);
+          this.gameWorld.ui.showToast('Find a way out of the Stasis Holding Bay.', 'info', 4000);
+        }
+
+        // Resume ambient level score
+        if (this.gameWorld.music) {
+          this.gameWorld.music.setState('ambient');
+        }
+      }
+    }
+    // Stage 5 -> End (t = 37.0s): Cutscene sequence complete
+    else if (this.introElapsed >= 37.0 && this.introStage === 5) {
+      this.isIntroPlaying = false;
+    }
+  }
+
+  /**
+   * Concludes the intro cutscene: unfreezes player at SPAWN-Player, fades back in,
+   * restores gameplay camera, resumes ambient music and displays the opening objective toast.
+   */
+  _endIntroCutscene() {
+    if (!this.isIntroPlaying) return;
+    this.isIntroPlaying = false;
+
+    // Teleport player to initial spawn point facing cell exit (west)
+    if (this.player) {
+      this.player.teleport(this.spawnPlayer.x, this.spawnPlayer.y, this.spawnPlayer.z);
+      this.player.yaw = -Math.PI / 2;
+      this.player.pitch = -0.15;
+      this.player.setFrozen(false);
+    }
+
+    // Switch active camera back to player spring-arm camera
+    if (this.gameWorld) {
+      if (this.gameWorld.activeCamera === this.introCamera) {
+        this.gameWorld.setActiveCamera(null);
+      }
+
+      if (this.gameWorld.ui) {
+        this.gameWorld.ui.hideCinematic();
+        this.gameWorld.ui.hideFade(false);
+        this.gameWorld.ui.showToast('Find a way out of the Stasis Holding Bay.', 'info', 4000);
+      }
+
+      // Resume ambient score for level exploration
+      if (this.gameWorld.music) {
+        this.gameWorld.music.setState('ambient');
+      }
+    }
+  }
+
   dispose() {
+    this._endIntroCutscene();
+
+    if (this.introCamera && this.gameWorld?.environmentGroup) {
+      this.gameWorld.environmentGroup.remove(this.introCamera);
+      this.introCamera = null;
+    }
     console.log(`Disposing ${this.name}...`);
 
     if (this.levelRigidBody && this.gameWorld.physics) {

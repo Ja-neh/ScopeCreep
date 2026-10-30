@@ -80,6 +80,7 @@ export class Player extends BaseEntity {
     this.isPlayer = true;
     this.isMounted = false; // True when operating a gun turret / vehicle
     this.isDevSuspended = false; // True when dev aerial camera is active
+    this.isFrozen = false; // True when inside cutscenes / scripted sequences
 
     // Look angles (radians)
     this.yaw = 0;       // 0 = facing towards -Z
@@ -128,9 +129,9 @@ export class Player extends BaseEntity {
     // 4. Moving Platform Tracker (Contact-based)
     this.platformTracker = new PlatformTracker(this.gameWorld);
 
-    // Request pointer lock on canvas pointerdown/click (unless in dev aerial camera, paused, or no level)
+    // Request pointer lock on canvas pointerdown/click (unless in dev aerial camera, paused, frozen, or no level)
     this._onPointerDown = () => {
-      if (this.isDevSuspended || (this.gameWorld && (this.gameWorld.isPaused || !this.gameWorld.currentLevel))) return;
+      if (this.isDevSuspended || this.isFrozen || (this.gameWorld && (this.gameWorld.isPaused || !this.gameWorld.currentLevel))) return;
       if (!this.input.isPointerLocked) {
         this.input.requestPointerLock(this.gameWorld.canvas);
       }
@@ -223,6 +224,23 @@ export class Player extends BaseEntity {
   }
 
   /**
+   * Sets frozen state during cutscenes/dialogues (hides avatar, suspends movement & mouse look)
+   */
+  setFrozen(frozen) {
+    this.isFrozen = !!frozen;
+    if (this.model) {
+      this.model.setVisible(!frozen);
+    }
+    if (frozen) {
+      this.velocity.set(0, 0, 0);
+      this.verticalVelocity = 0;
+      if (this.input && this.input.isPointerLocked) {
+        this.input.exitPointerLock();
+      }
+    }
+  }
+
+  /**
    * 0 standing to 1 fully crouched, eased (for posing held items).
    */
   get crouchAmount() {
@@ -271,8 +289,8 @@ export class Player extends BaseEntity {
    * displacement inheritance, and Rapier collision sweeps against current platform transforms.
    */
   postPhysicsUpdate(delta) {
-    // Suspend character update when operating a gun turret or when aerial dev camera is active
-    if (this.isMounted || this.isDevSuspended) {
+    // Suspend character update when operating a gun turret, frozen in cutscene, or when aerial dev camera is active
+    if (this.isMounted || this.isDevSuspended || this.isFrozen) {
       return;
     }
 
@@ -423,7 +441,7 @@ export class Player extends BaseEntity {
    * after all character movements and external forces are fully settled.
    */
   lateUpdate(delta) {
-    if (this.isMounted || this.isDevSuspended) return;
+    if (this.isMounted || this.isDevSuspended || this.isFrozen) return;
 
     if (this.canCrouch) {
       this._updateCrouchPose(delta);

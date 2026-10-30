@@ -322,10 +322,11 @@ export class UIManager {
    * @param {string} title
    * @param {string} [subtitle]
    * @param {string} [hint] - e.g. '[Space] Skip'
+   * @param {boolean} [isThought=false] - Whether styled as centered inner thoughts
    */
-  showCinematic(title, subtitle = '', hint = '') {
+  showCinematic(title, subtitle = '', hint = '', isThought = false) {
     if (this.cinematic) {
-      this.cinematic.show(title, subtitle, hint);
+      this.cinematic.show(title, subtitle, hint, isThought);
       this.container.classList.add('ui-cinematic-active');
     }
   }
@@ -347,16 +348,18 @@ export class UIManager {
   /**
    * Fades the screen to black (level handovers: Level 2's walk through the gate, and every
    * GameWorld.loadLevel swap, which stays covered until the new stage is built).
+   * @param {boolean} [slow=false]
    */
-  showFade() {
-    if (this.fade) this.fade.cover();
+  showFade(slow = false) {
+    if (this.fade) this.fade.cover(slow);
   }
 
   /**
    * Lifts the black curtain again
+   * @param {boolean} [slow=false]
    */
-  hideFade() {
-    if (this.fade) this.fade.reveal();
+  hideFade(slow = false) {
+    if (this.fade) this.fade.reveal(slow);
   }
 
   // =========================================================================
