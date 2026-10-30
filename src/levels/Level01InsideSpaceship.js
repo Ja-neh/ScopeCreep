@@ -54,6 +54,16 @@ async function loadSpaceshipGLTF() {
  * - Compound cuboid and trimesh physics colliders for walls, floors, roofs, stairs, and furniture
  */
 export class Level01InsideSpaceship extends BaseLevel {
+  get controls() {
+    return [
+      { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Walk / Move' },
+      { actions: ['sprint'], label: 'Sprint / Jog' },
+      { actions: ['firePrimary'], label: 'Shoot pistol' },
+      { actions: ['toggleCamera'], label: 'First / Third person' },
+      { actions: ['pause'], label: 'Options / Menu' }
+    ];
+  }
+
   constructor(gameWorld) {
     super(gameWorld, 'Level 1: Inside the Spaceship');
 
@@ -278,11 +288,19 @@ export class Level01InsideSpaceship extends BaseLevel {
       await this._spawnDoorFromEmpty(spawnNode);
     }
 
-    // 7. Spawn Player inside the Stasis Holding Cell
+    // 7. Spawn Player inside the Stasis Holding Cell as Mr. Overalls (scaled 1.5x, no jumping)
     this.player = new Player(this.gameWorld, {
-      walkSpeed: 8.5,
-      sprintSpeed: 14.0,
-      jumpForce: 10.5
+      characterId: 'mr-overalls',
+      scale: 1.5,
+      walkSpeed: 7.5,
+      sprintSpeed: 12.5,
+      canJump: false,
+      maxHealth: 100,
+      capsuleRadius: 0.55,
+      capsuleHalfHeight: 0.75,
+      eyeHeight: 2.2,
+      thirdPersonTargetHeight: 2.1,
+      thirdPersonDistance: 4.2
     });
 
     this.player.setPosition(this.spawnPlayer.x, this.spawnPlayer.y, this.spawnPlayer.z);
