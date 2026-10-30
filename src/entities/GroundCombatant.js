@@ -48,6 +48,9 @@ export class GroundCombatant extends BaseEntity {
 
     this.position = position.clone();
     this.velocity = new THREE.Vector3();
+    this.actualVelocity = new THREE.Vector3();
+    // Friendly capsules are handled by horizontal separation, never by autostep.
+    this._movementFilter = collider => faction !== 'humans' || collider.userData?.entity?.faction !== 'humans';
     this.verticalVelocity = 0;
     this.gravity = config.player.locomotion.gravity;
     this.yaw = 0;
@@ -138,6 +141,7 @@ export class GroundCombatant extends BaseEntity {
     this.position.set(x, y, z);
     if (this.rigidBody) this.rigidBody.setTranslation({ x, y: y + this.capsuleCenter, z }, true);
     this.velocity.set(0, 0, 0);
+    this.actualVelocity.set(0, 0, 0);
     this.verticalVelocity = 0;
     this.hasMoveTarget = false;
     if (this.mesh) this.mesh.position.copy(this.position);
@@ -277,8 +281,9 @@ export class GroundCombatant extends BaseEntity {
       x: this.velocity.x * delta,
       y: this.verticalVelocity * delta,
       z: this.velocity.z * delta
-    });
+    }, undefined, undefined, this._movementFilter);
     const moved = this.characterController.computedMovement();
+    this.actualVelocity.set(moved.x / delta, 0, moved.z / delta);
     this.isGrounded = this.characterController.computedGrounded();
 
     const next = { x: current.x + moved.x, y: current.y + moved.y, z: current.z + moved.z };
@@ -302,6 +307,17 @@ export class GroundCombatant extends BaseEntity {
     this._steer.set(this.moveTarget.x - this.position.x, 0, this.moveTarget.z - this.position.z).normalize();
     this._pickClearDirection(this._steer);
     this._desired.copy(this._steer).multiplyScalar(this.moveSpeed);
+    if (this.faction === 'humans' && this.squad) {
+      for (const other of this.squad.members) {
+        if (other === this || other.health?.isDead) continue;
+        const dx=this.position.x-other.position.x, dz=this.position.z-other.position.z;
+        const distance=Math.hypot(dx,dz), radius=this.capsule.radius+(other.capsule?.radius || 0.45)+0.2;
+        if (distance>0.001 && distance<radius) {
+          const push=(radius-distance)/radius*this.moveSpeed;
+          this._desired.x+=dx/distance*push;this._desired.z+=dz/distance*push;
+        }
+      }
+    }
   }
 
   _updateVerticalVelocity(delta) {
@@ -395,7 +411,7 @@ export class GroundCombatant extends BaseEntity {
     if (this.isDead) {
       this.model.setFallen(Math.min(1, this.deathTime / 0.5));
     } else {
-      this.model.animate(delta, Math.hypot(this.velocity.x, this.velocity.z), this.isAiming, this.attackPose);
+      this.model.animate(delta, Math.hypot(this.actualVelocity.x, this.actualVelocity.z), this.isAiming, this.attackPose);
     }
   }
 

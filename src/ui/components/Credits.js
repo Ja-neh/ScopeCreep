@@ -16,9 +16,12 @@ export class Credits {
     this.element.innerHTML = `
       <div class="ui-credits-roll" data-role="roll"></div>
       <div class="ui-credits-hint" data-role="hint"></div>
+      <button type="button" class="ui-credits-back ui-hidden" data-role="back">Back to menu</button>
     `;
     this.rollEl = this.element.querySelector('[data-role="roll"]');
     this.hintEl = this.element.querySelector('[data-role="hint"]');
+    this.backEl = this.element.querySelector('[data-role="back"]');
+    this.backEl.addEventListener('click', () => this.onClose?.());
 
     this.parent.appendChild(this.element);
   }
@@ -28,7 +31,10 @@ export class Credits {
    * @param {number} seconds - How long the roll takes
    * @param {string} [hint] - e.g. '[Space] Skip'
    */
-  show(sections, seconds, hint = '') {
+  show(sections, seconds, hint = '', onClose = null) {
+    this.onClose = onClose;
+    this.element.classList.toggle('ui-credits-browse', !!onClose);
+    this.backEl.classList.toggle('ui-hidden', !onClose);
     this.rollEl.replaceChildren();
     for (const section of sections) {
       const block = document.createElement('div');
@@ -40,9 +46,16 @@ export class Credits {
         block.appendChild(heading);
       }
       for (const line of section.lines) {
-        const row = document.createElement('div');
+        const linked = typeof line === 'object' && line !== null && typeof line.url === 'string';
+        const row = document.createElement(linked ? 'a' : 'div');
         row.className = 'ui-credits-line';
-        row.textContent = line;
+        row.textContent = linked ? line.text : line;
+        if (linked) {
+          row.href = line.url;
+          row.target = '_blank';
+          row.rel = 'noopener noreferrer';
+          row.setAttribute('aria-label', `${line.text} (opens in a new tab)`);
+        }
         block.appendChild(row);
       }
       this.rollEl.appendChild(block);
@@ -52,13 +65,16 @@ export class Credits {
     // Restart the roll from the bottom
     this.rollEl.classList.remove('rolling');
     void this.rollEl.offsetWidth;
-    this.rollEl.classList.add('rolling');
+    if (!onClose) this.rollEl.classList.add('rolling');
     this.element.classList.remove('ui-hidden');
   }
 
   hide() {
     this.element.classList.add('ui-hidden');
     this.rollEl.classList.remove('rolling');
+    this.element.classList.remove('ui-credits-browse');
+    this.backEl.classList.add('ui-hidden');
+    this.onClose = null;
   }
 
   dispose() {

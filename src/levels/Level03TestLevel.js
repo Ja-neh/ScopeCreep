@@ -6,7 +6,7 @@ import { SandboxTools } from './SandboxTools.js';
 const ALIEN_SPOTS = [
   { x: 2, z: -214, type: 'trooper' },
   { x: -26, z: -220, type: 'trooper' },
-  { x: 26, z: -220, type: 'trooper' },
+  { x: 26, z: -220, type: 'sniper' },
   { x: 0, z: -262, type: 'brute' }
 ];
 const ALIEN_RESPAWN_SECONDS = 5; // After the last one dies, a fresh group arrives
@@ -55,13 +55,19 @@ export class Level03TestLevel extends Level03 {
 
   _spawnAliens() {
     for (const spot of ALIEN_SPOTS) this.createAlien(spot.type, spot.x, spot.z);
+    const spot=ALIEN_SPOTS[0];
+    const flyer=this.createAlien('sniper',spot.x+2,spot.z);
+    flyer.isExtraFlyer=true;flyer.assault(this.player.position);
   }
 
   _updateScenario(delta) {
     this.tools.update(delta);
     if (this.gameWorld.input.isActionJustPressed('devBoss')) this.fightWarden();
     if (this.arena) this.arena.update(delta);
-    if (this.state === 'guards') this._updateHallWave(delta); // Wave 2, after shutting the generators down by hand
+    if (this.state === 'hall') {
+      this._updateHallWave(delta);
+      if (this.village.hall.contains(this.player.position.x,this.player.position.z)) this.startBossFight();
+    }
 
     // A fresh group once all aliens are down
     if (this.squad.aliveCount === 0) {

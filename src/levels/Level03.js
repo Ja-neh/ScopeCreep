@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SquadTransport } from './level02/SquadTransport.js';
 import { IslandLevel, CREW_NAMES } from './IslandLevel.js';
 import { Village } from './level03/Village.js';
 import { BossArena } from './level03/BossArena.js';
@@ -29,7 +30,7 @@ const PICKUP_SEED = 77;        // Shield pickups lie in the same places every ti
 const PICKUP_SPACING = 40;     // ...at least this far apart
 const PICKUP_START_CLEAR = 30; // ...and not right at the start
 const ENDING_SECONDS = 12;
-const CREDITS_SECONDS = 24;
+const CREDITS_SECONDS = 50;
 const CREDITS_SKIP_AFTER = 0.5; // The key that skipped the ending must not skip the credits too
 
 /**
@@ -44,9 +45,8 @@ const CREDITS_SKIP_AFTER = 0.5; // The key that skipped the ending must not skip
  *   the landed ships) feed the force field over the hall (ForceFieldDome); each has guards, and
  *   while it runs and the player is near, more aliens keep coming to defend it. Hold [E] to shut
  *   each one down.
- * - 'guards' (wave 2): the dome falls, but the hall's door is sealed (ForceFieldWall) and its
- *   guards take up posts round it, while more keep appearing beside the hall on both sides.
- *   Kill `hallWave.killsToOpen` of them and the seal breaks (and no more come).
+ * - 'hall' (wave 2): the dome falls and the doorway stays open. Guards and reinforcements
+ *   defend the outside, but entry never depends on a kill quota.
  * - 'hall' -> 'boss': into the hall, where the Warden wakes (BossArena).
  * - 'victory' -> 'hostages': with the Warden down every alien falls, and the islanders' cages
  *   (HostageCage) along the hall walls unlock: hold [E] at each to free them.
@@ -381,21 +381,38 @@ export class Level03 extends IslandLevel {
     const village = this.environment.village;
     const middle = new THREE.Vector3(village.x, village.height, village.z + 60);
     const gatePoint = new THREE.Vector3(gate.x, this.environment.heightAt(gate.x, gate.z) + 2, gate.z);
+    const spawn = this.village.spawnPoints.start;
+    const touchdown = new THREE.Vector3(spawn.x + 15, spawn.y + 3, spawn.z + 8);
+    this.transport = this.trackDisposable(new SquadTransport(this.gameWorld.scene, touchdown.clone().add(new THREE.Vector3(0, 48, 95))));
+    const crew = this.allies.members.filter(Boolean);
+    const crewDestinations = crew.map((mate) => mate.position.clone());
+    this.player.mesh.visible = false;
+    for (const mate of crew) mate.mesh.visible = false;
+    let disembarked = false;
+    const disembark = () => {
+      if (disembarked) return;
+      disembarked = true;
+      this.player.mesh.visible = true;
+      for (const mate of crew) mate.mesh.visible = true;
+    };
     const turn = (t) => t * t * (3 - 2 * t);
     const stage = (t, from, to) => turn(Math.min(1, Math.max(0, (t - from) / (to - from))));
     const focus = (out) => {
       const t = (this.cinematic ? this.cinematic.elapsed : 0) / OPENING_SECONDS;
+      if (t < 0.28) return out.copy(this.transport.mesh.position);
       out.lerpVectors(wardenChest, middle, stage(t, 0.32, 0.55));
       return out.lerp(gatePoint, stage(t, 0.68, 0.88));
     };
     this.cinematic = new LandingCinematic(this.gameWorld, {
       player: this.player,
-      title: 'THE VILLAGE',
-      subtitle: 'The Warden holds our people in the hall. Bring down its force field and free them.',
+      title: 'LANDING AT THE VILLAGE',
+      subtitle: 'The squad disembarks. Bring down the Warden’s force field and free our people.',
       duration: OPENING_SECONDS,
       easing: 'inOut',
       holdSeconds: OPENING_HOLD,
       flightPath: [
+        touchdown.clone().add(new THREE.Vector3(35, 25, 45)),
+        touchdown.clone().add(new THREE.Vector3(-16, 12, 18)),
         new THREE.Vector3(hall.doorway.x - f.x * 3, hall.doorway.y + 3.2, hall.doorway.z - f.z * 3),
         new THREE.Vector3(hall.doorway.x + f.x * 8, hall.doorway.y + 8, hall.doorway.z + f.z * 8),
         new THREE.Vector3(hall.centre.x + 40 + f.x * 70, hall.centre.y + 200, hall.centre.z + f.z * 70),
@@ -405,8 +422,23 @@ export class Level03 extends IslandLevel {
       defaultFocus: wardenChest,
       aimTowards: 0,
       focus,
+      onFrame: (t) => {
+        const landing = THREE.MathUtils.smoothstep(t, 0, 0.22);
+        this.transport.mesh.position.copy(touchdown).add(new THREE.Vector3(0, (1 - landing) * 48, (1 - landing) * 95));
+        if (t >= 0.22) disembark();
+        if (t >= 0.22 && t <= 0.4) {
+          const walk = THREE.MathUtils.smoothstep(t, 0.22, 0.4);
+          for (let i = 0; i < crew.length; i++) {
+            const destination = crewDestinations[i];
+            const ramp = touchdown.clone().add(new THREE.Vector3((i - 2) * 1.3, -2.4, 5));
+            crew[i].teleport(THREE.MathUtils.lerp(ramp.x, destination.x, walk), THREE.MathUtils.lerp(ramp.y, destination.y, walk), THREE.MathUtils.lerp(ramp.z, destination.z, walk));
+          }
+        }
+      },
       // The camera reaches the player: the intro groove stops and the scene is just surf and wind
       onFinished: () => {
+        disembark();
+        this.transport.mesh.visible = false;
         const music = this.gameWorld.music;
         if (music) music.setState('ambient');
       }
@@ -430,7 +462,9 @@ export class Level03 extends IslandLevel {
    * once they are in the village. None of them ever run out until the generators are down.
    */
   setUpDefenses() {
-    const cap = () => this._respiteTimer <= 0 && this.squad.aliveCount < this.cfg.maxAliveAliens;
+    this._flyingSpawnCredit=0;
+    for(const [type,x] of [['brute',-16],['trooper',0],['sniper',16]]) this._addFlyingReinforcement(this.createAlien(type,x,-220));
+    const cap = () => this._respiteTimer <= 0 && this._baseAlienCount() < this.cfg.maxAliveAliens;
     const generatorCfg = this.cfg.generatorDefense;
     this.generatorDefenses = this.generators.map((generator) => {
       const defense = new AlienSpawner(this, {
@@ -448,7 +482,8 @@ export class Level03 extends IslandLevel {
         const angle = (i / generatorCfg.guards) * Math.PI * 2 + 0.6;
         const x = generator.position.x + Math.cos(angle) * GUARD_DISTANCE;
         const z = generator.position.z + Math.sin(angle) * GUARD_DISTANCE;
-        defense.adopt(this.createAlien('trooper', x, z));
+        const guard=this.createAlien('trooper', x, z);
+        defense.adopt(guard);this._addFlyingReinforcement(guard);
       }
       return defense;
     });
@@ -466,6 +501,21 @@ export class Level03 extends IslandLevel {
       isActive: () => !this.player.health.isDead && this.environment.isInVillage(this.player.position.x, this.player.position.z),
       canSpawn: cap
     });
+  }
+
+  _baseAlienCount() {
+    return this.squad.members.filter(alien=>!alien.isDead && !alien.isExtraFlyer).length;
+  }
+
+  /** Add one winged attacker per five existing arrivals, without replacing them. */
+  _addFlyingReinforcement(base) {
+    this._flyingSpawnCredit=(this._flyingSpawnCredit || 0)+config.extraFlyingFraction;
+    if(this._flyingSpawnCredit < 1-1e-9)return;
+    this._flyingSpawnCredit-=1;
+    const limit=Math.ceil(this.cfg.maxAliveAliens*config.extraFlyingFraction);
+    if(this.squad.members.filter(a=>!a.isDead && a.isExtraFlyer).length>=limit)return;
+    const flyer=this.createAlien('sniper',base.position.x+2,base.position.z);
+    flyer.isExtraFlyer=true;flyer.assault(this.player.position);
   }
 
   _playerWithin(point, distance) {
@@ -497,6 +547,7 @@ export class Level03 extends IslandLevel {
         this._updateHallWave(delta);
         break;
       case 'hall': {
+        this._updateHallWave(delta);
         const distance = Math.hypot(p.x - hall.doorway.x, p.z - hall.doorway.z);
         this._showObjective('THE HALL', `The way in is open. Get inside the hall — ${Math.round(distance)} m`);
         if (hall.contains(p.x, p.z)) this.startBossFight();
@@ -556,7 +607,7 @@ export class Level03 extends IslandLevel {
     }
     this.dome.collapse();
     this._startHallWave();
-    if (ui) ui.showToast('WAVE 2! The force field is down, but the hall is sealed and its guards are coming out!', 'danger', 4500);
+    if (ui) ui.showToast('WAVE 2! The dome is down. The hall entrance is open — enter whenever you are ready.', 'info', 4500);
   }
 
   /**
@@ -570,19 +621,16 @@ export class Level03 extends IslandLevel {
   }
 
   /**
-   * Wave 2: the hall's door is sealed, and its guards take up posts round the door and the
-   * square. The aliens still about fall back to guard it too; fresh ones (the brutes first) make
-   * up the starting guard. From then on more keep appearing beside the hall, on both sides, until
-   * enough have been killed to break the seal.
+   * Wave 2 defends the square while leaving the doorway open throughout.
    */
   _startHallWave() {
-    this.state = 'guards';
-    this.doorSeal.raise();
+    this.state = 'hall';
+    this.doorSeal.collapse({ instant: true });
     this._waveStartKills = this.squad.killCount;
     const wave = this.cfg.hallWave;
     const hall = this.village.hall;
     const across = new THREE.Vector3(hall.forward.z, 0, -hall.forward.x);
-    const cap = () => this._respiteTimer <= 0 && this.squad.aliveCount < this.cfg.maxAliveAliens;
+    const cap = () => this._respiteTimer <= 0 && this._baseAlienCount() < this.cfg.maxAliveAliens;
     this.hallSpawners = [-1, 1].map((side) => {
       const centre = hall.centre.clone().addScaledVector(across, side * (hall.width / 2 + wave.sideDistance));
       return new AlienSpawner(this, {
@@ -605,7 +653,10 @@ export class Level03 extends IslandLevel {
     const fresh = Math.max(0, wave.troopers + wave.brutes - this.hallGuards.length);
     for (let i = 0; i < fresh; i++) {
       const post = this._hallGuardPost();
-      if (post) this.hallGuards.push(this.createAlien(i < wave.brutes ? 'brute' : 'trooper', post.x, post.z));
+      if (post) {
+        const guard=this.createAlien(i < wave.brutes ? 'brute' : 'trooper', post.x, post.z);
+        this.hallGuards.push(guard);this._addFlyingReinforcement(guard);
+      }
     }
     this._updateHallWave();
   }
@@ -631,27 +682,24 @@ export class Level03 extends IslandLevel {
   }
 
   /**
-   * More aliens beside the hall; the seal on the door breaks once `killsToOpen` have been killed
-   * since wave 2 began (and then no more come).
+   * Reinforce the outside until the squad enters the boss hall.
    */
   _updateHallWave(delta = 0) {
     for (const spawner of this.hallSpawners) spawner.update(delta);
-    const target = this.cfg.hallWave.killsToOpen;
-    const kills = Math.min(target, this.hallWaveKills);
-    this._showObjective('WAVE 2', `The hall is sealed and its guards keep coming. Kill them to break the seal — ${kills}/${target}`);
-    if (kills < target) return;
-    for (const spawner of this.hallSpawners) spawner.stop();
-    this.doorSeal.collapse();
-    this.state = 'hall';
-    if (this.gameWorld.ui) this.gameWorld.ui.showToast('The seal on the hall door is breaking. The Warden is waiting inside.', 'success', 4000);
   }
 
   /** The Warden wakes: the fight in the hall begins. */
   startBossFight() {
+    for (const spawner of this.hallSpawners) spawner.stop();
     this.state = 'boss';
     if (!this.arena) this.arena = this.trackDisposable(new BossArena(this, this.village.hall, { onDefeated: () => this._onWardenDefeated() }));
     this.arena.start();
     this._showBossObjective();
+  }
+
+  _recoverAtCheckpoint(member) {
+    super._recoverAtCheckpoint(member);
+    if (member===this.player) this.confuseAliens(member.position);
   }
 
   _showBossObjective() {

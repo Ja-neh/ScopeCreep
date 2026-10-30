@@ -1,0 +1,10 @@
+coastal-pine.glb
+
+Source: Grab3D, "Pine Tree" (Cozy Nature Kit)
+Page: https://grab3d.com/models/nature/pine-tree/
+Download: https://grab3d.com/dl/pine-tree/pine-tree.glb
+License: CC0 1.0 Universal (public domain dedication)
+
+The source asset is a 8,032-triangle, 2K PBR pine tree. Its bundled GLB includes
+base-color, normal, and packed roughness/metalness textures. This project uses it
+as a locally bundled, instanced forest asset.

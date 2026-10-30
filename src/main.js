@@ -2,14 +2,9 @@ import { GameWorld } from './core/GameWorld.js';
 import { Level01InsideSpaceship } from './levels/Level01InsideSpaceship.js';
 import { DoorTestLevel } from './levels/DoorTestLevel.js';
 import { Level01 } from './levels/Level01.js';
-import { Level01TestLevel } from './levels/Level01ShipTestLevel.js';
-import { Level01JetTestLevel } from './levels/Level01JetTestLevel.js';
-import { TestLevel } from './levels/TestLevel.js';
 import { Level02 } from './levels/Level02.js';
-import { Level02TestLevel } from './levels/Level02TestLevel.js';
 import { Level03 } from './levels/Level03.js';
-import { Level03TestLevel } from './levels/Level03TestLevel.js';
-import { CharacterTestLevel } from './levels/CharacterTestLevel.js';
+import { CREDITS } from './levels/level03/credits.js';
 
 /**
  * Level Registry defining all available stages in ScopeCreep
@@ -36,44 +31,14 @@ const AVAILABLE_LEVELS = [
     create: (gw) => new Level01(gw)
   },
   {
-    id: 'level01_ship_test',
-    title: 'Level 1: AI Ship Test Level',
-    create: (gw) => new Level01TestLevel(gw)
-  },
-  {
-    id: 'level01_jet_test',
-    title: 'Level 1: Jet Test Level',
-    create: (gw) => new Level01JetTestLevel(gw)
-  },
-  {
-    id: 'air_strike',
-    title: 'Air Strike: Coastal Assault',
-    create: (gw) => new Level01JetTestLevel(gw, { missionMode: 'airstrike' })
-  },
-  {
     id: 'level02',
     title: 'Level 2: The Beach',
     create: (gw) => new Level02(gw)
   },
   {
-    id: 'level02_test',
-    title: 'Level 2: Beach Test Level',
-    create: (gw) => new Level02TestLevel(gw)
-  },
-  {
     id: 'level03',
     title: 'Level 3: The Village',
     create: (gw) => new Level03(gw)
-  },
-  {
-    id: 'level03_test',
-    title: 'Level 3: Village Test Level',
-    create: (gw) => new Level03TestLevel(gw)
-  },
-  {
-    id: 'testlevel',
-    title: 'Sandbox: Test Level for anything',
-    create: (gw) => new TestLevel(gw)
   }
 ];
 
@@ -101,7 +66,7 @@ async function bootstrap() {
       gameWorld.ui.showToast(`Deploying: ${selectedLevel.title}`, 'info', 3000);
       const levelInstance = selectedLevel.create(gameWorld);
       await gameWorld.loadLevel(levelInstance);
-    });
+    }, () => gameWorld.ui.showCredits(CREDITS, 50, '', () => gameWorld.ui.hideCredits()));
   };
 
   // Wire return-to-main-menu hook
@@ -109,7 +74,13 @@ async function bootstrap() {
     showMenu();
   });
 
-  // 4. Present main menu on initial launch
+  // 4. Open with the story, then let the player choose any of the three levels.
+  gameWorld.music.setState('suspense');
+  await gameWorld.ui.storyIntro.show(() => {
+    gameWorld.audio.unlock();
+    gameWorld.music.setState('suspense');
+    gameWorld.music.stinger('ambush');
+  });
   showMenu();
 
   console.log('GameWorld initialized. Tactical Main Menu ready.');
