@@ -41,11 +41,23 @@ export class BeachCover {
    * @param {(x: number, z: number) => boolean} [options.castsShadow] - Which props cast shadows:
    *   those inside the sun's shadow area (the battlefield). Defaults to Level 2's beach.
    */
-  constructor(gameWorld, environment, clearings = [], { castsShadow = (x, z) => z >= SHADOW_MIN_Z } = {}) {
+  constructor(gameWorld, environment, clearings = [], {
+    castsShadow = (x, z) => z >= SHADOW_MIN_Z,
+    includeRocks = true,
+    includeBushes = true,
+    treeDensity = 1.0,
+    palmDensity = 1.0,
+    createColliders = true
+  } = {}) {
     this.gameWorld = gameWorld;
     this.environment = environment;
     this.clearings = clearings;
     this.castsShadow = castsShadow;
+    this.includeRocks = includeRocks;
+    this.includeBushes = includeBushes;
+    this.treeDensity = treeDensity;
+    this.palmDensity = palmDensity;
+    this.createColliders = createColliders;
 
     this.vegetation = [];
     this.bushes = [];
@@ -58,45 +70,51 @@ export class BeachCover {
     const random = createRandom(SEED);
     const placements = { palms: [], trees: [], rocks: [], bushes: [] };
 
-    // Rocks first: they are the main cover. On the battlefield (beach and jungle edge) they come
-    // in clusters around a head-high boulder you can hide behind standing; elsewhere they are scattered.
-    this._scatter(16, random, (c) => {
-      if (c.z < BATTLEFIELD_MIN_Z - 20 || c.inland < 6 || c.inland > 95 || c.path < 6) return 0;
-      return 0.55;
-    }, (c) => this._placeRockCluster(placements.rocks, c, random));
-    this._scatter(20, random, (c) => (c.inland >= 40 && c.path > 5 ? (0.15 + c.slope * 0.6) * c.density : 0), (c) => {
-      const base = 1.0 + random() * 2.0;
-      const s = { x: base * (0.8 + random() * 0.4), y: base * (0.6 + random() * 0.4), z: base * (0.8 + random() * 0.4) };
-      return this._placeRock(placements.rocks, c, s, random);
-    });
+    // Rocks: main cover on beach and hills (can be disabled e.g. for distant island vistas)
+    if (this.includeRocks) {
+      this._scatter(16, random, (c) => {
+        if (c.z < BATTLEFIELD_MIN_Z - 20 || c.inland < 6 || c.inland > 95 || c.path < 6) return 0;
+        return 0.55;
+      }, (c) => this._placeRockCluster(placements.rocks, c, random));
+      this._scatter(20, random, (c) => (c.inland >= 40 && c.path > 5 ? (0.15 + c.slope * 0.6) * c.density : 0), (c) => {
+        const base = 1.0 + random() * 2.0;
+        const s = { x: base * (0.8 + random() * 0.4), y: base * (0.6 + random() * 0.4), z: base * (0.8 + random() * 0.4) };
+        return this._placeRock(placements.rocks, c, s, random);
+      });
+    }
 
     // Jungle tree line behind the beach
-    this._scatter(12, random, (c) => {
-      if (c.inland < 45 || c.path < 8 || c.slope > 0.45) return 0;
-      return smoothstep(45, 70, c.inland) * 0.75 * c.density * (0.5 + c.noise);
-    }, (c) => this._placeTrunk(placements.trees, c, 0.8 + random() * 0.5, 0.45, 0.3, random));
+    if (this.treeDensity > 0) {
+      this._scatter(12, random, (c) => {
+        if (c.inland < 45 || c.path < 8 || c.slope > 0.45) return 0;
+        return smoothstep(45, 70, c.inland) * 0.75 * c.density * (0.5 + c.noise) * this.treeDensity;
+      }, (c) => this._placeTrunk(placements.trees, c, 0.8 + random() * 0.5, 0.45, 0.3, random));
+    }
 
     // Palms along the sand
-    this._scatter(14, random, (c) => {
-      if (c.inland < 6 || c.inland > 55 || c.path < 5 || c.slope > 0.3) return 0;
-      return 0.55 * c.density * (0.6 + 0.8 * c.noise);
-    }, (c) => this._placeTrunk(placements.palms, c, 0.85 + random() * 0.4, 0.4, 0.2, random));
+    if (this.palmDensity > 0) {
+      this._scatter(14, random, (c) => {
+        if (c.inland < 6 || c.inland > 55 || c.path < 5 || c.slope > 0.3) return 0;
+        return 0.55 * c.density * (0.6 + 0.8 * c.noise) * this.palmDensity;
+      }, (c) => this._placeTrunk(placements.palms, c, 0.85 + random() * 0.4, 0.4, 0.2, random));
+    }
 
     // Bushes in clumps, thicker along the edges of the jungle path
-    this._scatter(8, random, (c) => {
-      if (c.inland < 18 || c.inland > 140 || c.path < 3.5 || c.slope > 0.4) return 0;
-      const clump = smoothstep(0.45, 0.7, valueNoise2D(c.x * 0.05, c.z * 0.05, SEED + 5));
-      const pathEdge = c.path < 9 ? 0.25 : 0;
-      // Bushes are for hiding, which only matters on the battlefield
-      return (clump * 0.7 + pathEdge) * c.density * c.density;
-    }, (c) => {
-      const scale = 0.8 + random() * 0.5;
-      if (this._overlapsSolid(c.x, c.z, BUSH_RADIUS * scale * 0.6)) return false;
-      const bush = { x: c.x, y: c.height - 0.15, z: c.z, rotation: random() * Math.PI * 2, scale };
-      placements.bushes.push(bush);
-      this._registerBush(bush);
-      return true;
-    });
+    if (this.includeBushes) {
+      this._scatter(8, random, (c) => {
+        if (c.inland < 18 || c.inland > 140 || c.path < 3.5 || c.slope > 0.4) return 0;
+        const clump = smoothstep(0.45, 0.7, valueNoise2D(c.x * 0.05, c.z * 0.05, SEED + 5));
+        const pathEdge = c.path < 9 ? 0.25 : 0;
+        return (clump * 0.7 + pathEdge) * c.density * c.density;
+      }, (c) => {
+        const scale = 0.8 + random() * 0.5;
+        if (this._overlapsSolid(c.x, c.z, BUSH_RADIUS * scale * 0.6)) return false;
+        const bush = { x: c.x, y: c.height - 0.15, z: c.z, rotation: random() * Math.PI * 2, scale };
+        placements.bushes.push(bush);
+        this._registerBush(bush);
+        return true;
+      });
+    }
 
     // Two sets: props near the fight cast shadows, distant scenery does not
     const near = { palms: [], trees: [], rocks: [], bushes: [] };
@@ -107,6 +125,9 @@ export class BeachCover {
       }
     }
     for (const [set, castShadows] of [[near, true], [far, false]]) {
+      if (set.palms.length === 0 && set.trees.length === 0 && set.rocks.length === 0 && set.bushes.length === 0) {
+        continue;
+      }
       const vegetation = new Vegetation(set, {
         castShadows,
         tileSize: SCENERY_TILE,
@@ -114,7 +135,9 @@ export class BeachCover {
         cullDistance: SCENERY_CULL_DISTANCE
       });
       this.gameWorld.environmentGroup.add(vegetation.mesh);
-      vegetation.createColliders(this.gameWorld.physics);
+      if (this.createColliders && this.gameWorld?.physics) {
+        vegetation.createColliders(this.gameWorld.physics);
+      }
       this.vegetation.push(vegetation);
     }
 

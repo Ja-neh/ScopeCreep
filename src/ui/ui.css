@@ -264,11 +264,11 @@
 }
 
 /* =========================================================================
-   5. Health Bar (Top Center)
+   5. Health Bar (Bottom Center)
    ========================================================================= */
 .ui-health-container {
   position: absolute;
-  top: 16px;
+  bottom: 16px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(13, 17, 23, 0.9);
@@ -280,6 +280,17 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
   pointer-events: none;
   z-index: 8000;
+  transition: bottom 0.25s ease-out;
+}
+
+/* Stack warship hull above station HUD controls when mounted */
+#station-hud:not([style*="display: none"]) ~ #battleship-health {
+  bottom: 180px;
+}
+
+/* Stack player/jet health above warship hull when both are active at the bottom */
+#battleship-health:not([style*="display: none"]) ~ .ui-player-health {
+  bottom: 84px;
 }
 
 .ui-health-header {

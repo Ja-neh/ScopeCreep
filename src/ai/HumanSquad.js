@@ -83,6 +83,7 @@ export class HumanSquad {
     this.heading = leader ? leader.yaw : 0;
     this.trail = []; // The leader's recent path, oldest first
     this.effects = new WeaponEffects(gameWorld.effectsGroup, { flashLight: false });
+    this._shotDir = new THREE.Vector3(); // Scratchpad for the smoke's flight line
     this._followers = 0;
   }
 
@@ -264,11 +265,13 @@ export class HumanSquad {
   }
 
   /**
-   * A squadmate fired: tracer and impact, and the gunshot is heard.
+   * A squadmate fired: tracer and impact, a puff of gun smoke, and the gunshot is heard.
    */
   onShot(mate, muzzle, result) {
     this.effects.muzzleFlash(muzzle, result.point);
     this.effects.tracer(muzzle, result.point);
+    this._shotDir.subVectors(result.point, muzzle).normalize();
+    this.effects.muzzleSmoke(muzzle, this._shotDir, 0.4);
     if (result.hit) {
       const surface = result.entity ? 'hit' : (result.collider.userData && result.collider.userData.isTerrain ? 'dust' : 'spark');
       this.effects.impact(result.point, surface);

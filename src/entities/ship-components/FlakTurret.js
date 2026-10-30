@@ -3,6 +3,14 @@ import { BaseStation } from './BaseStation.js';
 import config from '../../config.json';
 import { HealthComponent } from '../components/HealthComponent.js';
 
+// Gun smoke (visual): a light burst at the muzzle, brief wisps off the quad barrels.
+// Lighter and quicker than the artillery's cordite: a rapid-fire battery, not heavy guns.
+const MUZZLE_SMOKE_SCALE = 0.8;
+const BARREL_SMOKE_SECONDS = 0.8;   // How long the barrels smoke after a burst
+const BARREL_SMOKE_INTERVAL = 0.11; // Seconds between wisps
+const BARREL_SMOKE_SCALE = 0.55;
+const TURRET_HIT_SMOKE_SCALE = 0.6;
+
 /**
  * FlakTurret
  * Anti-Aircraft rapid-fire quad turret mounted on the aft superstructure platform.
@@ -39,6 +47,13 @@ export class FlakTurret extends BaseStation {
       if (this.isMounted) this.dismount(this.gameWorld);
       if (this.mesh) this.mesh.visible = false;
     };
+    // Metal does not bleed: a hit on the mount throws up a small puff where the armour was struck
+    this.health.onDamage = (info) => {
+      const fx = this.gameWorld?.projectilePool?.effects;
+      if (fx && info && info.point) {
+        fx.smokePuff(info.point, TURRET_HIT_SMOKE_SCALE, { dark: 0.5 });
+      }
+    };
 
     this.minPitch = -Math.PI / 18; // -10 deg
     this.maxPitch = Math.PI / 2.1; // ~85 deg high-angle flak fire
@@ -47,9 +62,11 @@ export class FlakTurret extends BaseStation {
     // --- Card 2.2: Firing state ---
     // Pre-allocated scratchpads for firing calculations (zero heap allocations in updates)
     this._muzzleWorldPos = new THREE.Vector3();
+    this._spawnWorldPos = new THREE.Vector3();
     this._barrelWorldDir = new THREE.Vector3();
     this._targetLocalPos = new THREE.Vector3();
     this._turretLocalPos = new THREE.Vector3();
+    this.projectileSpawns = [];
 
     // Rate of fire (rapid anti-air battery)
     const flakCfg = config.turrets.flak;
@@ -66,6 +83,11 @@ export class FlakTurret extends BaseStation {
     this.recoilOffset = 0;
     this.recoilKick = 0.25;         // meters of kickback per round (lighter, faster weapon)
     this.recoilRecoverySpeed = 4.0; // meters/sec spring-back rate
+
+    // Gun smoke state (visual)
+    this._barrelSmokeTimer = 0;    // Seconds of barrel smoke left after the last burst
+    this._barrelSmokeCooldown = 0; // Counts down to the next wisp
+    this._fxTarget = new THREE.Vector3();
 
     this.turretMesh = options.turretMesh || null;
     this.barrelMesh = options.barrelMesh || null;
@@ -101,6 +123,15 @@ export class FlakTurret extends BaseStation {
     this.pitchGroup = barrelMesh || this.mesh;
     if (this.turretMesh) this.turretMesh.userData.entity = this;
     if (this.barrelMesh) this.barrelMesh.userData.entity = this;
+
+    this.projectileSpawns = [];
+    if (this.barrelMesh) {
+      this.barrelMesh.traverse((child) => {
+        if (child !== this.barrelMesh && child.name && child.name.startsWith('ProjectileSpawn')) {
+          this.projectileSpawns.push(child);
+        }
+      });
+    }
 
     if (this.camera) {
       if (this.camera.parent) this.camera.parent.remove(this.camera);
@@ -299,15 +330,60 @@ export class FlakTurret extends BaseStation {
 
     this._updateMuzzleTransform();
 
-    pool.fireFlak({
-      origin: this._muzzleWorldPos,
-      direction: this._barrelWorldDir,
-      source: this,
-      excludeCollider: this.battleship?.colliders?.collider || null,
-      excludeRigidBody: this.battleship?.colliders?.rigidBody || null
-    });
+    if (this.projectileSpawns && this.projectileSpawns.length > 0) {
+      for (const spawn of this.projectileSpawns) {
+        spawn.getWorldPosition(this._spawnWorldPos);
+        pool.fireFlak({
+          origin: this._spawnWorldPos,
+          direction: this._barrelWorldDir,
+          source: this,
+          excludeCollider: this.battleship?.colliders?.collider || null,
+          excludeRigidBody: this.battleship?.colliders?.rigidBody || null
+        });
+      }
+    } else {
+      pool.fireFlak({
+        origin: this._muzzleWorldPos,
+        direction: this._barrelWorldDir,
+        source: this,
+        excludeCollider: this.battleship?.colliders?.collider || null,
+        excludeRigidBody: this.battleship?.colliders?.rigidBody || null
+      });
+    }
+
+    // Gun smoke: flash and gas at the muzzle, then the barrels keep smoking briefly
+    const fx = this.gameWorld?.projectilePool?.effects;
+    if (fx) {
+      this._fxTarget.copy(this._muzzleWorldPos).addScaledVector(this._barrelWorldDir, 12);
+      fx.muzzleFlash(this._muzzleWorldPos, this._fxTarget);
+      fx.muzzleSmoke(this._muzzleWorldPos, this._barrelWorldDir, MUZZLE_SMOKE_SCALE);
+      this._barrelSmokeTimer = BARREL_SMOKE_SECONDS;
+      this._barrelSmokeCooldown = BARREL_SMOKE_INTERVAL;
+    }
 
     this._triggerRecoil();
+  }
+
+  /**
+   * While the barrels are hot after a burst, thin smoke curls up from the muzzle.
+   */
+  _updateBarrelSmoke(delta) {
+    if (this._barrelSmokeTimer <= 0) return;
+    this._barrelSmokeTimer -= delta;
+    this._barrelSmokeCooldown -= delta;
+    if (this._barrelSmokeCooldown > 0 || this.isDestroyed) return;
+    this._barrelSmokeCooldown = BARREL_SMOKE_INTERVAL;
+
+    const fx = this.gameWorld?.projectilePool?.effects;
+    if (!fx) return;
+    this._updateMuzzleTransform();
+    this._fxTarget.set((fx.jitter() - 0.5) * 0.3, 0.9, (fx.jitter() - 0.5) * 0.3);
+    fx.smokePuff(this._muzzleWorldPos, BARREL_SMOKE_SCALE * (0.8 + fx.jitter() * 0.4), {
+      life: 0.7 + fx.jitter() * 0.4,
+      rise: 1.5,
+      drift: this._fxTarget,
+      dark: 0.4
+    });
   }
 
   /**
@@ -351,6 +427,7 @@ export class FlakTurret extends BaseStation {
   update(delta, gameWorld = this.gameWorld) {
     this.updateCooldown(delta);
     this._updateRecoil(delta);
+    this._updateBarrelSmoke(delta);
 
     if (this.fireCooldown > 0) {
       this.fireCooldown -= delta;

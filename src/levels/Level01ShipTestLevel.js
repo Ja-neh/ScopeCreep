@@ -5,6 +5,7 @@ import { Ocean } from '../rendering/Ocean.js';
 import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 import { Battleship } from '../entities/Battleship.js';
 import { EnemyBattleship } from '../entities/enemies/EnemyBattleship.js';
+import { EnemyBattleshipManager } from '../entities/enemies/EnemyBattleshipManager.js';
 import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 
@@ -23,6 +24,7 @@ export class Level01TestLevel extends BaseLevel {
     this.water = null;
     this.battleship = null;
     this.enemyBattleship = null;
+    this.fleetAssault = null;
     this.player = null;
     this.projectilePool = null;
 
@@ -103,6 +105,18 @@ export class Level01TestLevel extends BaseLevel {
     await this.enemyBattleship.ready;
     this.gameWorld.addEntity(this.enemyBattleship);
     this.enemyBattleship.initPhysics(this.gameWorld.physics);
+
+    // 4.6 Enemy fleet assault: 3-5-7 battleship waves (wave 1 from the island bearing, later waves from the map edges)
+    this.fleetAssault = new EnemyBattleshipManager(this.gameWorld, {
+      battleship: this.battleship,
+      water: this.water,
+      islandAnchor: new THREE.Vector3(0, 0, -400),
+      onVictory: () => {
+        this.gameWorld.ui?.hideObjective();
+        this.gameWorld.ui?.showToast('Enemy fleet destroyed! All hostile warships sunk.', 'success', 5000);
+      }
+    });
+    this.fleetAssault.start();
 
     // 5. Spawn Player Character Controller on the Battleship Walking Deck
     this.player = new Player(this.gameWorld, {
@@ -233,6 +247,8 @@ export class Level01TestLevel extends BaseLevel {
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     super.gameplayUpdate(delta, gameWorld);
 
+    if (this.fleetAssault) this.fleetAssault.update(delta);
+
     // Keep the sun's shadow square on the player
     if (this.sunShadow) this.sunShadow.update(this.player || null);
 
@@ -277,6 +293,10 @@ export class Level01TestLevel extends BaseLevel {
     if (this.gameWorld && this.gameWorld.ui) {
       this.gameWorld.ui.hideDevTools();
     }
+    if (this.fleetAssault) {
+      this.fleetAssault.dispose();
+      this.fleetAssault = null;
+    }
     if (this.orbitControls) {
       this.orbitControls.dispose();
       this.orbitControls = null;
@@ -291,6 +311,7 @@ export class Level01TestLevel extends BaseLevel {
     this.player = null;
     this.battleship = null;
     this.enemyBattleship = null;
+    this.fleetAssault = null;
 
     super.dispose();
     this.water = null;

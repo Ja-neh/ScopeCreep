@@ -6,7 +6,7 @@ import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 import { Battleship } from '../entities/Battleship.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { PlayerJet } from '../entities/player-jet/PlayerJet.js';
-import { JetDefenseMission } from './JetDefenseMission.js';
+import { EnemyJetManager } from '../entities/enemies/EnemyJetManager.js';
 import { AirStrikeMission } from './AirStrikeMission.js';
 import { CoastalTarget } from '../entities/CoastalTarget.js';
 import config from '../config.json';
@@ -117,7 +117,7 @@ export class Level01JetTestLevel extends BaseLevel {
       this.airStrikeMission = new AirStrikeMission(this.gameWorld, this.playerJet, this.coastalTargets);
       this.airStrikeMission.start();
     } else {
-      this.defenseMission = new JetDefenseMission(this.gameWorld, this.battleship);
+      this.defenseMission = new EnemyJetManager(this.gameWorld, { battleship: this.battleship });
       this.defenseMission.start(this.playerJet);
     }
     if (this.gameWorld.ui) {

@@ -105,17 +105,16 @@
     "breakawaySideStrength": 0.55,
     "repositionAltitude": 55,
     "targetHeight": 5,
-    "waves": [
-      { "fighters": 4, "aces": 0 },
-      { "fighters": 4, "aces": 1 },
-      { "fighters": 4, "aces": 2 }
-    ],
-    "defense": {
+    "assault": {
       "firstWaveDelaySeconds": 3,
-      "spawnIntervalSeconds": 4,
       "betweenWavesSeconds": 8,
+      "spawnIntervalSeconds": 4,
       "spawnRadius": 420,
-      "spawnAltitude": 85
+      "spawnAltitude": 85,
+      "waves": [
+        { "fighters": 5, "aces": 0 },
+        { "fighters": 8, "aces": 0 }
+      ]
     },
     "preflightDefense": {
       "fighters": 2,
@@ -626,6 +625,31 @@
     "sinking": {
       "sinkSpeed": 2.0,
       "maxSinkDepth": -35.0
+    },
+    "assault": {
+      "firstWaveDelaySeconds": 25,
+      "betweenWavesSeconds": 30,
+      "spawnIntervalSeconds": 6,
+      "sinkCleanupSeconds": 20,
+      "islandSpawn": {
+        "ringSpreadDegrees": 360,
+        "coastStandoff": 150,
+        "minPlayerDistance": 350
+      },
+      "edgeSpawn": {
+        "radius": 850,
+        "spreadDegrees": 150,
+        "oceanClamp": 1200
+      },
+      "avoidance": {
+        "coastMargin": 40,
+        "lookAhead": 160,
+        "sampleStep": 20
+      },
+      "waves": [
+        { "origin": "island", "count": 5 },
+        { "origin": "edge", "count": 10 }
+      ]
     }
   }
 }

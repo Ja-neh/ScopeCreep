@@ -55,6 +55,15 @@ export class Player extends BaseEntity {
     this.faction = options.faction || 'humans';
     this.health = options.maxHealth ? new HealthComponent(options.maxHealth) : null;
     if (this.health) this.health.damageMultiplier=config.player.damageMultiplier;
+    // A hit draws blood where the round landed. Levels may chain their own onDamage off this.
+    if (this.health) {
+      this.health.onDamage = (info) => {
+        const fx = this.gameWorld?.projectilePool?.effects;
+        if (fx && info && info.point) {
+          fx.bloodSpray(info.point, info.direction);
+        }
+      };
+    }
 
     // Capsule dimensions from config or options
     this.capsuleRadius = options.capsuleRadius !== undefined ? options.capsuleRadius : capCfg.radius;

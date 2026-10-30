@@ -104,6 +104,11 @@ export class GroundCombatant extends BaseEntity {
 
     this.health.onDamage = (info) => {
       this._hitFlash = 1;
+      // Flesh bleeds: a spray from the wound (the blow's point and direction ride on the damage)
+      const fx = this.gameWorld?.projectilePool?.effects;
+      if (fx && info && info.point) {
+        fx.bloodSpray(info.point, info.direction);
+      }
       this.onDamaged(info);
     };
     this.health.onDeath = (info) => this._die(info);

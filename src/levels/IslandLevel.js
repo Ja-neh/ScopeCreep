@@ -310,7 +310,12 @@ export class IslandLevel extends BaseLevel {
     });
     this.player.setPosition(position.x, position.y, position.z);
     this.player.yaw = yaw;
-    this.player.health.onDamage = () => this._onPlayerHurt();
+    // Chain off the Player's own hit feedback (blood) instead of replacing it
+    const playerBaseOnDamage = this.player.health.onDamage;
+    this.player.health.onDamage = (info) => {
+      if (playerBaseOnDamage) playerBaseOnDamage(info);
+      this._onPlayerHurt();
+    };
     this.gameWorld.addEntity(this.player);
 
     const ui = this.gameWorld.ui;

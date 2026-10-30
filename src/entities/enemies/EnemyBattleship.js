@@ -96,6 +96,15 @@ export class EnemyBattleship extends BaseEntity {
     this.sinkSpeed = sinkCfg.sinkSpeed;
     this.maxSinkDepth = sinkCfg.maxSinkDepth;
 
+    // Optional island signed-distance field ({ inland(x, z) }, meters inland of the
+    // waterline, negative at sea). Supplied by levels with coastal terrain; null in open sea.
+    this.island = options.island || null;
+    const avoidCfg = ((config.enemyBattleship || {}).assault || {}).avoidance || {};
+    this.avoidCoastMargin = avoidCfg.coastMargin ?? 40;
+    this.avoidLookAhead = avoidCfg.lookAhead ?? 160;
+    this.avoidSampleStep = avoidCfg.sampleStep ?? 20;
+    this._tangentSign = 1;
+
     // Health & Sinking state
     this.health = new HealthComponent(options.maxHealth ?? healthCfg.maxHealth);
     this.isDestroyed = false;
@@ -110,6 +119,13 @@ export class EnemyBattleship extends BaseEntity {
         this.brain.change(BattleshipAIState.SINKING);
       }
       console.log('[EnemyBattleship] Hull destroyed! Sinking initiated.');
+    };
+    // A hit that finds the hull throws up a cloud of smoke where it landed
+    this.health.onDamage = (info) => {
+      const fx = this.gameWorld?.projectilePool?.effects;
+      if (fx && info && info.point) {
+        fx.smokeCloud(info.point, 2.4);
+      }
     };
 
     // Relative operational station coordinates matching imported model
@@ -247,7 +263,7 @@ export class EnemyBattleship extends BaseEntity {
           // Steer directly towards target and cruise at full speed
           const angleToTarget = ship._getAngleToTarget();
           if (angleToTarget !== null) {
-            ship._steerTowardsAngle(angleToTarget, delta);
+            ship._steerWithAvoidance(angleToTarget, delta);
           }
           ship._applyPropulsion(ship.cruisingSpeed, delta);
         }
@@ -275,7 +291,7 @@ export class EnemyBattleship extends BaseEntity {
           const angleToTarget = ship._getAngleToTarget();
           if (angleToTarget !== null) {
             const broadsideAngle = angleToTarget + ship.broadsideAngleOffset;
-            ship._steerTowardsAngle(broadsideAngle, delta);
+            ship._steerWithAvoidance(broadsideAngle, delta);
           }
           ship._applyPropulsion(ship.broadsideSpeed, delta);
         }
@@ -299,7 +315,7 @@ export class EnemyBattleship extends BaseEntity {
           const angleToTarget = ship._getAngleToTarget();
           if (angleToTarget !== null) {
             const retreatAngle = angleToTarget + Math.PI;
-            ship._steerTowardsAngle(retreatAngle, delta);
+            ship._steerWithAvoidance(retreatAngle, delta);
           }
           ship._applyPropulsion(ship.cruisingSpeed, delta);
         }
@@ -340,7 +356,9 @@ export class EnemyBattleship extends BaseEntity {
     this._toTargetVec.y = 0;
     if (this._toTargetVec.lengthSq() < 0.01) return null;
 
-    return Math.atan2(this._toTargetVec.x, -this._toTargetVec.z);
+    // Heading convention: forward = (-sin(theta), -cos(theta)) for direction (dx, dz),
+    // the same bearing ShipCrewAI steers by.
+    return Math.atan2(-this._toTargetVec.x, -this._toTargetVec.z);
   }
 
   /**
@@ -371,6 +389,46 @@ export class EnemyBattleship extends BaseEntity {
   }
 
   /**
+   * Steers towards a desired heading, detouring around the island when the
+   * direct course would run aground: samples the signed-distance field along
+   * the intended track; if land lies within the coast margin, follows the
+   * shoreline tangent instead until the track clears.
+   */
+  _steerWithAvoidance(desiredAngle, delta) {
+    if (!this.island || !this._pathIsBlocked(desiredAngle)) {
+      this._steerTowardsAngle(desiredAngle, delta);
+      return;
+    }
+
+    // Shore tangent from the SDF gradient (inland increases inlandward).
+    const p = this.mesh.position;
+    const e = 2.0;
+    const gx = (this.island.inland(p.x + e, p.z) - this.island.inland(p.x - e, p.z)) / (2 * e);
+    const gz = (this.island.inland(p.x, p.z + e) - this.island.inland(p.x, p.z - e)) / (2 * e);
+    const desiredX = -Math.sin(desiredAngle);
+    const desiredZ = -Math.cos(desiredAngle);
+    const dot = -gz * desiredX + gx * desiredZ;
+    // Exact ties (target dead astern) keep the previous side to avoid jitter.
+    this._tangentSign = Math.abs(dot) < 1e-6 ? this._tangentSign : (dot > 0 ? 1 : -1);
+    // Heading convention: forward = (-sin(theta), -cos(theta)) for direction (dx, dz).
+    const tangentAngle = Math.atan2(gz * this._tangentSign, -gx * this._tangentSign);
+    this._steerTowardsAngle(tangentAngle, delta);
+  }
+
+  /**
+   * True when any sample along the intended track sits inside the coast margin.
+   */
+  _pathIsBlocked(desiredAngle) {
+    const p = this.mesh.position;
+    const fx = -Math.sin(desiredAngle);
+    const fz = -Math.cos(desiredAngle);
+    for (let d = this.avoidSampleStep; d <= this.avoidLookAhead; d += this.avoidSampleStep) {
+      if (this.island.inland(p.x + fx * d, p.z + fz * d) > -this.avoidCoastMargin) return true;
+    }
+    return false;
+  }
+
+  /**
    * Helper: applies engine propulsion and translates along current heading
    */
   _applyPropulsion(targetSpeed, delta) {
@@ -381,8 +439,38 @@ export class EnemyBattleship extends BaseEntity {
       z: this.mesh.position.z + this._forwardDir.z * this.currentSpeed * delta
     };
     this._resolveShipCollisions(candPos);
+    this._resolveGroundPenetration(candPos);
     this.mesh.position.x = candPos.x;
     this.mesh.position.z = candPos.z;
+  }
+
+  /**
+   * Hard motion guard: projects the candidate position out of the island
+   * along the SDF gradient, so a hull can never commit a frame on land even
+   * mid-turn or when shoved by another vessel. No-op without an island field.
+   * @param {{x: number, z: number}} candPos - Candidate position to adjust in-place
+   */
+  _resolveGroundPenetration(candPos) {
+    if (!this.island) return;
+    const p = this.mesh.position;
+    for (let iter = 0; iter < 2; iter++) {
+      const d = this.island.inland(candPos.x, candPos.z);
+      if (d <= -this.avoidCoastMargin) return;
+      const e = 2.0;
+      const gx = (this.island.inland(candPos.x + e, candPos.z) - this.island.inland(candPos.x - e, candPos.z)) / (2 * e);
+      const gz = (this.island.inland(candPos.x, candPos.z + e) - this.island.inland(candPos.x, candPos.z - e)) / (2 * e);
+      const glen = Math.hypot(gx, gz);
+      if (glen < 1e-6) break;
+      const push = d + this.avoidCoastMargin;
+      candPos.x -= (gx / glen) * push;
+      candPos.z -= (gz / glen) * push;
+    }
+    if (this.island.inland(candPos.x, candPos.z) > -this.avoidCoastMargin) {
+      // Projection failed (degenerate coast): refuse the move; current position is safe.
+      candPos.x = p.x;
+      candPos.z = p.z;
+      this.currentSpeed = 0;
+    }
   }
 
   /**
@@ -655,7 +743,34 @@ export class EnemyBattleship extends BaseEntity {
     }
   }
 
+  /**
+   * Soft-dispose for sunken hulks recycled by the fleet manager.
+   * Recovers Rapier colliders and per-turret resources but leaves the model
+   * subtree intact: clones share geometry/materials with the cached GLTF
+   * and with other live ships, so disposing them here would invalidate
+   * GPU resources still in use.
+   */
+  disposeHulk() {
+    if (this._hulkDisposed) return;
+    this._hulkDisposed = true;
+    this.colliders.dispose();
+
+    if (this.mainGun) {
+      this.mainGun.dispose();
+      this.mainGun = null;
+    }
+    if (this.mainGunBack) {
+      this.mainGunBack.dispose();
+      this.mainGunBack = null;
+    }
+
+    if (this.mesh.parent) {
+      this.mesh.parent.remove(this.mesh);
+    }
+  }
+
   dispose() {
+    if (this._hulkDisposed) return;
     this.colliders.dispose();
 
     if (this.mainGun) {

@@ -1,70 +1,193 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import { Level01 } from '../src/levels/Level01.js';
-import { JetDefenseMission } from '../src/levels/JetDefenseMission.js';
-import { EnemyJet } from '../src/entities/enemies/EnemyJet.js';
+import { EnemyJetManager } from '../src/entities/enemies/EnemyJetManager.js';
+import { EnemyJet, JetAIState } from '../src/entities/enemies/EnemyJet.js';
 import { PlayerJet } from '../src/entities/player-jet/PlayerJet.js';
 import { ProjectilePool } from '../src/entities/ProjectilePool.js';
 import { FlakTurret } from '../src/entities/ship-components/FlakTurret.js';
+import { Level01 } from '../src/levels/Level01.js';
 import { CAMPAIGN_CREDITS, CAMPAIGN_ENDING } from '../src/levels/level01/ending.js';
 import { createTestWorld, bodyCount } from './support/testWorld.mjs';
 import config from '../src/config.json';
 
-test('jet defense progresses through three waves and rewards a clean battleship defense', async () => {
+const assaultCfg = config.enemyJet.assault;
+
+function makeBattleship() {
+  const mesh = new THREE.Group();
+  return {
+    mesh,
+    health: { currentHealth: 1000, maxHealth: 1000 },
+    isDestroyed: false,
+    faction: 'humans'
+  };
+}
+
+/** Spawns `count` queued jets instantly (combat state required). */
+function spawnQueued(manager, count) {
+  for (let i = 0; i < count; i++) {
+    manager._spawnTimer = 0;
+    manager.update(0.01);
+  }
+}
+
+function sinkWaveJets(manager) {
+  for (const jet of manager._waveJets) {
+    jet.health.takeDamage({ amount: jet.health.maxHealth + 1, type: 'KINETIC' });
+  }
+}
+
+function assertOnSpawnRing(jet, battleship) {
+  const p = jet.mesh.position;
+  const b = battleship.mesh.position;
+  const horizontal = Math.hypot(p.x - b.x, p.z - b.z);
+  assert.ok(Math.abs(horizontal - assaultCfg.spawnRadius) < 1, `spawn sits on the configured radius (${horizontal.toFixed(1)}m)`);
+  assert.ok(Math.abs(p.y - (b.y + assaultCfg.spawnAltitude)) < 1e-6, 'spawn sits at the configured altitude');
+  const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(jet.mesh.quaternion);
+  const toBattleship = new THREE.Vector3(b.x - p.x, b.y - p.y, b.z - p.z).normalize();
+  assert.ok(forward.dot(toBattleship) > 0.99, 'spawn faces its target');
+}
+
+test('jet assault runs 2 waves (5 then 8) from the pool, wins, and reports the result', async () => {
   const world = await createTestWorld();
   const pool = new ProjectilePool(world);
   world.addEntity(pool);
   world.projectilePool = pool;
 
-  const battleship = {
-    mesh: new THREE.Group(),
-    health: { currentHealth: 1000, maxHealth: 1000 },
-    isDestroyed: false,
-    faction: 'humans'
-  };
+  const battleship = makeBattleship();
+  const playerJet = new PlayerJet(world);
+  world.addEntity(playerJet);
+  world.currentLevel = { battleship, playerJet };
+  world.isPaused = false;
+
+  let victoryResult = null;
+  const manager = new EnemyJetManager(world, {
+    battleship,
+    onVictory: (result) => { victoryResult = result; }
+  });
+  manager.start(playerJet);
+  assert.equal(manager.totalHostiles, 13, 'default doctrine totals 13 jets');
+  assert.equal(manager.pool.spareCount('fighter'), 8, 'the largest wave is pre-built in the pool');
+
+  // Wave 1: five fighters.
+  manager.update(assaultCfg.firstWaveDelaySeconds + 0.1);
+  assert.equal(manager.state, 'combat', 'wave 1 is in combat');
+  spawnQueued(manager, 5);
+  assert.equal(manager._waveJets.length, 5, 'wave 1 spawns its configured count');
+  assert.equal(manager.pool.spareCount('fighter'), 3, 'five of the eight spares are leased');
+  assert.ok(manager._waveJets.every((jet) => jet.target === battleship), 'every jet hunts the battleship');
+  assert.ok(manager._waveJets.every((jet) => jet.brain.is(JetAIState.APPROACH)), 'every jet starts in APPROACH');
+  for (const jet of manager._waveJets) assertOnSpawnRing(jet, battleship);
+
+  const wave1Jets = [...manager._waveJets];
+  sinkWaveJets(manager);
+  assert.equal(manager.killCount, 5, 'wave 1 kills counted');
+  assert.equal(manager.jets.size, 0, 'destroyed jets leave the active set');
+  manager.update(0.01);
+  assert.equal(manager.state, 'intermission', 'wave 1 cleared into intermission');
+
+  // Wave 2: eight fighters, leased from the same pool instances.
+  manager.update(assaultCfg.betweenWavesSeconds + 0.1);
+  assert.equal(manager.state, 'combat', 'wave 2 is in combat');
+  spawnQueued(manager, 8);
+  assert.equal(manager._waveJets.length, 8, 'wave 2 spawns its configured count');
+  assert.equal(manager.pool.spareCount('fighter'), 0, 'every spare is leased during the larger wave');
+  assert.ok(
+    manager._waveJets.some((jet) => wave1Jets.includes(jet)),
+    'wave 2 recycles wave 1 instances from the pool'
+  );
+  assert.equal(
+    new Set([...wave1Jets, ...manager._waveJets]).size,
+    8,
+    'both waves are served by the eight pre-built spares — no jet is constructed at spawn time'
+  );
+  for (const jet of manager._waveJets) assertOnSpawnRing(jet, battleship);
+
+  sinkWaveJets(manager);
+  manager.update(0.01);
+
+  assert.equal(manager.state, 'won', 'destroying all 13 jets wins the assault');
+  assert.equal(manager.killCount, 13, 'every kill counted exactly once');
+  assert.equal(manager.score, 1300, 'thirteen fighters at 100 points each');
+  assert.ok(victoryResult, 'onVictory override receives the result instead of the mission-result screen');
+  assert.equal(victoryResult.outcome, 'victory');
+  assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'override suppresses the default result screen');
+  assert.equal(world.isPaused, false, 'override leaves pause control to the level');
+  assert.equal(victoryResult.stats.find((stat) => stat.label === 'Score').value, '1800', 'perfect defense bonus applied');
+  assert.match(victoryResult.message, /Perfect defense bonus/);
+
+  assert.equal(manager.pool.spareCount('fighter'), 8, 'every jet is back in the pool after the win');
+
+  world.clearEntities();
+  manager.dispose();
+  assert.equal(bodyCount(world), 0, 'clean teardown without dangling physics bodies');
+});
+
+test('jet assault spawns are staggered by the configured interval', async () => {
+  const world = await createTestWorld();
+  const battleship = makeBattleship();
+  const manager = new EnemyJetManager(world, { battleship });
+  manager.start();
+
+  manager.update(assaultCfg.firstWaveDelaySeconds + 0.1);
+  spawnQueued(manager, 1);
+  assert.equal(manager.jets.size, 1, 'the first jet spawns immediately');
+
+  manager.update(assaultCfg.spawnIntervalSeconds - 0.1);
+  assert.equal(manager.jets.size, 1, 'no second jet before the interval elapses');
+  manager.update(0.2);
+  assert.equal(manager.jets.size, 2, 'the second jet spawns once the interval elapses');
+
+  manager.dispose();
+  world.clearEntities();
+  assert.equal(bodyCount(world), 0);
+});
+
+test('a destroyed battleship loses the assault through the default result screen', async () => {
+  const world = await createTestWorld();
+  const battleship = makeBattleship();
+  const manager = new EnemyJetManager(world, { battleship });
+  manager.start();
+
+  manager.update(assaultCfg.firstWaveDelaySeconds + 0.1);
+  spawnQueued(manager, 2);
+  battleship.isDestroyed = true;
+  battleship.health.currentHealth = 0;
+  manager.update(0.01);
+
+  assert.equal(manager.state, 'lost');
+  assert.equal(world.isPaused, true);
+  const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
+  assert.equal(result.outcome, 'defeat');
+  assert.match(result.message, /battleship has been destroyed/i);
+
+  manager.dispose();
+  world.clearEntities();
+  assert.equal(bodyCount(world), 0);
+});
+
+test('a shot-down player jet loses the assault', async () => {
+  const world = await createTestWorld();
+  const battleship = makeBattleship();
   const playerJet = new PlayerJet(world);
   world.addEntity(playerJet);
 
-  const level = new JetDefenseMission(world, battleship);
-  world.currentLevel = level;
-  level.start(playerJet);
+  let defeatResult = null;
+  const manager = new EnemyJetManager(world, { battleship, onDefeat: (result) => { defeatResult = result; } });
+  manager.start(playerJet);
 
-  for (let waveIndex = 0; waveIndex < config.enemyJet.waves.length; waveIndex++) {
-    if (waveIndex > 0)     level.update(config.enemyJet.defense.betweenWavesSeconds + 0.1);
-    else {
-      level._waveTimer = 0;
-    level.update(0.1);
-    }
+  playerJet.health.takeDamage({ amount: playerJet.health.maxHealth, type: 'KINETIC' });
+  manager.update(0.01);
 
-    const wave = config.enemyJet.waves[waveIndex];
-    const waveSize = wave.fighters + wave.aces;
-    for (let spawned = 0; spawned < waveSize; spawned++) {
-      level._spawnTimer = 0;
-      level.update(0.01);
-    }
+  assert.equal(manager.state, 'lost');
+  assert.equal(defeatResult.outcome, 'defeat');
+  assert.equal(defeatResult.title, 'DEFENSE FAILED');
+  assert.match(defeatResult.message, /shot down/i);
+  assert.equal(world.ui.callsTo('showMissionResult').length, 0, 'override suppresses the default result screen');
 
-    const livingJets = [...level.enemyJets].filter((enemy) => !enemy.isDestroyed);
-    assert.equal(livingJets.length, waveSize, `wave ${waveIndex + 1} spawns the configured aircraft`);
-    assert.ok(livingJets.every((enemy) => enemy.target === battleship), 'enemy jets attack the ship');
-    if (wave.aces > 0) {
-      assert.ok(livingJets.some((enemy) => enemy.variant === 'ace'), 'later waves include ace opponents');
-    }
-    for (const enemy of livingJets) enemy.health.takeDamage(enemy.health.maxHealth);
-    level.update(0.01);
-  }
-
-  assert.equal(level.state, 'won');
-  assert.equal(world.isPaused, true);
-  assert.equal(level.killCount, config.enemyJet.waves.reduce((sum, wave) => sum + wave.fighters + wave.aces, 0));
-  assert.equal(level.score, level.killCount * 100 + level.aceKillCount * 150);
-  const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
-  assert.equal(result.outcome, 'victory');
-  assert.match(result.message, /Perfect defense bonus/);
-  assert.equal(result.stats.find((stat) => stat.label === 'Score').value, String(level.score + 500));
-
+  manager.dispose();
   world.clearEntities();
-  assert.equal(bodyCount(world), 0, 'all jet physics bodies are released');
+  assert.equal(bodyCount(world), 0);
 });
 
 test('Operation Retake plays its ending and credits before showing the campaign result', async () => {
@@ -72,8 +195,8 @@ test('Operation Retake plays its ending and credits before showing the campaign 
   const result = {
     outcome: 'victory',
     title: 'AIRSPACE SECURE',
-    message: 'The battleship survived all three waves.',
-    stats: [{ label: 'Score', value: '1200' }]
+    message: 'Enemy air assault repelled.',
+    stats: [{ label: 'Score', value: '1800' }]
   };
   const level = Object.create(Level01.prototype);
   Object.assign(level, {
@@ -104,27 +227,6 @@ test('Operation Retake plays its ending and credits before showing the campaign 
   assert.equal(campaignResult.title, 'OPERATION RETAKE COMPLETE');
   assert.deepEqual(campaignResult.stats, result.stats);
   assert.equal(campaignResult.actions[0].label, 'Play again');
-  world.physics.dispose();
-});
-
-test('a destroyed battleship ends the jet defense mission as a defeat', async () => {
-  const world = await createTestWorld();
-  const level = new JetDefenseMission(world, {
-    mesh: new THREE.Group(),
-    health: { currentHealth: 0, maxHealth: 1000 },
-    isDestroyed: true
-  });
-  level.playerJet = { isDestroyed: false };
-  level.state = 'combat';
-
-  level.update(0.1);
-
-  assert.equal(level.state, 'lost');
-  assert.equal(world.isPaused, true);
-  const result = world.ui.callsTo('showMissionResult').at(-1).args[0];
-  assert.equal(result.outcome, 'defeat');
-  assert.match(result.message, /battleship has been destroyed/i);
-
   world.physics.dispose();
 });
 
@@ -186,6 +288,7 @@ test('Operation Retake launches jet defense from the marked deck point', async (
   assert.ok(Math.abs(level.playerJet.mesh.rotation.y - battleship.mesh.rotation.y) < 0.001);
 
   world.clearEntities();
+  level.defenseMission.dispose();
   assert.equal(bodyCount(world), 0);
 });
 
