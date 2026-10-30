@@ -9,6 +9,8 @@ const assets = new Map();
 const X = new THREE.Vector3(1, 0, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion();
+// A boot must never plant on another character's capsule (including a nearby ally).
+const terrainSupport = collider => !collider.userData?.entity?.health;
 
 function disposeAsset(gltf) {
   const geometries = new Set(), materials = new Set(), textures = new Set();
@@ -135,7 +137,13 @@ export class CharacterVisual {
     this.group.scale.setScalar(1);
     this.group.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(this.root);
-    const scale = this.height / Math.max(0.001, box.max.y - box.min.y);
+    // Resized boss shoulders move the wings upward without changing their scale.
+    let referenceHeight=box.max.y-box.min.y;
+    this.root.traverse(node=>{
+      const authored=node.userData.scopeCreepReferenceHeight;
+      if (Number.isFinite(authored) && authored>0) referenceHeight=authored;
+    });
+    const scale = this.height / Math.max(0.001, referenceHeight);
     this.root.scale.multiplyScalar(scale);
     this.root.position.set(-(box.min.x + box.max.x) * 0.5 * scale, -box.min.y * scale,
       -(box.min.z + box.max.z) * 0.5 * scale);
@@ -242,7 +250,7 @@ export class CharacterVisual {
       let forward=1, sideways=0;
       if (this.actor) {
         this.group.getWorldQuaternion(this.orientation);
-        this.localVelocity.copy(this.actor.velocity).applyQuaternion(this.inverseOrientation.copy(this.orientation).invert());
+        this.localVelocity.copy(this.actor.actualVelocity || this.actor.velocity).applyQuaternion(this.inverseOrientation.copy(this.orientation).invert());
         forward=-this.localVelocity.z;
         sideways=this.localVelocity.x;
       }
@@ -317,7 +325,7 @@ export class CharacterVisual {
       this.footRay.origin.x=this.target.x;
       this.footRay.origin.y=this.target.y+0.35;
       this.footRay.origin.z=this.target.z;
-      const hit=physics.castRay(this.footRay,0.85,true,undefined,undefined,actor.collider);
+      const hit=physics.castRay(this.footRay,0.85,true,undefined,undefined,actor.collider,undefined,terrainSupport);
       if (!hit) continue;
       const floor=this.footRay.origin.y-hit.timeOfImpact+foot.rest.y;
       // Recorded swing trajectories remain intact. Correct penetration/contact only.
@@ -372,7 +380,7 @@ export class CharacterVisual {
         this.footRay.origin.x = this.target.x;
         this.footRay.origin.y = this.target.y + 0.45;
         this.footRay.origin.z = this.target.z;
-        const hit = physics.castRay(this.footRay, 1.1, true, undefined, undefined, actor.collider);
+        const hit = physics.castRay(this.footRay, 1.1, true, undefined, undefined, actor.collider, undefined, terrainSupport);
         if (hit) {
           // The ankle is above the sole. Using a universal 8 cm target was
           // dragging long-booted rigs below their soles and locking their knees.

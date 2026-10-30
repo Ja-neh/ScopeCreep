@@ -99,7 +99,7 @@ const BRUTE_ENGAGE = {
     const distance = Math.hypot(threat.x - b.position.x, threat.z - b.position.z);
     b.lookAt(threat);
 
-    if (b.model.canFly) {
+    if (b.model.character.id==='galiant') {
       b.attackPhase='approach';b.attackPose=0;
       if (distance>config.alienPowers.galiant.range*0.6) b.moveTo(threat,b.cfg.runSpeed);
       else b.stop();

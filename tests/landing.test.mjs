@@ -88,7 +88,7 @@ test('opening: camera sweep, crew down the gangway, helicopters land, pilots cli
 
   // Pilots out and at their posts; crew at the rally on the sand, waiting for the player
   const pilots = level.allies.mates.filter((mate) => !mate.inFormation);
-  assert.deepEqual(pilots.map((pilot) => pilot.name), ['Hawk', 'Viper']);
+  assert.deepEqual(pilots.map((pilot) => pilot.callsign), ['Hawk', 'Viper']);
   zone.helicopterBays.forEach((bay, i) => {
     assert.ok(flat(pilots[i].position, bay.guardPoint) < 3, `${pilots[i].name} guards the helicopter`);
   });

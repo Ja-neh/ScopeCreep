@@ -6,6 +6,8 @@ export const HUMAN_CHARACTERS = [
   { id: 'bob', name: 'BOB' }
 ];
 export const ALIEN_CHARACTERS = ['gorr', 'galiant', 'bahamut-nt', 'bahamut-xvi'];
+export const characterName=id=>HUMAN_CHARACTERS.find(c=>c.id===id)?.name ||
+  ({gorr:'Gorr',galiant:'Galiant Beast','bahamut-nt':'Bahamut NT','bahamut-xvi':'Bahamut XVI'})[id] || id;
 const KEY = 'scopecreep.character';
 let selected = 'deadpool';
 export const isHumanCharacter = id => HUMAN_CHARACTERS.some(c => c.id === id);

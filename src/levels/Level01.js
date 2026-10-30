@@ -318,10 +318,12 @@ export class Level01 extends BaseLevel {
       gameWorld.ui?.showToast('Gorr boarding party — defend the deck!','danger',3500);
     }
     if(this.player.health.isDead){
-      this.player.isDevSuspended=true;this._deckRespawn=this._deckRespawn<0 ? config.player.vitals.respawnSeconds : this._deckRespawn-delta;
+      this.player.isDevSuspended=true;this._deckRespawn=this._deckRespawn<0 ? config.revive.bleedOutSeconds : this._deckRespawn-delta;
+      gameWorld.ui?.showStatusIndicator(`DOWNED: checkpoint in ${Math.ceil(this._deckRespawn)}s`,'danger');
       if(this._deckRespawn<=0){
         const p=this.battleship.mesh.localToWorld(new THREE.Vector3(0.46,6.2,-14));
         this.player.teleport(p.x,p.y,p.z);this.player.health.reset();this.player.model.character.resetPose();
+        this.weapons.restoreAmmo();gameWorld.ui?.hideStatusIndicator();
         this.player.isDevSuspended=false;this._deckRespawn=-1;
       }
     }

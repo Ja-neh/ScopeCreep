@@ -56,7 +56,7 @@ export class HumanSquad {
    */
   constructor(gameWorld, {
     leader, cover = null, isWalkable = null, corpseSeconds, onGunshot = null,
-    onMemberDowned = null, onMemberRevived = null, onMateKilled = null, onLeaderLost = null, revive = config.revive
+    onMemberDowned = null, onMemberRevived = null, onMateKilled = null, onLeaderLost = null, onMemberExpired = null, revive = config.revive
   }) {
     this.gameWorld = gameWorld;
     this.leader = leader;
@@ -68,6 +68,7 @@ export class HumanSquad {
     this.onMemberRevived = onMemberRevived;
     this.onMateKilled = onMateKilled;
     this.onLeaderLost = onLeaderLost;
+    this.onMemberExpired=onMemberExpired;
 
     this.bleedOutSeconds = revive.bleedOutSeconds ?? Infinity;
     this.reviveHoldSeconds = revive.holdSeconds;
@@ -156,6 +157,7 @@ export class HumanSquad {
     member.model?.character?.resetPose();
     if(member.isPlayer){member.mesh.rotation.x=member.mesh.rotation.z=0;member.isDevSuspended=false;}
     this._downed.delete(member);
+    member.reviveSecondsLeft=0;
     if (this.onMemberRevived) this.onMemberRevived(member, by);
   }
 
@@ -339,12 +341,17 @@ export class HumanSquad {
       }
       if (!this._downed.has(member)) {
         this._downed.set(member, 0);
+        member.reviveSecondsLeft=this.bleedOutSeconds;
         if (this.onMemberDowned) this.onMemberDowned(member);
         continue;
       }
       const time = this._downed.get(member) + delta;
       this._downed.set(member, time);
-      if (time >= this.bleedOutSeconds) this._lose(member);
+      member.reviveSecondsLeft=Math.max(0,this.bleedOutSeconds-time);
+      if (time >= this.bleedOutSeconds) {
+        if(this.onMemberExpired){this._downed.delete(member);this.onMemberExpired(member);}
+        else this._lose(member);
+      }
     }
   }
 

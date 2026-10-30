@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GroundCombatant } from '../GroundCombatant.js';
 import { SoldierModel } from '../models/SoldierModel.js';
-import { squadCharacter } from '../models/CharacterRoster.js';
+import { squadCharacter, characterName } from '../models/CharacterRoster.js';
 import { Perception } from '../../ai/Perception.js';
 import { StateMachine } from '../../ai/StateMachine.js';
 import { HitscanWeapon } from '../../weapons/HitscanWeapon.js';
@@ -33,7 +33,7 @@ export class SquadMate extends GroundCombatant {
   /**
    * @param {GameWorld} gameWorld
    * @param {Object} options
-   * @param {string} options.name - Call sign, used in messages ("Okafor is down!")
+   * @param {string} options.name - Internal crew call sign; messages use the model's character name.
    * @param {THREE.Vector3} options.position - Feet position
    * @param {HumanSquad} options.squad - Supplies enemies, formation posts, cover and effects
    * @param {Object} [options.cfg] - Overrides config.allies.squadMate
@@ -43,6 +43,8 @@ export class SquadMate extends GroundCombatant {
     super(gameWorld, { name, position, faction: 'humans', maxHealth: cfg.maxHealth,
       model: model || new SoldierModel({ characterId: squadCharacter(name,squad?.leader?.characterId,squad?.mates?.length) }) });
     this.cfg = cfg;
+    this.callsign=name;
+    if(this.model.character?.id)this.name=characterName(this.model.character.id);
     this.power = new CharacterPower(this, this.model.character?.id || 'bob');
     this.squad = squad;
     this.perception = new Perception(this, cfg);

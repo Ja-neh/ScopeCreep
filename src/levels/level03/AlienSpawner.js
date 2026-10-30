@@ -83,6 +83,7 @@ export class AlienSpawner {
     alien.assault(this.target());
     this.members.push(alien);
     this.spawned++;
+    this.level._addFlyingReinforcement?.(alien);
     this._timer = this.interval;
   }
 

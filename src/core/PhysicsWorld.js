@@ -128,9 +128,9 @@ export class PhysicsWorld {
    *   for compound bodies: a ship's hull trimesh and its gun colliders share one rigid body, so
    *   excluding only the hull collider still lets the ship's own shells strike its gun mounts.
    */
-  castRay(ray, maxToi = 100, solid = true, flags, groups, excludeCollider, excludeRigidBody) {
+  castRay(ray, maxToi = 100, solid = true, flags, groups, excludeCollider, excludeRigidBody, predicate) {
     if (!this.world) return null;
-    return this.world.castRay(ray, maxToi, solid, flags, groups, excludeCollider, excludeRigidBody);
+    return this.world.castRay(ray, maxToi, solid, flags, groups, excludeCollider, excludeRigidBody, predicate);
   }
 
   /**

@@ -29,7 +29,7 @@ export class CombatRoster {
         (human ? this.element : this.overhead).appendChild(el);row={el,meter,label};entries.set(actor,row);
       }
       row.meter.value=actor.health.currentHealth/actor.health.maxHealth;
-      row.label.textContent=actor.health.isDead ? 'DOWN' : `${Math.ceil(row.meter.value*100)}%`;
+      row.label.textContent=actor.health.isDead ? `${Math.ceil(actor.reviveSecondsLeft ?? 30)}s` : `${Math.ceil(row.meter.value*100)}%`;
       row.el.classList.toggle('downed',actor.health.isDead);
       if(!human){
         this.head.copy(actor.position);this.head.y+=(actor.eyeHeight || 2)+0.8;

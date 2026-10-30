@@ -40,9 +40,16 @@ export class Credits {
         block.appendChild(heading);
       }
       for (const line of section.lines) {
-        const row = document.createElement('div');
+        const linked = typeof line === 'object' && line !== null && typeof line.url === 'string';
+        const row = document.createElement(linked ? 'a' : 'div');
         row.className = 'ui-credits-line';
-        row.textContent = line;
+        row.textContent = linked ? line.text : line;
+        if (linked) {
+          row.href = line.url;
+          row.target = '_blank';
+          row.rel = 'noopener noreferrer';
+          row.setAttribute('aria-label', `${line.text} (opens in a new tab)`);
+        }
         block.appendChild(row);
       }
       this.rollEl.appendChild(block);

@@ -208,6 +208,13 @@ export class WeaponController extends BaseEntity {
     this._refreshHud(true);
   }
 
+  restoreAmmo() {
+    this.rifle.ammo=this.rifle.magazineSize;
+    this.rifle.reserve=this.gunCfg.reserveAmmo;
+    this.rifle.cancelReload();this._recoil=this._recoilPitch=0;
+    this._refreshHud(true);
+  }
+
   _fireRifle(gameWorld) {
     if (!this.rifle.canFire()) {
       if (this.rifle.ammo === 0 && this.rifle.startReload() && gameWorld.audio) {

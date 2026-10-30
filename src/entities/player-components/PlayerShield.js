@@ -53,6 +53,8 @@ export class PlayerShield extends BaseEntity {
     this._showBar();
   }
 
+  clear() { this.health=0;this.mesh.visible=false;this._showBar(); }
+
   /** Takes what it can of a hit; returns what gets through to the player's health. */
   _absorb(amount) {
     if (this.health <= 0 || amount <= 0) return amount;

@@ -42,11 +42,15 @@ export class AlienCombatant extends GroundCombatant {
     this.brain = new StateMachine(this, { ...SHARED_STATES, engage: engageState, ...states }, initialState);
     this.isFlying = false;
     this._flightRay = null;
+    this._tacticalPoint=new THREE.Vector3();
+    this._tacticalTimer=0;this._tacticalActive=0;this._dodgeCooldown=0;
+    this._dodgeRequested=false;this._dodging=false;this._tacticalSide=Math.random()<0.5 ? -1 : 1;
+    this._tacticalRay=new this.physicsWorld.RAPIER.Ray({x:0,y:0,z:0},{x:0,y:-1,z:0});
   }
 
   /** Flight uses the same collision sweep as walking, including ceilings and landing. */
   _updateVerticalVelocity(delta) {
-    if (!this.model.canFly) { super._updateVerticalVelocity(delta); return; }
+    if (!this.model.canFly) { this.isFlying=false;super._updateVerticalVelocity(delta); return; }
     const cfg=config.alienPowers.flight;
     const approaching=this.name==='AlienWarden' ? !!this.perception.target && this.brain.is('engage') :
       !!this.perception.target || this.hasMoveTarget || this.perception.hasLastKnown;
@@ -73,6 +77,7 @@ export class AlienCombatant extends GroundCombatant {
     // Being shot reveals where the shooter is, to us and to squadmates nearby
     const shooter = info && info.source;
     if (shooter && shooter.position) {
+      this._dodgeRequested=true;
       this.perception.share(shooter.position);
       if (this.squad) this.squad.callOut(this, shooter.position);
     }
@@ -120,7 +125,44 @@ export class AlienCombatant extends GroundCombatant {
     }
 
     this.brain.update(delta);
+    this._updateTactics(delta);
     this.updateAttack(delta);
+  }
+
+  /** React to incoming damage and circle visible opponents while keeping attacks aimed. */
+  _updateTactics(delta) {
+    const cfg=config.alienTactics,target=this.perception.target;
+    this._dodgeCooldown=Math.max(0,this._dodgeCooldown-delta);
+    this._tacticalTimer-=delta;this._tacticalActive-=delta;
+    if (!target || !this.brain.is('engage') || this.isBoss ||
+      (this.attackPhase && this.attackPhase!=='approach')) return;
+    const dx=target.position.x-this.position.x,dz=target.position.z-this.position.z;
+    const distance=Math.hypot(dx,dz);
+    if (distance<cfg.meleeDistance) return;
+    if (this._tacticalActive<=0 && (this._tacticalTimer<=0 || (this._dodgeRequested && this._dodgeCooldown<=0))) {
+      this._dodging=this._dodgeRequested && this._dodgeCooldown<=0;
+      this._dodgeRequested=false;
+      const step=this._dodging ? cfg.dodgeDistance : cfg.strafeDistance;
+      let found=false;
+      for (const side of [this._tacticalSide,-this._tacticalSide]) {
+        this._tacticalPoint.set(this.position.x+dz/distance*step*side,this.position.y,this.position.z-dx/distance*step*side);
+        if (!this.physicsWorld.isLineClear(this.position,this._tacticalPoint)) continue;
+        if (!this.model.canFly) {
+          Object.assign(this._tacticalRay.origin,{x:this._tacticalPoint.x,y:this.position.y+cfg.probeHeight,z:this._tacticalPoint.z});
+          const floor=this.physicsWorld.castRay(this._tacticalRay,cfg.probeHeight+cfg.maxDrop,true,this.physicsWorld.RAPIER.QueryFilterFlags.ONLY_FIXED);
+          if (!floor) continue; // Never dodge off a roof, ledge or into the sea.
+        }
+        this._tacticalSide=-side;found=true;break;
+      }
+      this._tacticalTimer=cfg.repositionSeconds;
+      if (!found) return;
+      this._tacticalActive=this._dodging ? cfg.dodgeSeconds : cfg.strafeSeconds;
+      if (this._dodging) this._dodgeCooldown=cfg.dodgeCooldown;
+    }
+    if (this._tacticalActive>0) {
+      this.moveTo(this._tacticalPoint,this.cfg.runSpeed*(this._dodging ? cfg.dodgeSpeedMultiplier : 1));
+      this.lookAt(target.position);
+    }
   }
 
   /**

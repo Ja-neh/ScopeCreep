@@ -2,8 +2,8 @@
  * MainMenu.js
  * Minimalist title and level selector for ScopeCreep.
  */
-import { HUMAN_CHARACTERS, getSelectedCharacter, selectCharacter } from '../../entities/models/CharacterRoster.js';
-import config from '../../config.json';
+import { characterName, getSelectedCharacter } from '../../entities/models/CharacterRoster.js';
+import { CharacterSelection } from './CharacterSelection.js';
 
 export class MainMenu {
   /**
@@ -21,6 +21,9 @@ export class MainMenu {
 
     this._build();
     this.parent.appendChild(this.element);
+    this.characterSelection=new CharacterSelection(this.parent,()=>{
+      this._updateCharacterLabel();this.element.classList.remove('ui-hidden');this._characterButton.focus();
+    });
   }
 
   _build() {
@@ -28,34 +31,24 @@ export class MainMenu {
       <div class="ui-minimal-menu">
         <h1 class="ui-minimal-title">Scope Creep</h1>
         <div class="ui-character-choice">
-          <label for="player-character">Play as</label>
-          <select id="player-character" aria-describedby="character-choice-help"></select>
-          <p id="character-choice-help">Choose your character, then select a mission.</p>
+          <button type="button" class="ui-minimal-btn" id="choose-characters">Choose Characters</button>
+          <p id="character-choice-help"></p>
         </div>
         <div class="ui-minimal-list" id="main-menu-level-list"></div>
       </div>
     `;
 
     this._listContainer = this.element.querySelector('#main-menu-level-list');
-    this._characterSelect = this.element.querySelector('#player-character');
-    for (const character of HUMAN_CHARACTERS) {
-      const option = document.createElement('option');
-      option.value = character.id;
-      option.textContent = character.name;
-      this._characterSelect.appendChild(option);
-    }
-    this._characterSelect.value = getSelectedCharacter();
-    this._characterSelect.addEventListener('change', () => {
-      selectCharacter(this._characterSelect.value);
-      this._updatePowerHelp();
+    this._characterButton = this.element.querySelector('#choose-characters');
+    this._characterButton.addEventListener('click', () => {
+      this.element.classList.add('ui-hidden');this.characterSelection.show();
     });
-    this._updatePowerHelp();
+    this._updateCharacterLabel();
   }
 
-  _updatePowerHelp() {
-    const power=config.characterPowers[this._characterSelect.value];
+  _updateCharacterLabel() {
     this.element.querySelector('#character-choice-help').textContent=
-      `H: ${power.name} · ${power.cooldown}s cooldown. Choose a mission below.`;
+      `Playing as ${characterName(getSelectedCharacter())}. Select a mission to deploy.`;
   }
 
   /**
@@ -65,8 +58,8 @@ export class MainMenu {
    */
   show(levels = [], onSelectLevel = null) {
     this._onSelectCallback = onSelectLevel;
-    this._characterSelect.value = getSelectedCharacter();
-    this._updatePowerHelp();
+    this.characterSelection.hide();
+    this._updateCharacterLabel();
 
     if (this._listContainer) {
       this._listContainer.innerHTML = '';
@@ -94,6 +87,7 @@ export class MainMenu {
    * Hide the main menu
    */
   hide() {
+    this.characterSelection.hide();
     this.element.classList.add('ui-hidden');
   }
 
@@ -101,12 +95,13 @@ export class MainMenu {
    * Clean up DOM elements
    */
   dispose() {
+    this.characterSelection.dispose();
     if (this.element && this.element.parentNode) {
       this.element.parentNode.removeChild(this.element);
     }
     this.element = null;
     this._listContainer = null;
-    this._characterSelect = null;
+    this._characterButton = null;
     this._onSelectCallback = null;
   }
 }
