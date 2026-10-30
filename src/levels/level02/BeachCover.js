@@ -1,4 +1,4 @@
-import { Vegetation } from '../../rendering/Vegetation.js';
+import { Vegetation, loadPineTreeAsset } from '../../rendering/Level02Vegetation.js';
 import { valueNoise2D, createRandom, smoothstep } from '../../rendering/Noise.js';
 
 const SEED = 4242;
@@ -47,6 +47,7 @@ export class BeachCover {
     includeBushes = true,
     treeDensity = 1.0,
     palmDensity = 1.0,
+    includeGrass = true,
     createColliders = true
   } = {}) {
     this.gameWorld = gameWorld;
@@ -57,6 +58,7 @@ export class BeachCover {
     this.includeBushes = includeBushes;
     this.treeDensity = treeDensity;
     this.palmDensity = palmDensity;
+    this.includeGrass = includeGrass;
     this.createColliders = createColliders;
 
     this.vegetation = [];
@@ -66,29 +68,58 @@ export class BeachCover {
     this._solids = []; // { x, z, radius } of rocks and trunks already placed, to avoid overlaps
   }
 
-  build() {
+  async build() {
     const random = createRandom(SEED);
-    const placements = { palms: [], trees: [], rocks: [], bushes: [] };
+    const placements = { palms: [], trees: [], rocks: [], bushes: [], grass: [] };
 
     // Rocks: main cover on beach and hills (can be disabled e.g. for distant island vistas)
     if (this.includeRocks) {
       this._scatter(16, random, (c) => {
-        if (c.z < BATTLEFIELD_MIN_Z - 20 || c.inland < 6 || c.inland > 95 || c.path < 6) return 0;
+        if (c.z < BATTLEFIELD_MIN_Z - 20 || c.inland < 6 || c.inland > 95) return 0;
         return 0.55;
       }, (c) => this._placeRockCluster(placements.rocks, c, random));
-      this._scatter(20, random, (c) => (c.inland >= 40 && c.path > 5 ? (0.15 + c.slope * 0.6) * c.density : 0), (c) => {
+      this._scatter(20, random, (c) => (c.inland >= 40 ? (0.15 + c.slope * 0.6) * c.density : 0), (c) => {
         const base = 1.0 + random() * 2.0;
         const s = { x: base * (0.8 + random() * 0.4), y: base * (0.6 + random() * 0.4), z: base * (0.8 + random() * 0.4) };
         return this._placeRock(placements.rocks, c, s, random);
+      });
+      // Larger fractured outcrops cling to the new high ridges and make their silhouettes
+      // read as mountain shoulders instead of smooth grass-covered mounds.
+      this._scatter(15, random, (c) => {
+      if (c.inland < 72 || c.slope < 0.16 || c.slope > 0.68) return 0;
+        return Math.min(0.62, (0.18 + c.slope * 0.58) * c.density);
+      }, (c) => {
+        const size = 1.2 + random() * 2.0;
+        return this._placeRock(placements.rocks, c, {
+          x: size * (1.1 + random() * 0.5),
+          y: size * (1.1 + random() * 0.55),
+          z: size * (0.85 + random() * 0.45)
+        }, random);
       });
     }
 
     // Jungle tree line behind the beach
     if (this.treeDensity > 0) {
-      this._scatter(12, random, (c) => {
+      // Wider candidate cells and a flatter probability field keep the pines from forming
+      // accidental dense pockets while retaining a continuous but airy inland forest.
+      this._scatter(14, random, (c) => {
         if (c.inland < 45 || c.path < 8 || c.slope > 0.45) return 0;
-        return smoothstep(45, 70, c.inland) * 0.75 * c.density * (0.5 + c.noise) * this.treeDensity;
-      }, (c) => this._placeTrunk(placements.trees, c, 0.8 + random() * 0.5, 0.45, 0.3, random));
+        return smoothstep(45, 70, c.inland) * 0.48 * c.density * (0.8 + c.noise * 0.2) * this.treeDensity;
+      }, (c) => this._placeTrunk(placements.trees, c, 0.8 + random() * 0.5, 3.4, 0.3, random));
+      // A lighter, irregular fringe of pines follows the shoulders of the rocky cliffs.
+      this._scatter(22, random, (c) => {
+        if (c.inland < 68 || c.path < 12 || c.slope < 0.12 || c.slope > 0.58) return 0;
+        return smoothstep(68, 105, c.inland) * 0.2 * c.density * (0.85 + c.noise * 0.15) * this.treeDensity;
+      }, (c) => this._placeTrunk(placements.trees, c, 0.85 + random() * 0.55, 3.4, 0.3, random));
+
+      // Add a broken pine fringe along the island's far, northern waterline. The inland band
+      // leaves the wet shore open, while the broad jittered spacing prevents a solid tree wall.
+      this._scatter(17, random, (c) => {
+        if (c.z > -350 || c.inland < 8 || c.inland > 31 || c.path < 9 || c.slope > 0.58) return 0;
+        const shoreBand = smoothstep(8, 15, c.inland) * (1 - smoothstep(25, 31, c.inland));
+        const coastDensity = Math.max(c.density, 0.72);
+        return shoreBand * 0.62 * coastDensity * (0.82 + c.noise * 0.18) * this.treeDensity;
+      }, (c) => this._placeTrunk(placements.trees, c, 0.9 + random() * 0.5, 3.4, 0.3, random));
     }
 
     // Palms along the sand
@@ -116,16 +147,44 @@ export class BeachCover {
       });
     }
 
+    // Dense meadow clumps are instanced in spatial tiles. The wet shoreline stays mostly open;
+    // grass density then ramps up gradually across the island and into the forest floor.
+    if (this.includeGrass) this._scatter(1.25, random, (c) => {
+      if (c.inland < 4 || c.inland > 315 || c.slope > 0.5) return 0;
+      const shoreFade = smoothstep(5, 30, c.inland);
+      const meadowDensity = 0.08 + smoothstep(8, 78, c.inland) * 0.82;
+      const pathFade = smoothstep(1.5, 5.5, c.path);
+      const regionalDensity = Math.max(c.density, 0.74);
+      return Math.min(0.92, shoreFade * meadowDensity * regionalDensity * pathFade * (0.84 + 0.16 * c.noise));
+    }, (c) => {
+      placements.grass.push({
+        x: c.x, y: c.height - 0.03, z: c.z,
+        rotation: random() * Math.PI * 2,
+        scale: 0.86 + random() * 0.42
+      });
+      return true;
+    });
+
+    // Undergrowth gathers around stone and tree roots in loose rings instead of reading as a
+    // uniform scatter. These use the same batched grass/fern meshes as the rest of the field.
+    this._clusterUndergrowth(placements, random);
+
+    // Pine geometry and its PBR textures are loaded before vegetation instances are built.
+    const treeAsset = placements.trees.length ? await loadPineTreeAsset() : [];
+
     // Two sets: props near the fight cast shadows, distant scenery does not
-    const near = { palms: [], trees: [], rocks: [], bushes: [] };
-    const far = { palms: [], trees: [], rocks: [], bushes: [] };
+    const near = { palms: [], trees: [], rocks: [], bushes: [], grass: [] };
+    const far = { palms: [], trees: [], rocks: [], bushes: [], grass: [] };
     for (const kind of Object.keys(placements)) {
       for (const placement of placements[kind]) {
         (this.castsShadow(placement.x, placement.z) ? near : far)[kind].push(placement);
       }
     }
+    const grass = [...near.grass, ...far.grass];
+    near.grass = [];
+    far.grass = [];
     for (const [set, castShadows] of [[near, true], [far, false]]) {
-      if (set.palms.length === 0 && set.trees.length === 0 && set.rocks.length === 0 && set.bushes.length === 0) {
+      if (set.palms.length === 0 && set.trees.length === 0 && set.rocks.length === 0 && set.bushes.length === 0 && set.grass.length === 0) {
         continue;
       }
       const vegetation = new Vegetation(set, {
@@ -133,16 +192,32 @@ export class BeachCover {
         tileSize: SCENERY_TILE,
         lodDistance: SCENERY_LOD_DISTANCE,
         cullDistance: SCENERY_CULL_DISTANCE
-      });
+      }, treeAsset);
       this.gameWorld.environmentGroup.add(vegetation.mesh);
       if (this.createColliders && this.gameWorld?.physics) {
         vegetation.createColliders(this.gameWorld.physics);
       }
       this.vegetation.push(vegetation);
     }
+    if (grass.length) {
+      // Grass does not cast useful shadows, so keep it in one shared instanced tile grid.
+      const grassField = new Vegetation({ grass }, {
+        castShadows: false,
+        tileSize: SCENERY_TILE,
+        lodDistance: SCENERY_LOD_DISTANCE,
+        cullDistance: SCENERY_CULL_DISTANCE
+      });
+      this.gameWorld.environmentGroup.add(grassField.mesh);
+      this.vegetation.push(grassField);
+    }
 
     console.log(`[BeachCover] ${placements.palms.length} palms, ${placements.trees.length} trees, ` +
-      `${placements.rocks.length} rocks, ${placements.bushes.length} bushes.`);
+      `${placements.rocks.length} rocks, ${placements.bushes.length} bushes, ${placements.grass.length} grass tufts.`);
+  }
+
+  update(time, player) {
+    const moving = !!player && Math.hypot(player.velocity.x, player.velocity.z) > 0.35 && player.isGrounded;
+    for (const vegetation of this.vegetation) vegetation.update(time, player?.position, moving);
   }
 
   /**
@@ -285,6 +360,8 @@ export class BeachCover {
    */
   _describe(x, z) {
     if (this.environment.isInVillage(x, z, VILLAGE_MARGIN)) return null;
+    // Keep the broad tire-marked clearing from the reference open around its centre.
+    if (this.environment.layoutName === 'beach' && Math.hypot(x * 0.92, (z + 100) * 0.82) < 46) return null;
     for (const clearing of this.clearings) {
       if (Math.hypot(x - clearing.x, z - clearing.z) < clearing.radius) return null;
     }
@@ -336,6 +413,62 @@ export class BeachCover {
     if (this._overlapsSolid(c.x, c.z, radius * 2)) return false;
     list.push({ x: c.x, y: c.height - sink, z: c.z, rotation: random() * Math.PI * 2, scale });
     this._solids.push({ x: c.x, z: c.z, radius: radius * 2 });
+    return true;
+  }
+
+  _clusterUndergrowth(placements, random) {
+    const addGrass = (x, z, scale) => {
+      if (!this.includeGrass) return;
+      const c = this._describe(x, z);
+      if (!c || c.path < 4.5 || c.slope > 0.48 || !this._clearForUndergrowth(c, 0.32)) return;
+      placements.grass.push({ x, y: c.height - 0.03, z, rotation: random() * Math.PI * 2, scale });
+    };
+    const addFern = (x, z, scale) => {
+      if (!this.includeBushes) return;
+      const c = this._describe(x, z);
+      if (!c || c.path < 4.5 || c.slope > 0.42 || !this._clearForUndergrowth(c, 0.55)) return;
+      if (this.bushes.some((b) => (b.x - x) ** 2 + (b.z - z) ** 2 < 1.2 ** 2)) return;
+      const fern = { x, y: c.height - 0.12, z, rotation: random() * Math.PI * 2, scale };
+      placements.bushes.push(fern);
+      this._registerBush(fern);
+    };
+    const ringSpot = (x, z, inner, outer) => {
+      const angle = random() * Math.PI * 2;
+      const radius = inner + random() * (outer - inner);
+      return [x + Math.cos(angle) * radius, z + Math.sin(angle) * radius];
+    };
+
+    for (const rock of placements.rocks) {
+      const scale = typeof rock.scale === 'number' ? rock.scale : Math.max(rock.scale.x, rock.scale.z);
+      if (scale < 1.25) continue;
+      const edge = scale * 0.92;
+      const grassCount = 1 + Math.floor(random() * 3);
+      for (let i = 0; i < grassCount; i++) {
+        const [x, z] = ringSpot(rock.x, rock.z, edge + 0.45, edge + 2.2);
+        addGrass(x, z, 0.55 + random() * 0.45);
+      }
+      if (random() < 0.58) {
+        const [x, z] = ringSpot(rock.x, rock.z, edge + 0.5, edge + 1.8);
+        addFern(x, z, 0.38 + random() * 0.28);
+      }
+    }
+
+    for (const tree of placements.trees) {
+      const [x, z] = ringSpot(tree.x, tree.z, 0.75, 2.1);
+      addGrass(x, z, 0.6 + random() * 0.38);
+      if (random() < 0.56) {
+        const [fernX, fernZ] = ringSpot(tree.x, tree.z, 0.85, 2.0);
+        addFern(fernX, fernZ, 0.38 + random() * 0.26);
+      }
+    }
+  }
+
+  _clearForUndergrowth(candidate, radius) {
+    for (const solid of this._solids) {
+      const dx = candidate.x - solid.x;
+      const dz = candidate.z - solid.z;
+      if (dx * dx + dz * dz < (solid.radius + radius) ** 2) return false;
+    }
     return true;
   }
 

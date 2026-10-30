@@ -55,11 +55,13 @@ export class LandingCinematic extends BaseEntity {
    * @param {'out'|'inOut'} [options.easing='out'] - 'out': already moving at the start, settling at
    *   the end; 'inOut': also easing away from a still first shot
    * @param {number} [options.holdSeconds=0] - Stay on the first shot this long before moving
+ * @param {number} [options.endHoldSeconds=0] - Hold the last composed shot before returning to the player
    */
   constructor(gameWorld, {
     player, title, subtitle = '', duration = DURATION_SECONDS, focus = null, onFinished = null,
     onFrame = null, flightPath = FLIGHT_PATH, defaultFocus = DEFAULT_FOCUS, aimPoint = LANDING_POINT,
-    aimTowards = AIM_TOWARDS_LANDING, endOnPlayer = true, easing = 'out', holdSeconds = 0
+    aimTowards = AIM_TOWARDS_LANDING, endOnPlayer = true, easing = 'out', holdSeconds = 0,
+    operatorOrbit = null, handover = HANDOVER, endHoldSeconds = 0, endOrbit = null
   }) {
     super('LandingCinematic');
     this.flightPath = flightPath;
@@ -69,6 +71,23 @@ export class LandingCinematic extends BaseEntity {
     this.endOnPlayer = endOnPlayer;
     this.easing = easing;
     this.holdSeconds = holdSeconds;
+    this.handover = handover;
+    this.endHoldSeconds = Math.max(0, endHoldSeconds);
+    this.operatorOrbit = operatorOrbit ? {
+      center: operatorOrbit.center.clone(),
+      radius: operatorOrbit.radius ?? 15,
+      height: operatorOrbit.height ?? 4.5,
+      turns: operatorOrbit.turns ?? 0.7,
+      seconds: operatorOrbit.seconds ?? 3.8,
+      startAngle: operatorOrbit.startAngle ?? 0
+    } : null;
+    this.endOrbit = endOrbit ? {
+      center: endOrbit.center.clone(),
+      radius: endOrbit.radius ?? 24,
+      height: endOrbit.height ?? 6,
+      turns: endOrbit.turns ?? 0.2,
+      startAngle: endOrbit.startAngle ?? 0
+    } : null;
     this.gameWorld = gameWorld;
     this.player = player;
     this.title = title;
@@ -93,6 +112,7 @@ export class LandingCinematic extends BaseEntity {
     this._endPosition = new THREE.Vector3();
     this._endFov = FIELD_OF_VIEW;
     this._aim = new THREE.Object3D();
+    this._orbitLookQuat = new THREE.Quaternion();
   }
 
   /**
@@ -111,7 +131,11 @@ export class LandingCinematic extends BaseEntity {
     this._endQuat.copy(gameWorld.camera.quaternion);
     this._endFov = gameWorld.camera.fov;
 
-    const points = this.endOnPlayer ? [...this.flightPath, this._endPosition] : this.flightPath;
+    const stagedHandover = this.endOnPlayer && this.endHoldSeconds > 0;
+    const points = stagedHandover
+      ? [...this.flightPath]
+      : (this.endOnPlayer ? [...this.flightPath, this._endPosition] : this.flightPath);
+    this._stagePosition = points[points.length - 1].clone();
     this.path = new THREE.CatmullRomCurve3(points, false, 'centripetal');
 
     player.isDevSuspended = true;
@@ -157,15 +181,59 @@ export class LandingCinematic extends BaseEntity {
   _pose(t) {
     // Ease out: already flying with the helicopters at the start, settling gently at the end
     const s = this.easing === 'inOut' ? smooth(t) : 1 - (1 - t) * (1 - t);
-    this.path.getPointAt(s, this.camera.position);
+    const orbit = this.operatorOrbit;
+    const stagedHandover = this.endOnPlayer && this.endHoldSeconds > 0;
+    const movementSeconds = Math.max(0.1, this.duration - this.holdSeconds);
+    const orbitFraction = orbit
+      ? Math.min(0.65, orbit.seconds / (stagedHandover ? movementSeconds : this.duration))
+      : 0;
+    const holdFraction = stagedHandover ? Math.min(this.handover[0], this.endHoldSeconds / movementSeconds) : 0;
+    const sweepEnd = stagedHandover ? Math.max(orbitFraction + 0.01, this.handover[0] - holdFraction) : 1;
+    const handoverProgress = this.endOnPlayer
+      ? smooth(THREE.MathUtils.clamp((t - this.handover[0]) / (this.handover[1] - this.handover[0]), 0, 1))
+      : 0;
+    const orbiting = orbit && t < orbitFraction;
+    if (orbiting) {
+      const u = smooth(t / orbitFraction);
+      const angle = orbit.startAngle + Math.PI * 2 * orbit.turns * u;
+      this.camera.position.set(
+        orbit.center.x + Math.sin(angle) * orbit.radius,
+        orbit.center.y + orbit.height,
+        orbit.center.z + Math.cos(angle) * orbit.radius
+      );
+      this._lookRotation(this.camera.position, orbit.center, this._orbitLookQuat);
+      this.camera.quaternion.copy(this._orbitLookQuat);
+    } else if (stagedHandover && t >= sweepEnd) {
+      if (t < this.handover[0] && this.endOrbit) {
+        const orbitProgress = smooth(THREE.MathUtils.clamp((t - sweepEnd) / (this.handover[0] - sweepEnd), 0, 1));
+        const angle = this.endOrbit.startAngle + Math.PI * 2 * this.endOrbit.turns * orbitProgress;
+        this.camera.position.set(
+          this.endOrbit.center.x + Math.sin(angle) * this.endOrbit.radius,
+          this.endOrbit.center.y + this.endOrbit.height,
+          this.endOrbit.center.z + Math.cos(angle) * this.endOrbit.radius
+        );
+      } else if (t < this.handover[0]) this.camera.position.copy(this._stagePosition);
+      else this.camera.position.lerpVectors(this._stagePosition, this._endPosition, handoverProgress);
+    } else {
+      const pathT = orbit
+        ? THREE.MathUtils.clamp((t - orbitFraction) / ((stagedHandover ? sweepEnd : 1) - orbitFraction), 0, 1)
+        : (stagedHandover ? THREE.MathUtils.clamp(t / sweepEnd, 0, 1) : s);
+      const pathEase = this.easing === 'inOut' ? smooth(pathT) : 1 - (1 - pathT) * (1 - pathT);
+      this.path.getPointAt(pathEase, this.camera.position);
+    }
 
     // Follow the helicopters (with the landing beach in shot), then turn to the player's own view
     const focus = (this.focus && this.focus(this._focusPoint)) || this._focusPoint.copy(this.defaultFocus);
     focus.lerp(this.aimPoint, this.aimTowards);
     this._lookRotation(this.camera.position, focus, this._lookQuat);
-    const handover = this.endOnPlayer ? smooth(THREE.MathUtils.clamp((t - HANDOVER[0]) / (HANDOVER[1] - HANDOVER[0]), 0, 1)) : 0;
-    this.camera.quaternion.slerpQuaternions(this._lookQuat, this._endQuat, handover);
-    this.camera.fov = THREE.MathUtils.lerp(FIELD_OF_VIEW, this._endFov, handover);
+    if (orbit && !orbiting && t < orbitFraction + 0.1) {
+      const transition = smooth(THREE.MathUtils.clamp((t - orbitFraction) / 0.1, 0, 1));
+      this.camera.quaternion.slerpQuaternions(this._orbitLookQuat, this._lookQuat, transition);
+    } else if (!orbiting) {
+      this.camera.quaternion.copy(this._lookQuat);
+    }
+    if (!orbiting) this.camera.quaternion.slerp(this._endQuat, handoverProgress);
+    this.camera.fov = THREE.MathUtils.lerp(FIELD_OF_VIEW, this._endFov, handoverProgress);
     this.camera.updateProjectionMatrix();
   }
 

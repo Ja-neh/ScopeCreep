@@ -483,9 +483,9 @@
         "callOutIntervalSeconds": 40
       },
       "waves": [
-        { "trooper": 20, "brute": 0, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
-        { "trooper": 22, "brute": 2, "lanes": ["centre", "west", "east", "farWest", "farEast"] },
-        { "trooper": 24, "brute": 4, "lanes": ["centre", "west", "east", "farWest", "farEast"] }
+        { "trooper": 8, "brute": 0, "lanes": ["beachWest", "beachCentre", "beachEast"] },
+        { "trooper": 6, "brute": 1, "lanes": ["midWest", "midCentre", "midEast"] },
+        { "trooper": 4, "brute": 1, "lanes": ["flankWest", "flankEast", "pursuit"] }
       ],
       "finalAmbush": {
         "triggerDistance": 45,
