@@ -8,12 +8,16 @@ import {
   loadBigDoorSlidingUp
 } from '../entities/doors/index.js';
 
-const SPACESHIP_MODEL_URL = './assets/inside-spaceship.glb';
-const SPACESHIP_FALLBACK_URL = '/assets/inside-spaceship.glb';
+const base = import.meta.env?.BASE_URL || '/';
+const SPACESHIP_MODEL_URL = `${base}assets/inside-spaceship.glb`;
+const SPACESHIP_FALLBACK_URL = 'assets/inside-spaceship.glb';
 
 let cachedSpaceshipGLTF = null;
 
 async function loadSpaceshipGLTF() {
+  if (typeof Image === 'undefined') {
+    return Promise.resolve({ scene: new THREE.Group() });
+  }
   if (cachedSpaceshipGLTF) return cachedSpaceshipGLTF;
 
   const loader = new GLTFLoader();
@@ -197,6 +201,18 @@ export class Level01InsideSpaceship extends BaseLevel {
         if (node.material) {
           const mats = Array.isArray(node.material) ? node.material : [node.material];
           for (const mat of mats) {
+            // Transparent Window / Glass material configuration
+            if (/window|glass/i.test(name) || /window|glass/i.test(mat.name)) {
+              mat.transparent = true;
+              mat.opacity = 0.32;
+              mat.roughness = 0.12;
+              mat.metalness = 0.15;
+              mat.depthWrite = false;
+              mat.side = THREE.DoubleSide;
+              mat.color.setHex(0xa5f3fc); // Sleek sci-fi cyan tinted glass
+              node.renderOrder = 5; // Render after opaque room geometry
+            }
+
             // If the material has emissive color assigned in Blender, ensure it glows with bloom
             if (mat.emissive && (mat.emissive.r > 0 || mat.emissive.g > 0 || mat.emissive.b > 0)) {
               if (!mat.emissiveIntensity || mat.emissiveIntensity <= 1.0) {
@@ -282,6 +298,21 @@ export class Level01InsideSpaceship extends BaseLevel {
       this.trackDisposable(corridorLight);
       this.levelLights.push(corridorLight);
     }
+
+    // E. Control Room Lighting (Floor 2: [-4, 12, 75] and [-4, 9.5, 83])
+    const crLight1 = new THREE.PointLight(0xe0f2fe, 12.0, 24);
+    crLight1.decay = 1.0;
+    crLight1.position.set(-4.0, 12.0, 75.0);
+    this.gameWorld.environmentGroup.add(crLight1);
+    this.trackDisposable(crLight1);
+    this.levelLights.push(crLight1);
+
+    const crLight2 = new THREE.PointLight(0x38bdf8, 10.0, 20);
+    crLight2.decay = 1.0;
+    crLight2.position.set(-4.0, 9.5, 83.0);
+    this.gameWorld.environmentGroup.add(crLight2);
+    this.trackDisposable(crLight2);
+    this.levelLights.push(crLight2);
 
     // 6. Spawn All Modular Doors Automatically from Blender Empties
     for (const spawnNode of doorSpawnNodes) {
@@ -719,6 +750,7 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.levelLights = [];
     this.floor1Meshes = [];
     this.floor2Meshes = [];
+    cachedSpaceshipGLTF = null; // Clear cached GLTF on dispose so updated models reload cleanly
     super.dispose();
   }
 }
