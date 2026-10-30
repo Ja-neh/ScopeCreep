@@ -77,6 +77,69 @@
 }
 
 /* =========================================================================
+   Spaceship Control Center
+   ========================================================================= */
+.ui-control-center {
+  position: fixed;
+  top: 50%;
+  right: clamp(16px, 4vw, 64px);
+  transform: translateY(-50%);
+  width: min(320px, calc(100vw - 32px));
+  padding: 18px;
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-radius: 12px;
+  background: rgba(8, 18, 35, 0.9);
+  box-shadow: 0 0 28px rgba(14, 165, 233, 0.2);
+  color: var(--text-main);
+  font-family: var(--font-family-ui);
+  backdrop-filter: blur(10px);
+  z-index: 8000;
+  pointer-events: none;
+}
+
+.ui-control-center-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.ui-control-center-header strong {
+  color: #7dd3fc;
+  font-size: 15px;
+  letter-spacing: 2px;
+}
+
+.ui-control-center-header span {
+  color: var(--text-muted);
+  font-family: var(--font-family-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+}
+
+.ui-control-center-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ui-control-center-button {
+  min-height: 42px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--control-button-color), transparent 35%);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--control-button-color), transparent 88%);
+  color: var(--control-button-color);
+  font: 700 10px var(--font-family-mono);
+  letter-spacing: 0.5px;
+  opacity: 1;
+}
+
+.ui-control-center-button:disabled {
+  cursor: default;
+}
+
+/* =========================================================================
    3. Station HUDs (Helm, Artillery, Flak)
    ========================================================================= */
 .ui-station-hud {

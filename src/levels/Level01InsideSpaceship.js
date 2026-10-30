@@ -7,10 +7,13 @@ import {
   loadDoorSlidingUp,
   loadBigDoorSlidingUp
 } from '../entities/doors/index.js';
+import { CONTROL_CENTER_BUTTONS } from '../ui/components/ControlCenterPanel.js';
 
 const base = import.meta.env?.BASE_URL || '/';
 const SPACESHIP_MODEL_URL = `${base}assets/inside-spaceship.glb`;
 const SPACESHIP_FALLBACK_URL = 'assets/inside-spaceship.glb';
+const CONTROL_CENTER_POSITION = new THREE.Vector3(-4, 12, 79);
+const CONTROL_CENTER_RADIUS = 9;
 
 let cachedSpaceshipGLTF = null;
 
@@ -77,6 +80,8 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.doors = [];
     this._fallDeathY = -20;
     this._fallDeathTriggered = false;
+    this._controlCenterVisible = false;
+    this.controlCenterConsole = null;
 
     // Performance Optimization structures:
     this.levelLights = [];
@@ -321,6 +326,8 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.trackDisposable(crLight2);
     this.levelLights.push(crLight2);
 
+    this._createControlCenterConsole();
+
     // 6. Spawn All Modular Doors Automatically from Blender Empties
     for (const spawnNode of doorSpawnNodes) {
       await this._spawnDoorFromEmpty(spawnNode);
@@ -439,6 +446,67 @@ export class Level01InsideSpaceship extends BaseLevel {
         this.trackDisposable(ring);
       }
     }
+  }
+
+  _createControlCenterConsole() {
+    const consoleGroup = new THREE.Group();
+    consoleGroup.name = 'SpaceshipControlCenterConsole';
+    consoleGroup.position.set(-4, 10.6, 81.5);
+    this.gameWorld.environmentGroup.add(consoleGroup);
+    this.trackDisposable(consoleGroup);
+    this.controlCenterConsole = consoleGroup;
+
+    const addMesh = (name, geometry, material, position) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = name;
+      mesh.position.set(...position);
+      consoleGroup.add(mesh);
+      this.trackDisposable(mesh);
+    };
+
+    addMesh(
+      'ControlCenterPanelBacking',
+      new THREE.BoxGeometry(3.2, 1.9, 0.16),
+      new THREE.MeshStandardMaterial({
+        color: 0x172b3b,
+        metalness: 0.75,
+        roughness: 0.32
+      }),
+      [0, 0, 0]
+    );
+
+    addMesh(
+      'ControlCenterDisplay',
+      new THREE.BoxGeometry(1.7, 0.34, 0.04),
+      new THREE.MeshStandardMaterial({
+        color: 0x082f49,
+        emissive: 0x0284c7,
+        emissiveIntensity: 1.6,
+        metalness: 0.25,
+        roughness: 0.28
+      }),
+      [0, 0.58, -0.1]
+    );
+
+    const buttonColumns = [-0.85, 0, 0.85];
+    const buttonRows = [-0.05, -0.55];
+    CONTROL_CENTER_BUTTONS.forEach((button, index) => {
+      const column = index % buttonColumns.length;
+      const row = Math.floor(index / buttonColumns.length);
+      const color = Number.parseInt(button.color.slice(1), 16);
+      addMesh(
+        `ControlCenterButton-${button.label.replaceAll(' ', '-')}`,
+        new THREE.BoxGeometry(0.58, 0.25, 0.1),
+        new THREE.MeshStandardMaterial({
+          color,
+          emissive: color,
+          emissiveIntensity: 0.45,
+          metalness: 0.35,
+          roughness: 0.3
+        }),
+        [buttonColumns[column], buttonRows[row], -0.14]
+      );
+    });
   }
 
   /**
@@ -570,6 +638,8 @@ export class Level01InsideSpaceship extends BaseLevel {
 
     if (this._checkPlayerFall()) return;
 
+    this._updateControlCenterPanel();
+
     // Performance Optimization A & D: Dynamic Light Culling & Floor Occlusion Culling
     if (this.player && this.player.position) {
       const px = this.player.position.x;
@@ -621,6 +691,23 @@ export class Level01InsideSpaceship extends BaseLevel {
         this.player.teleport(this.checkpoint2.x, this.checkpoint2.y, this.checkpoint2.z);
         if (gameWorld.ui) gameWorld.ui.showToast('Checkpoint 3: Research Lab (Floor 2)', 'info', 2000);
       }
+    }
+  }
+
+  _updateControlCenterPanel() {
+    if (!this.player?.position || !this.gameWorld.ui) return;
+
+    const nearControlCenter =
+      this.player.position.distanceToSquared(CONTROL_CENTER_POSITION) <=
+      CONTROL_CENTER_RADIUS * CONTROL_CENTER_RADIUS;
+
+    if (nearControlCenter === this._controlCenterVisible) return;
+
+    this._controlCenterVisible = nearControlCenter;
+    if (nearControlCenter) {
+      this.gameWorld.ui.showControlCenter(CONTROL_CENTER_BUTTONS);
+    } else {
+      this.gameWorld.ui.hideControlCenter();
     }
   }
 
@@ -839,6 +926,10 @@ export class Level01InsideSpaceship extends BaseLevel {
 
   dispose() {
     this._endIntroCutscene();
+    if (this._controlCenterVisible) {
+      this.gameWorld.ui?.hideControlCenter();
+      this._controlCenterVisible = false;
+    }
 
     if (this.introCamera && this.gameWorld?.environmentGroup) {
       this.gameWorld.environmentGroup.remove(this.introCamera);

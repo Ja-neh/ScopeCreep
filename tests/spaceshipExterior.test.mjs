@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Vector3 } from 'three';
 import { createTestWorld } from './support/testWorld.mjs';
 import { Level01InsideSpaceship } from '../src/levels/Level01InsideSpaceship.js';
 
@@ -28,6 +29,31 @@ test('spaceship exterior has distant stars, planets, and a moon, and disposes th
   for (const object of [stars, moon, bluePlanet, ringedPlanet, rings]) {
     assert.equal(object.parent, null, `${object.name} was removed on level disposal`);
   }
+});
+
+test('spaceship control center shows decorative buttons nearby and disposes its console', async () => {
+  const world = await createTestWorld();
+  const level = new Level01InsideSpaceship(world);
+  level._createControlCenterConsole();
+
+  const console = world.environmentGroup.getObjectByName('SpaceshipControlCenterConsole');
+  assert.ok(console);
+  assert.equal(
+    console.children.filter((child) => child.name.startsWith('ControlCenterButton-')).length,
+    6
+  );
+
+  level.player = { position: new Vector3(-4, 12, 79) };
+  level._updateControlCenterPanel();
+  assert.equal(world.ui.callsTo('showControlCenter').length, 1);
+  assert.equal(world.ui.callsTo('showControlCenter')[0].args[0].length, 6);
+
+  level.player.position.set(0, 0, 0);
+  level._updateControlCenterPanel();
+  assert.equal(world.ui.callsTo('hideControlCenter').length, 1);
+
+  level.dispose();
+  assert.equal(console.parent, null);
 });
 
 test('falling below the ship freezes the player and offers restart', async () => {
