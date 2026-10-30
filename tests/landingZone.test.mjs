@@ -54,7 +54,8 @@ test('player walks from the deck, over the railing platform and down the gangway
   player.yaw = 0;
   world.addEntity(player);
 
-  const result = walk(player, 5);
+  // Traverse the same route at the configured walking pace.
+  const result = walk(player, (spawn.z - 185) / player.walkSpeed);
   assert.ok(result.maxY > 6.0, `climbed onto the platform (max y ${result.maxY.toFixed(2)})`);
   assert.ok(player.position.z < 190, `reached the beach (z ${player.position.z.toFixed(1)})`);
   assert.ok(env.heightAt(player.position.x, player.position.z) > 0.5, 'ended on dry sand');

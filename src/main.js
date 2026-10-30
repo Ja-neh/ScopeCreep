@@ -7,11 +7,17 @@ import { Level02 } from './levels/Level02.js';
 import { Level02TestLevel } from './levels/Level02TestLevel.js';
 import { Level03 } from './levels/Level03.js';
 import { Level03TestLevel } from './levels/Level03TestLevel.js';
+import { CharacterTestLevel } from './levels/CharacterTestLevel.js';
 
 /**
  * Level Registry defining all available stages in ScopeCreep
  */
 const AVAILABLE_LEVELS = [
+  {
+    id: 'character_lab',
+    title: 'Sandbox: Character Lab',
+    create: (gw) => new CharacterTestLevel(gw)
+  },
   {
     id: 'level01',
     title: 'Level 1: Operation Retake',

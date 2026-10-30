@@ -96,7 +96,7 @@ test('the gun never hurts its shooter', () => {
 test('an empty magazine reloads automatically from reserve', () => {
   place(0, 170, 0, 1.2); // Into the sky
   world.input.hold('firePrimary');
-  stepWorld(world, 3.5, { onFrame: () => weapons.rifle.isReloading });
+  stepWorld(world, config.weapons.machineGun.magazine/config.weapons.machineGun.roundsPerSecond+1, { onFrame: () => weapons.rifle.isReloading });
   assert.ok(weapons.rifle.isReloading, 'reload started when empty');
   assert.ok(world.audio.callsTo('play').some((call) => call.args[0] === 'reload'), 'reloading is audible');
   world.input.release('firePrimary');
@@ -212,6 +212,7 @@ test('removing the weapons restores the camera and frees the effects', async () 
   const p = new Player(w, {});
   w.addEntity(p);
   const baseFov = w.camera.fov;
+  const playerEffects = [...w.effectsGroup.children];
   const baseShoulder = p.springArm.shoulderOffset;
   const controller = new WeaponController(w, p);
   w.addEntity(controller);
@@ -219,7 +220,8 @@ test('removing the weapons restores the camera and frees the effects', async () 
   w.removeEntity(controller);
   assert.equal(w.camera.fov, baseFov);
   assert.equal(p.springArm.shoulderOffset, baseShoulder);
-  assert.equal(w.effectsGroup.children.length, 0);
+  assert.deepEqual(w.effectsGroup.children, playerEffects, 'controller releases its effects and preserves the player power');
   w.clearEntities();
+  assert.equal(w.effectsGroup.children.length,0,'player releases its power effect');
   assert.equal(bodyCount(w), 0);
 });

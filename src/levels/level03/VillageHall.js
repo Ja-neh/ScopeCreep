@@ -1,21 +1,21 @@
 import * as THREE from 'three';
 
 // The hall, in its own frame: the entrance faces +z (towards the square)
-const WIDTH = 24;
-const DEPTH = 30;
-const WALL_HEIGHT = 9;
+const WIDTH = 40;
+const DEPTH = 52;
+const WALL_HEIGHT = 22;
 const WALL = 0.8;              // Wall thickness
-const ENTRANCE_WIDTH = 7;
-const ENTRANCE_HEIGHT = 6.5;
+const ENTRANCE_WIDTH = 12;
+const ENTRANCE_HEIGHT = 14;
 const ROOF_RISE = 5;
 const FLOOR = 0.15;            // Stone floor, a step up from the ground
 const PILLAR_RADIUS = 0.7;
-const PILLAR_X = 5.5;
-const PILLAR_Z = [-8, 0, 8];
+const PILLAR_X = 13;
+const PILLAR_Z = [-19, 0, 19];
 const DAIS = { width: 10, height: 0.4, depth: 5 }; // Where the Warden waits, at the back
 const WINDOW_Z = [-9, 0, 9];
-const CAGE_X = 8.6;      // Hostage cages: between the pillars and the side walls...
-const CAGE_Z = [-4, 4];  // ...between the pillars along the hall
+const CAGE_X = 16;      // Between the widened pillar rows and side walls.
+const CAGE_Z = [-15, -7];
 
 const COLORS = {
   stone: 0x8f8778,
@@ -120,8 +120,8 @@ export class VillageHall {
     this._daisDepthZ = daisZ;
 
     // The aliens' green glow fills the hall
-    this.light = new THREE.PointLight(0x7dffa0, 30, 32, 2);
-    this.light.position.set(0, 5, daisZ + 2).applyMatrix4(frame);
+    this.light = new THREE.PointLight(0xcee7df, 900, 70, 2);
+    this.light.position.set(0, 16, daisZ + 14).applyMatrix4(frame);
     group.add(this.light);
   }
 

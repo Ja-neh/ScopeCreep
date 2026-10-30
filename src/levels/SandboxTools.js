@@ -64,7 +64,7 @@ export class SandboxTools {
       }
     }
     if (gameWorld.ui) {
-      gameWorld.ui.showToast('Sandbox: [F1] aerial camera · [F3] spawn trooper · [Shift]+[F3] spawn brute · [F4] squad on/off', 'info', 6000);
+      gameWorld.ui.showToast('Sandbox ready. Controls are in Options → Instructions.', 'info', 3000);
     }
   }
 

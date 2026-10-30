@@ -226,7 +226,7 @@ test('a thrown grenade arcs, detonates and tears cover apart where it lands', ()
   world.projectilePool = null;
 });
 
-test('a trooper flushes a watched player with a grenade (and never hurts its own side)', () => {
+test('red aliens attack with 10% acid instead of legacy grenades and never damage their own side', () => {
   const pool = new ProjectilePool(world);
   world.addEntity(pool);
   world.projectilePool = pool;
@@ -271,22 +271,17 @@ test('a trooper flushes a watched player with a grenade (and never hurts its own
   run(2, () => thrower.brain.is('engage'));
   assert.ok(thrower.brain.is('engage'), 'the engagement started');
 
-  run(4, () => pool.activeProjectiles.some((p) => p.type === 'GRENADE'));
-  assert.ok(pool.activeProjectiles.some((p) => p.type === 'GRENADE'), 'the flush grenade is thrown');
-  thrower._grenadeTimer = 999; // One is enough for this test
-
-  // Hold the ally inside the blast and wait for the detonation
-  ally.stop();
-  ally.teleport(3, env.heightAt(3, 148) + 0.1, 148);
-  run(3, () => blasts.length > 0);
-  assert.equal(blasts.length, 1, 'the grenade detonated');
-
-  const blastToAlly = Math.hypot(blasts[0].point.x - ally.position.x, blasts[0].point.z - ally.position.z);
-  assert.ok(blastToAlly < grenadeCfg.blastRadius, `the ally stood ${blastToAlly.toFixed(1)} m from the blast`);
-  assert.equal(ally.health.currentHealth, ally.health.maxHealth, 'the alien beside the blast is untouched');
-
-  const hurt = 100 - player.health.currentHealth;
-  assert.ok(hurt >= grenadeCfg.damage * 0.3, `the flush dug the player out (${hurt.toFixed(0)} damage)`);
+  let acidShots=0;
+  const fire=pool.firePlasma.bind(pool);
+  pool.firePlasma=options=>{assert.equal(options.attack,'slime');assert.equal(options.fraction,.1);acidShots++;return fire(options);};
+  run(5);
+  assert.ok(acidShots>0,'acid is spat from the mouth');
+  assert.equal(blasts.length,0,'no unconfigured grenade explosion');
+  assert.ok(pool.activeProjectiles.every(p=>p.type!=='GRENADE'));
+  assert.equal(ally.health.currentHealth,ally.health.maxHealth,'friendly acid does not hurt another alien');
+  const hurt=100-player.health.currentHealth;
+  assert.ok(hurt>0,'acid hits the watched player');
+  assert.ok(Math.abs(hurt/10-Math.round(hurt/10))<1e-6,'each landed acid shot removes 10% final health');
 
   squad.dispose();
   world.clearEntities();

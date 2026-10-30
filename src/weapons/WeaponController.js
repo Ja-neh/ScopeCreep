@@ -6,13 +6,14 @@ import { MeleeWeapon } from './MeleeWeapon.js';
 import { WeaponEffects } from './WeaponEffects.js';
 import { createWeaponMaterials, createRifleModel, createKnifeModel, createBombModel, disposeModelGeometry } from './WeaponModels.js';
 import config from '../config.json';
+import { FirstPersonHands } from './FirstPersonHands.js';
 
 // Camera and pose feel while armed (visual, not balance)
 const SHOULDER_OFFSET = 0.75;                              // Over-the-shoulder view so the crosshair clears the head
 const ADS_FOV = 42;                                        // Field of view while aiming down sights (degrees)
 const ADS_DISTANCE = 2.4;                                  // Third-person camera distance while aiming
 const ADS_BLEND_RATE = 12;
-const HELD_PIVOT = new THREE.Vector3(0.32, 1.38, -0.1);   // Right shoulder in the avatar's frame
+const HELD_PIVOT = new THREE.Vector3(0.2, 1.38, -0.1);   // Keep the support grip within both arms' reach
 const VIEW_OFFSET = new THREE.Vector3(0.24, -0.22, -0.5); // First-person gun position in camera space
 const VIEW_OFFSET_ADS = new THREE.Vector3(0, -0.16, -0.42);
 const RECOIL_KICK = 0.06;                                  // Visual kickback of the gun per shot (meters)
@@ -83,6 +84,7 @@ export class WeaponController extends BaseEntity {
     this.viewKnife = createKnifeModel(this.materials);
     this.viewBomb = createBombModel(this.materials);
     this.viewModel.add(this.viewRifle.mesh, this.viewKnife.mesh, this.viewBomb.mesh);
+    this.viewHands = typeof Image !== 'undefined' ? new FirstPersonHands(this.viewModel, this.materials) : null;
     this.viewModel.traverse((child) => { if (child.isMesh) child.castShadow = false; });
     this.viewModel.visible = false;
     gameWorld.effectsGroup.add(this.viewModel);
@@ -137,7 +139,7 @@ export class WeaponController extends BaseEntity {
       if (this.quickMeleeTimer <= 0) this._showModels();
     }
 
-    const canAct = input.isPointerLocked && !player.isDevSuspended && !player.isMounted;
+    const canAct = input.isPointerLocked && !player.isDevSuspended && !player.isMounted && !player.freeLooking;
     this.isAiming = canAct && this.activeWeapon === 'rifle' && input.isActionDown('aimDownSights');
 
     if (canAct) {
@@ -185,6 +187,8 @@ export class WeaponController extends BaseEntity {
     }
 
     this._refreshHud(false);
+    player.model.character.reloadProgress=this.rifle.reloadProgress;
+    player.model.character.throwProgress=this.throwTimer>0 ? 1-this.throwTimer/this.bombCfg.throwSeconds : -1;
   }
 
   _equip(weapon) {
@@ -193,6 +197,14 @@ export class WeaponController extends BaseEntity {
     this.switchTimer = this.switchSeconds;
     this.rifle.cancelReload();
     this._showModels();
+    this._refreshHud(true);
+  }
+
+  pickUpRifle() {
+    this._equip('rifle');
+    this.rifle.ammo = this.rifle.magazineSize;
+    this.rifle.reserve = this.gunCfg.reserveAmmo;
+    this.rifle.cancelReload();
     this._refreshHud(true);
   }
 
@@ -247,6 +259,7 @@ export class WeaponController extends BaseEntity {
     player.yaw += (Math.random() - 0.5) * 2 * this.gunCfg.recoilYaw * recoilScale;
     this._recoilPitch += climb;
     this._recoil = RECOIL_KICK;
+    player.model.character.kickRecoil();
 
     // The shot's flight line: thin scenery with no collider (a bush) is told what crossed it
     if (this.onBulletImpact && result.hit) this.onBulletImpact(this._origin, result.point);
@@ -360,18 +373,27 @@ export class WeaponController extends BaseEntity {
     // Held weapon: follows aim pitch, lowers when crouching, hidden whenever the body is
     this.heldPivot.position.y = HELD_PIVOT.y * (1 - 0.35 * player.crouchAmount);
     this.heldPivot.rotation.x = player.pitch;
-    this.heldPivot.visible = player.bodyMesh.visible;
+    this.heldPivot.visible = player.model.character.loaded ? player.model.character.group.visible : player.bodyMesh.visible;
+    this.heldPivot.visible = this.heldPivot.visible && !this.isPickingUp;
     this.heldRifle.mesh.position.z = this._recoil;
+    if (this.activeWeapon === 'rifle') {
+      player.model.character.fitWeapon(this.heldRifle.mesh, this.isAiming, this._recoil);
+      player.model.character.poseWeapon(this.heldRifle.mesh, true, this.rifle.reloadProgress);
+    }
 
     // First-person view model in front of the camera
-    const firstPerson = player.cameraMode === CameraMode.FIRST_PERSON && !player.isDevSuspended && !player.isMounted;
-    this.viewModel.visible = firstPerson;
+    const firstPerson = player.cameraMode === CameraMode.FIRST_PERSON && !player.isDevSuspended && !player.isMounted && !player.freeLooking;
+    this.viewModel.visible = firstPerson && !this.isPickingUp;
     if (firstPerson) {
       this._tmp.lerpVectors(VIEW_OFFSET, VIEW_OFFSET_ADS, this._adsBlend);
       this._tmp.z += this._recoil;
       if (this.switchTimer > 0) this._tmp.y -= (this.switchTimer / this.switchSeconds) * 0.3;
       this.viewModel.position.copy(this._tmp).applyQuaternion(camera.quaternion).add(camera.position);
       this.viewModel.quaternion.copy(camera.quaternion);
+      if (this.viewHands) {
+        this.viewHands.mesh.visible = this.activeWeapon === 'rifle';
+        if (this.viewHands.mesh.visible) this.viewHands.update(this.viewRifle.mesh, this.rifle.reloadProgress);
+      }
     }
 
     // Knife swing: a quick stab forward and down
@@ -389,6 +411,12 @@ export class WeaponController extends BaseEntity {
     this.heldBomb.mesh.rotation.x = -toss * 1.4;
     this.viewBomb.mesh.rotation.x = -toss * 1.4;
 
+    if (this.activeWeapon!=='rifle') {
+      const held=this.activeWeapon==='knife' ? this.heldKnife.mesh : this.heldBomb.mesh;
+      player.model.character.fitWeapon(held,false,0);
+      player.model.character.poseWeapon(held,false);
+    }
+
     this.effects.update(delta);
 
     if (gameWorld.ui && this.activeWeapon === 'rifle') {
@@ -400,6 +428,7 @@ export class WeaponController extends BaseEntity {
 
   _showModels() {
     const weapon = this.activeWeapon;
+    this.player.model.character.setArmed(weapon === 'rifle');
     this.heldRifle.mesh.visible = weapon === 'rifle';
     this.heldKnife.mesh.visible = weapon === 'knife';
     this.heldBomb.mesh.visible = weapon === 'bomb';

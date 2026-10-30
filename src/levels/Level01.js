@@ -6,6 +6,9 @@ import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
 import { Battleship } from '../entities/Battleship.js';
 import { Player } from '../entities/Player.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
+import {WeaponController} from '../weapons/WeaponController.js';
+import {AlienSquad} from '../ai/AlienSquad.js';
+import {AlienBrute} from '../entities/enemies/AlienBrute.js';
 import { PlayerJet } from '../entities/player-jet/PlayerJet.js';
 import { EnemyJet } from '../entities/enemies/EnemyJet.js';
 import { JetDefenseMission } from './JetDefenseMission.js';
@@ -101,14 +104,16 @@ export class Level01 extends BaseLevel {
 
     // 5. Spawn Player Character Controller on the Battleship Walking Deck
     this.player = new Player(this.gameWorld, {
-      walkSpeed: 8.0,
-      sprintSpeed: 14.0,
+      maxHealth:config.player.vitals.maxHealth,
       jumpForce: 10.0
     });
     // Position player on forward walking deck
     this.player.setPosition(0.46, 6.2, -14.0);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
+    this.weapons=new WeaponController(this.gameWorld,this.player);this.gameWorld.addEntity(this.weapons);
+    this.boarders=this.trackDisposable(new AlienSquad(this.gameWorld,{targets:[this.player],alertRadius:60,corpseSeconds:8}));
+    this._boardingSpawned=false;this._deckRespawn=-1;
 
     this._createJetLaunchMarker();
     this._preflightTimer = config.enemyJet.preflightDefense.firstWaveDelaySeconds;
@@ -272,6 +277,24 @@ export class Level01 extends BaseLevel {
 
   gameplayUpdate(delta, gameWorld = this.gameWorld) {
     super.gameplayUpdate(delta, gameWorld);
+    this.boarders.update();
+    if(this.preflightDefenseComplete && !this._boardingSpawned){
+      this._boardingSpawned=true;
+      for(const x of [-4,4]){
+        const position=this.battleship.mesh.localToWorld(new THREE.Vector3(x,6.2,12));
+        const alien=new AlienBrute(gameWorld,{position,squad:this.boarders});
+        this.boarders.add(alien);alien.assault(this.player.position);
+      }
+      gameWorld.ui?.showToast('Gorr boarding party — defend the deck!','danger',3500);
+    }
+    if(this.player.health.isDead){
+      this.player.isDevSuspended=true;this._deckRespawn=this._deckRespawn<0 ? config.player.vitals.respawnSeconds : this._deckRespawn-delta;
+      if(this._deckRespawn<=0){
+        const p=this.battleship.mesh.localToWorld(new THREE.Vector3(0.46,6.2,-14));
+        this.player.teleport(p.x,p.y,p.z);this.player.health.reset();this.player.model.character.resetPose();
+        this.player.isDevSuspended=false;this._deckRespawn=-1;
+      }
+    }
 
     // Keep the sun's shadow square on the player
     if (this.sunShadow) this.sunShadow.update(this.player || null);

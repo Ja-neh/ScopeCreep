@@ -20,6 +20,7 @@ import { DevToolsWidget } from './components/DevToolsWidget.js';
 import { MainMenu } from './components/MainMenu.js';
 import { PauseMenu } from './components/PauseMenu.js';
 import { PauseButton } from './components/PauseButton.js';
+import { CombatRoster } from './components/CombatRoster.js';
 
 /**
  * UIManager.js
@@ -59,7 +60,9 @@ export class UIManager {
     // Menus & Pause components
     this.mainMenu = new MainMenu(this.container);
     this.pauseMenu = new PauseMenu(this.container);
+    this.pauseMenu.setInstructions(this.devTools.element);
     this.pauseButton = new PauseButton(this.container);
+    this.combatRoster = new CombatRoster(this.container);
   }
 
   // =========================================================================
@@ -399,6 +402,7 @@ export class UIManager {
    * (see `mapTerrainFromEnvironment`). Pass null to keep the cached backdrop.
    */
   showMap(terrain) {
+    if(this.hallMode) return;
     if (this.mapOverlay) {
       this.mapOverlay.show(terrain);
     }
@@ -438,6 +442,13 @@ export class UIManager {
     if (this.mapOverlay) {
       this.mapOverlay.hideMinimap();
     }
+  }
+
+  setHallMode(inside) {
+    if(this.hallMode===inside) return;
+    this.hallMode=inside;
+    this.container.classList.toggle('ui-in-hall',inside);
+    if(inside) this.hideMap();
   }
 
   /**
@@ -554,6 +565,11 @@ export class UIManager {
   showControlsHelper(lines = null) {
     if (this.controlsHelper) {
       this.controlsHelper.setLines(lines);
+      for(const [keys,label] of [['H','Use your character power'],['O','Inspect player (mouse to orbit)'],['Hold Z + mouse','Look around without turning'],['1 / 2 / 3','Gun / knife / bomb'],['R / Q','Reload / quick knife']]){
+        const row=document.createElement('div');row.textContent=`${keys}: ${label}`;this.controlsHelper.element.appendChild(row);
+      }
+      this.pauseMenu.setInstructions(this.controlsHelper.element);
+      this.pauseMenu.setInstructions(this.devTools.element);
       this.controlsHelper.show();
     }
   }
@@ -676,6 +692,8 @@ export class UIManager {
    * Resets all in-level HUD overlays when returning to main menu or switching stages
    */
   resetLevelHUD() {
+    this.setHallMode(false);
+    this.combatRoster.clear();
     this.hidePrompt();
     this.hideStationHUD();
     this.hideCrosshair();
@@ -719,6 +737,7 @@ export class UIManager {
    * Tear down and remove all UI elements
    */
   dispose() {
+    this.combatRoster.dispose();
     if (this.prompt) {
       this.prompt.dispose();
       this.prompt = null;

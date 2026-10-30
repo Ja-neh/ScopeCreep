@@ -33,7 +33,7 @@ export class AlienBrute extends AlienCombatant {
       position,
       squad,
       cfg,
-      model: model || new AlienModel({ armorColor: 0x8a3f3f, scale: BRUTE_SCALE, backpack: true }),
+      model: model || new AlienModel({ armorColor: 0x8a3f3f, scale: BRUTE_SCALE, backpack: true, characterId: 'gorr' }),
       engageState: BRUTE_ENGAGE,
       capsule: capsule || BRUTE_CAPSULE
     });
@@ -42,6 +42,27 @@ export class AlienBrute extends AlienCombatant {
     this._phaseTimer = 0;
     this._offset = new THREE.Vector3();
     this._forward = new THREE.Vector3();
+    this._rangedTimer=0;
+    this._muzzle=new THREE.Vector3();
+    this._rangedDirection=new THREE.Vector3();
+  }
+
+  updateAttack(delta) {
+    this._rangedTimer-=delta;
+    const target=this.perception.target;
+    const power=config.alienPowers[this.model.character.id];
+    this.isAiming=!!target && this.attackPhase==='approach';
+    if (!this.isAiming || !power || this._rangedTimer>0 ||
+      this.position.distanceTo(target.position)>power.range || !this.gameWorld.projectilePool) return;
+    this.model.mesh.updateWorldMatrix(true,true);
+    this.model.muzzle.getWorldPosition(this._muzzle);
+    this._rangedDirection.copy(target.position); this._rangedDirection.y+=1.2;
+    this._rangedDirection.sub(this._muzzle).normalize();
+    this.gameWorld.projectilePool.firePlasma({origin:this._muzzle,direction:this._rangedDirection,
+      speed:power.speed,fraction:THREE.MathUtils.lerp(power.fractionMin,power.fractionMax,Math.random()),
+      attack:this.model.hasGun ? 'bullet' : 'slime',source:this,excludeCollider:this.collider});
+    this.model.releasePower();
+    this._rangedTimer=power.cooldown;
   }
 
   /**
@@ -57,7 +78,9 @@ export class AlienBrute extends AlienCombatant {
   _slam(target) {
     const reach = this.cfg.slamRange + SLAM_REACH_BONUS;
     if (target && !target.health.isDead && target.position.distanceTo(this.position) <= reach) {
-      target.health.takeDamage({ amount: this.cfg.slamDamage, source: this });
+      target.health.takeDamage({ amount: this.cfg.slamDamage,
+        fraction:this.model.hasGun ? config.alienPowers.gorr.swordFraction : 0, source: this });
+      if (this.model.character.id==='gorr') this.health.heal(config.alienPowers.gorr.healOnSlam);
     }
   }
 }
@@ -75,6 +98,13 @@ const BRUTE_ENGAGE = {
     const threat = target ? target.position : b.perception.lastKnownPosition;
     const distance = Math.hypot(threat.x - b.position.x, threat.z - b.position.z);
     b.lookAt(threat);
+
+    if (b.model.canFly) {
+      b.attackPhase='approach';b.attackPose=0;
+      if (distance>config.alienPowers.galiant.range*0.6) b.moveTo(threat,b.cfg.runSpeed);
+      else b.stop();
+      return !target && b.perception.timeSinceSeen>LOST_SIGHT_SECONDS ? 'search' : null;
+    }
 
     if (!target && b.perception.timeSinceSeen > LOST_SIGHT_SECONDS && b.attackPhase === 'approach') return 'search';
 

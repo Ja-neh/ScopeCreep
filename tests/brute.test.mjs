@@ -65,7 +65,7 @@ test('a brute charges a player who stands still and slams them', () => {
     }
   });
   assert.ok(charged, 'charged');
-  assert.equal(player.health.currentHealth, 100 - config.enemies.brute.slamDamage, 'one slam landed');
+  assert.equal(player.health.currentHealth, 100*(1-config.alienPowers.gorr.swordFraction), 'one sword strike landed');
 });
 
 test('sprinting away outruns the charge', () => {

@@ -61,7 +61,7 @@ test('the opening sweeps over the village with its title card, holds the player 
   const toWarden = new THREE.Vector3().subVectors(warden.position, opening.camera.position).setY(0).normalize();
   const looking = new THREE.Vector3(0, 0, -1).applyQuaternion(opening.camera.quaternion).setY(0).normalize();
   assert.ok(looking.dot(toWarden) > 0.8, '...looking at the Warden among its prisoners');
-  for (const cage of level.cages) assert.ok(flat(cage.position, warden.position) < 14, 'the cages round it');
+  for (const cage of level.cages) assert.ok(flat(cage.position, warden.position) < hall.width*0.75, 'the cages surround it inside the enlarged hall');
 
   let highest = 0;
   stepWorld(world, 15.5, { level, onFrame: () => { highest = Math.max(highest, opening.camera.position.y); } });

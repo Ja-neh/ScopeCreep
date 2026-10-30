@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { consolidateMeshes } from '../../rendering/MeshMerge.js';
+import { CharacterVisual } from './CharacterVisual.js';
+import { createRifleModel, createWeaponMaterials } from '../../weapons/WeaponModels.js';
 
 /**
  * AlienModel
@@ -17,7 +19,9 @@ export class AlienModel {
    * @param {boolean} [options.backpack] - Glowing power pack on the back (the brute's weak spot)
    * @param {boolean} [options.crest] - A crest of glowing spikes on the head and shoulders (the Warden)
    */
-  constructor({ armorColor = 0x5d5480, scale = 1, backpack = false, crest = false } = {}) {
+  constructor({ armorColor = 0x5d5480, scale = 1, backpack = false, crest = false, characterId = 'galiant', characterOptions = {} } = {}) {
+    this.hasGun = characterId === 'gorr';
+    this.canFly = !this.hasGun;
     this.mesh = new THREE.Group();
     this.mesh.name = 'Alien';
     this.body = new THREE.Group(); // Leans and falls as one piece
@@ -68,14 +72,22 @@ export class AlienModel {
     });
 
     // Plasma rifle at the right hip, glowing tip
-    this.gun = new THREE.Group();
+    this.weaponMaterials = createWeaponMaterials();
+    const rifle = createRifleModel(this.weaponMaterials);
+    this.gun = rifle.mesh;
     this.gun.position.set(0.3, 1.2, -0.25);
     this.body.add(this.gun);
-    this._add(this.gun, new THREE.BoxGeometry(0.09, 0.11, 0.62), gun, 0, 0, -0.1);
-    this._add(this.gun, new THREE.CylinderGeometry(0.035, 0.035, 0.08, 8), glow, 0, 0, -0.43).rotation.x = Math.PI / 2;
-    this.muzzle = new THREE.Object3D();
-    this.muzzle.position.set(0, 0, -0.48);
-    this.gun.add(this.muzzle);
+    this.gun.visible = this.hasGun;
+    this.muzzle = this.hasGun ? rifle.muzzle : new THREE.Object3D();
+    if (!this.hasGun) {
+      this.muzzle.position.set(0, 1.85, -0.25);
+      this.body.add(this.muzzle);
+    }
+    this._mouthFlash = new THREE.Mesh(new THREE.IcosahedronGeometry(0.11, 1),
+      new THREE.MeshBasicMaterial({color: characterId === 'bahamut-xvi' ? 0xff8540 : 0x77ddff, toneMapped:false}));
+    this._mouthFlash.visible=false;
+    this._powerFlashTime=0;
+    if (!this.hasGun) this.muzzle.add(this._mouthFlash);
 
     // Power pack on the back, with glowing cells: shots there do extra damage
     if (backpack) {
@@ -104,6 +116,28 @@ export class AlienModel {
         child.receiveShadow = true;
       }
     });
+    const hide = [];
+    for (const part of [this.body, ...this.legs, ...this.arms]) {
+      for (const child of part.children) if (child.isMesh) hide.push(child);
+    }
+    this.character = new CharacterVisual(this.body, characterId, { ...characterOptions, height: 2, hide, weakSpot: backpack });
+    this.character.setArmed(this.hasGun);
+    this.character.ready.then((loaded) => {
+      if (!loaded || this.character.disposed) return;
+      if (!this.hasGun) {
+        const head=this.character.joints.head?.bone;
+        if (head) {
+          const mouth=head.getWorldPosition(new THREE.Vector3());
+          this.character.group.worldToLocal(mouth);
+          mouth.y-=0.045;
+          mouth.z-=characterId.startsWith('bahamut') ? 0.23 : 0.15;
+          this.character.group.localToWorld(mouth);
+          head.worldToLocal(mouth);
+          head.add(this.muzzle);
+          this.muzzle.position.copy(mouth);
+        }
+      }
+    });
   }
 
   _add(parent, geometry, material, x, y, z) {
@@ -117,7 +151,8 @@ export class AlienModel {
    * Merges the parts of each rigid piece, keeping their colours as vertex colours.
    */
   _mergeParts() {
-    const partMaterials = this.materials;
+    const partMaterials = {...this.materials, ...this.weaponMaterials};
+    this.weaponMaterials = {};
     this.materials = {
       solid: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.4, flatShading: true }),
       light: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false })
@@ -136,6 +171,9 @@ export class AlienModel {
    * @param {number} [raise=0] - 0..1 both arms raised overhead (melee wind-up)
    */
   animate(delta, speed, aiming, raise = 0) {
+    this.gun.visible=this.hasGun && raise<=0;
+    this.character.setArmed(this.gun.visible);
+    this.character?.animate(delta, speed, this.hasGun && aiming, raise);
     this._walkPhase += delta * speed * 2.2;
     const swing = Math.min(1, speed / 4) * 0.6;
     const s = Math.sin(this._walkPhase) * swing;
@@ -148,7 +186,15 @@ export class AlienModel {
       this.arms[1].rotation.x = -2.6 * raise;
     }
     this.gun.rotation.x = aiming ? 0 : 0.35;
+    if (this.gun.visible) {
+      this.character.fitWeapon(this.gun, aiming, this.character.recoil);
+      this.character.poseWeapon(this.gun);
+    }
+    this._powerFlashTime=Math.max(0,this._powerFlashTime-delta);
+    this._mouthFlash.visible=!this.hasGun && this._powerFlashTime>0;
   }
+
+  releasePower() { this._powerFlashTime=0.22; this.character.kickRecoil(); }
 
   /**
    * Topple backwards over `progress` 0..1 (death).
@@ -162,10 +208,15 @@ export class AlienModel {
    * Brief red flash when hit (0..1).
    */
   setHitFlash(amount) {
+    this.character?.setHitFlash(amount);
     this.materials.solid.emissive.setRGB(amount * 0.7, 0, 0);
   }
 
   dispose() {
+    this.character?.dispose();
+    this._mouthFlash.removeFromParent();
+    this._mouthFlash.geometry.dispose();
+    this._mouthFlash.material.dispose();
     this.mesh.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
     });

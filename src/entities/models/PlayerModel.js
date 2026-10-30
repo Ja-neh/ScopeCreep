@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { CharacterVisual } from './CharacterVisual.js';
 
 /**
  * PlayerModel
@@ -11,7 +12,7 @@ export class PlayerModel {
    * @param {number} halfHeight - Capsule half-height in meters
    * @param {number} capsuleCenter - Vertical offset from base to capsule center
    */
-  constructor(radius = 0.45, halfHeight = 0.55, capsuleCenter = 1.0) {
+  constructor(radius = 0.45, halfHeight = 0.55, capsuleCenter = 1.0, characterId = 'deadpool') {
     this.capsuleRadius = radius;
     this.capsuleHalfHeight = halfHeight;
     this.capsuleCenter = capsuleCenter;
@@ -27,6 +28,10 @@ export class PlayerModel {
 
     this._createAvatarMesh();
     this._createColliderDebugMesh();
+    this.character = new CharacterVisual(this.mesh, characterId, {
+      height: capsuleCenter * 2,
+      hide: [this.bodyMesh, this.visorMesh, this.packMesh]
+    });
   }
 
   /**
@@ -122,7 +127,8 @@ export class PlayerModel {
    * Toggles avatar visibility for 1st-person mode or camera proximity occlusion
    */
   setFirstPerson(isFirstPerson) {
-    const visible = !isFirstPerson;
+    this.character.setVisible(!isFirstPerson);
+    const visible = !isFirstPerson && !this.character.loaded;
     if (this.bodyMesh) this.bodyMesh.visible = visible;
     if (this.visorMesh) this.visorMesh.visible = visible;
     if (this.packMesh) this.packMesh.visible = visible;
@@ -134,6 +140,7 @@ export class PlayerModel {
    * @param {number} amount - 0 standing, 1 fully crouched
    */
   setCrouchAmount(amount) {
+    this.character.setCrouchAmount(amount);
     const squash = 1 - 0.35 * amount;
     this.bodyMesh.scale.y = squash;
     this.bodyMesh.position.y = this.capsuleCenter * squash;
@@ -161,6 +168,7 @@ export class PlayerModel {
    * Clean up all geometries and materials
    */
   dispose() {
+    this.character.dispose();
     this.mesh.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {

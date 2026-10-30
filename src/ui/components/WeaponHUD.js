@@ -3,6 +3,12 @@
  * Infantry weapon panel (bottom right): weapon name, magazine and reserve ammo,
  * a reload bar, and the weapon slots with their keys.
  */
+const ICONS={
+  rifle:'<path d="M2 14h14v-5h24v4h19v5H38l-5 10h-7l2-10H15l-5 7H3z"/>',
+  knife:'<path d="M6 27l8-8 5 5-8 8zm10-11L45 2c3 12-8 19-22 22z"/>',
+  bomb:'<circle cx="28" cy="21" r="12"/><path d="M25 8V3h10v5h-3V6h-4v2zm10-3 10 7-3 4-10-7z"/>'
+};
+const icon=(key)=>`<svg class="ui-tool-icon" viewBox="0 0 64 36" aria-hidden="true">${ICONS[key]}</svg>`;
 export class WeaponHUD {
   /**
    * @param {HTMLElement} parentContainer
@@ -14,19 +20,18 @@ export class WeaponHUD {
     this.element.className = 'ui-weapon-hud ui-hidden';
     this.element.id = 'ui-weapon-hud';
     this.element.innerHTML = `
-      <div class="ui-weapon-hud-name" data-role="name">MACHINE GUN</div>
+      <div class="ui-weapon-hud-name" data-role="name" aria-label="Machine gun">${icon('rifle')}</div>
       <div class="ui-weapon-hud-ammo">
-        <span class="ui-weapon-hud-mag" data-role="ammo">30</span>
-        <span class="ui-weapon-hud-reserve" data-role="reserve">/ 180</span>
+        <span class="ui-weapon-hud-mag" data-role="ammo">75</span>
+        <span class="ui-weapon-hud-reserve" data-role="reserve">/ 225</span>
       </div>
       <div class="ui-weapon-hud-reload ui-hidden" data-role="reload-track">
         <div class="ui-weapon-hud-reload-fill" data-role="reload-fill"></div>
       </div>
       <div class="ui-weapon-hud-keys">
-        <span data-role="slot-1">[1] Gun</span>
-        <span data-role="slot-2">[2] Knife</span>
-        <span data-role="slot-3">[3] Bomb</span>
-        [Q] Quick knife &nbsp;[R] Reload &nbsp;[RMB] Aim
+        <span data-role="slot-1" title="Machine gun [1]">${icon('rifle')}<small>1</small></span>
+        <span data-role="slot-2" title="Knife [2]">${icon('knife')}<small>2</small></span>
+        <span data-role="slot-3" title="Bomb [3]">${icon('bomb')}<small>3</small></span>
       </div>
     `;
 
@@ -61,7 +66,9 @@ export class WeaponHUD {
    * @param {number} [state.slot] - 1-based slot to highlight in the keys line
    */
   update({ name, ammo, reserve, reloadProgress, slot }) {
-    this.nameEl.textContent = name;
+    this.nameEl.setAttribute('aria-label',name);
+    const key=slot===2 ? 'knife' : slot===3 ? 'bomb' : 'rifle';
+    if(this._icon!==key){this.nameEl.innerHTML=icon(key);this._icon=key;}
 
     const hasAmmo = ammo !== null && ammo !== undefined;
     this.ammoEl.textContent = hasAmmo ? String(ammo) : '—';

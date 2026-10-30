@@ -43,6 +43,7 @@ export class GroundCombatant extends BaseEntity {
     this.physicsWorld = gameWorld.physics;
     this.faction = faction;
     this.health = new HealthComponent(maxHealth);
+    if (faction==='humans') this.health.damageMultiplier=config.player.damageMultiplier;
     this.isConcealed = false;
 
     this.position = position.clone();
@@ -84,6 +85,7 @@ export class GroundCombatant extends BaseEntity {
     this.characterController = this.physicsWorld.createCharacterController({
       offset: 0.01,
       maxStepHeight: 0.45,
+      autostepDynamicBodies: false,
       minStepWidth: 0.0,
       maxSlope: (50 * Math.PI) / 180,
       snapToGround: true
@@ -191,6 +193,9 @@ export class GroundCombatant extends BaseEntity {
   revive(health) {
     if (!this.isDead || !this.rigidBody) return;
     this.health.revive(health);
+    this.model.character?.resetPose();
+    this._hitFlash=0;this.mesh.rotation.x=this.mesh.rotation.z=0;
+    if(this.power){this.power.remaining=this.power.cooldown=this.power.shield=0;}
     this.isDead = false;
     this.deathTime = 0;
     if (this.ragdoll) {
@@ -260,7 +265,7 @@ export class GroundCombatant extends BaseEntity {
     this.velocity.x += (this._desired.x - this.velocity.x) * blend;
     this.velocity.z += (this._desired.z - this.velocity.z) * blend;
 
-    this.verticalVelocity = this.isGrounded ? -1 : this.verticalVelocity - this.gravity * delta;
+    this._updateVerticalVelocity(delta);
 
     const current = this.rigidBody.translation();
     this.characterController.computeColliderMovement(this.collider, {
@@ -292,6 +297,10 @@ export class GroundCombatant extends BaseEntity {
     this._steer.set(this.moveTarget.x - this.position.x, 0, this.moveTarget.z - this.position.z).normalize();
     this._pickClearDirection(this._steer);
     this._desired.copy(this._steer).multiplyScalar(this.moveSpeed);
+  }
+
+  _updateVerticalVelocity(delta) {
+    this.verticalVelocity = this.isGrounded ? -1 : this.verticalVelocity - this.gravity * delta;
   }
 
   /**
@@ -367,6 +376,8 @@ export class GroundCombatant extends BaseEntity {
   // ---------------------------------------------------------------------------
 
   lateUpdate(delta) {
+    this.power?.lateUpdate();
+    this.model.character?.setActor(this);
     if (this.ragdoll) {
       // The corpse follows the physics body instead of the kinematic pose
       this.ragdoll.sync(this.mesh);

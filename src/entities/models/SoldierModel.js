@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createWeaponMaterials, createRifleModel, disposeModelGeometry } from '../../weapons/WeaponModels.js';
 import { consolidateMeshes } from '../../rendering/MeshMerge.js';
+import { CharacterVisual } from './CharacterVisual.js';
 
 /**
  * SoldierModel
@@ -17,7 +18,7 @@ export class SoldierModel {
    * @param {number} [options.visorColor]
    * @param {number} [options.helmetColor]
    */
-  constructor({ suitColor = 0x2a9d8f, visorColor = 0xe76f51, helmetColor = 0x264653 } = {}) {
+  constructor({ suitColor = 0x2a9d8f, visorColor = 0xe76f51, helmetColor = 0x264653, characterId = 'ashe' } = {}) {
     this.mesh = new THREE.Group();
     this.mesh.name = 'Soldier';
     this.body = new THREE.Group(); // Falls as one piece
@@ -78,6 +79,12 @@ export class SoldierModel {
         child.receiveShadow = true;
       }
     });
+    const hide = [];
+    for (const part of [this.body, ...this.legs, ...this.arms]) {
+      for (const child of part.children) if (child.isMesh) hide.push(child);
+    }
+    this.character = new CharacterVisual(this.body, characterId, { hide });
+    this.character.setArmed(true);
   }
 
   _add(parent, geometry, material, x, y, z) {
@@ -110,6 +117,8 @@ export class SoldierModel {
    * @param {boolean} aiming - Gun up at the shoulder
    */
   animate(delta, speed, aiming) {
+    this.character.setArmed(this.gun.visible);
+    this.character.animate(delta, speed, aiming);
     this._walkPhase += delta * speed * 2.4;
     const swing = Math.min(1, speed / 4) * 0.6;
     const s = Math.sin(this._walkPhase) * swing;
@@ -122,6 +131,13 @@ export class SoldierModel {
     this.arms[0].rotation.z = -0.5;
     this.gun.position.y = aiming ? 1.38 : 1.18;
     this.gun.rotation.x = aiming ? 0 : 0.3;
+    if (this.character.loaded) this.gun.rotation.x = 0.3 * (1-this.character.aimBlend);
+    this.gun.scale.setScalar(this.character.loaded ? 0.8 : 1);
+    this.gun.position.z = (this.character.loaded ? -0.18 : -0.3) + this.character.recoil;
+    if (this.gun.visible) {
+      this.character.fitWeapon(this.gun, aiming, this.character.recoil);
+      this.character.poseWeapon(this.gun);
+    }
   }
 
   /**
@@ -136,10 +152,12 @@ export class SoldierModel {
    * Brief red flash when hit (0..1).
    */
   setHitFlash(amount) {
+    this.character.setHitFlash(amount);
     this.materials.solid.emissive.setRGB(amount * 0.6, 0, 0);
   }
 
   dispose() {
+    this.character.dispose();
     disposeModelGeometry(this.gun);
     this.mesh.traverse((child) => {
       if (child.geometry) child.geometry.dispose();

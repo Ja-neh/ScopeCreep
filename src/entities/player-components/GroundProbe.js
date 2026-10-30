@@ -29,6 +29,7 @@ export class GroundProbe {
       const RAPIER = this.physicsWorld.RAPIER;
       this._groundRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
       this._aheadRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 });
+      this._barrierRay = new RAPIER.Ray({x:0,y:0,z:0},{x:0,y:0,z:0});
     }
   }
 
@@ -37,6 +38,21 @@ export class GroundProbe {
    */
   setCollider(collider) {
     this.collider = collider;
+  }
+
+  /** Energy fields are barriers, never a staircase made from repeated capsule auto-steps. */
+  clipBarrierMovement(position,movement,grounded,clearance) {
+    if (!this._barrierRay) return;
+    const length=Math.hypot(movement.x,movement.z);
+    if (length<1e-6) return;
+    Object.assign(this._barrierRay.origin,position);
+    Object.assign(this._barrierRay.dir,{x:movement.x/length,y:0,z:movement.z/length});
+    const reach=this.capsuleRadius+clearance;
+    const hit=this.physicsWorld.castRay(this._barrierRay,length+reach,true,undefined,undefined,this.collider);
+    if (!hit?.collider?.userData?.isUnclimbable) return;
+    const scale=Math.min(1,Math.max(0,hit.timeOfImpact-reach)/length);
+    movement.x*=scale;movement.z*=scale;
+    if (grounded) movement.y=Math.min(0,movement.y);
   }
 
   /**

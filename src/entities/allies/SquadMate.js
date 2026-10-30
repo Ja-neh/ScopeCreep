@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 import { GroundCombatant } from '../GroundCombatant.js';
 import { SoldierModel } from '../models/SoldierModel.js';
+import { squadCharacter } from '../models/CharacterRoster.js';
 import { Perception } from '../../ai/Perception.js';
 import { StateMachine } from '../../ai/StateMachine.js';
 import { HitscanWeapon } from '../../weapons/HitscanWeapon.js';
 import config from '../../config.json';
+import { CharacterPower } from '../components/CharacterPower.js';
 
 const SLOT_TOLERANCE = 2.5;         // Close enough to its post to stand still
 const RETARGET_DISTANCE = 1.5;      // Re-issue a move when the post has drifted this far
@@ -38,8 +40,10 @@ export class SquadMate extends GroundCombatant {
    * @param {Object} [options.model] - Defaults to a SoldierModel in crew colours
    */
   constructor(gameWorld, { name, position, squad, cfg = config.allies.squadMate, model = null }) {
-    super(gameWorld, { name, position, faction: 'humans', maxHealth: cfg.maxHealth, model: model || new SoldierModel() });
+    super(gameWorld, { name, position, faction: 'humans', maxHealth: cfg.maxHealth,
+      model: model || new SoldierModel({ characterId: squadCharacter(name,squad?.leader?.characterId,squad?.mates?.length) }) });
     this.cfg = cfg;
+    this.power = new CharacterPower(this, this.model.character?.id || 'bob');
     this.squad = squad;
     this.perception = new Perception(this, cfg);
 
@@ -152,6 +156,7 @@ export class SquadMate extends GroundCombatant {
 
   gameplayUpdate(delta) {
     super.gameplayUpdate(delta);
+    this.power.update(delta, this.perception.target);
     if (this.isDead) return;
     if (this._alertTimer > 0) this._alertTimer -= delta;
 
@@ -206,6 +211,7 @@ export class SquadMate extends GroundCombatant {
       this.gameWorld.audio.play('gunshot', this._muzzle, 0.6);
     }
     if (result && this.squad) this.squad.onShot(this, this._muzzle, result);
+    if (result) this.model.character?.kickRecoil();
   }
 
   /**
@@ -267,6 +273,7 @@ export class SquadMate extends GroundCombatant {
   }
 
   dispose() {
+    this.power.dispose();
     this.weapon = null;
     super.dispose();
   }

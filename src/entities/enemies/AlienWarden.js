@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { AlienCombatant } from './AlienCombatant.js';
 import { AlienModel } from '../models/AlienModel.js';
 import { Shockwave } from './Shockwave.js';
+import { WingTornado } from './WingTornado.js';
 import config from '../../config.json';
 
 const WARDEN_CAPSULE = { radius: 0.95, halfHeight: 1.35 }; // About 4.6 m tall
@@ -39,7 +40,7 @@ export class AlienWarden extends AlienCombatant {
       position,
       squad,
       cfg,
-      model: new AlienModel({ armorColor: 0x6a58a0, scale: WARDEN_SCALE, backpack: true, crest: true }),
+      model: new AlienModel({ armorColor: 0x6a58a0, scale: WARDEN_SCALE*1.35, backpack: true, crest: true, characterId: 'bahamut-xvi' }),
       engageState: WARDEN_ENGAGE,
       capsule: WARDEN_CAPSULE,
       states: { dormant: WARDEN_DORMANT },
@@ -59,6 +60,9 @@ export class AlienWarden extends AlienCombatant {
     this.volleysFired = 0;
     this.slams = 0;
     this.shockwave = new Shockwave(gameWorld.effectsGroup);
+    this.tornado=new WingTornado(this);
+    this._tornadoTimer=config.bossPowers.tornadoCooldown;
+    this._breathKind='slime';
 
     // The shield: a pulsing bubble round the whole body
     this._shieldMaterial = new THREE.MeshBasicMaterial({
@@ -114,6 +118,11 @@ export class AlienWarden extends AlienCombatant {
   gameplayUpdate(delta) {
     super.gameplayUpdate(delta); // Perception, brain, attacks
     this.shockwave.update(delta, this.squad ? this.squad.targets : []);
+    this.tornado.update(delta);
+    if(!this.isDead && this.brain.is('engage')){
+      this._tornadoTimer-=delta;
+      if(this._tornadoTimer<=0 && this.perception.target){this.tornado.fire(this.perception.target);this._tornadoTimer=config.bossPowers.tornadoCooldown;}
+    }
   }
 
   updateAttack(delta) {
@@ -149,7 +158,8 @@ export class AlienWarden extends AlienCombatant {
     // Slam when it is time, or sooner when someone comes close
     this._slamTimer -= delta;
     const close = target && Math.hypot(target.position.x - this.position.x, target.position.z - this.position.z) <= cfg.slamTriggerRange;
-    if (this._slamTimer <= 0 || (close && this._slamTimer <= cfg.slamSeconds * this.cadence * 0.5)) {
+    if ((!this.model.canFly || this.isGrounded) &&
+      (this._slamTimer <= 0 || (close && this._slamTimer <= cfg.slamSeconds * this.cadence * 0.5))) {
       this.attackPhase = 'windup';
       this._windupTimer = cfg.slamWindup;
       this._slamTimer = cfg.slamSeconds * this.cadence;
@@ -164,6 +174,9 @@ export class AlienWarden extends AlienCombatant {
     if (!pool) return;
     const cfg = this.cfg;
     this.model.muzzle.getWorldPosition(this._muzzle);
+    this.model.releasePower();
+    this._breathKind=this._breathKind==='slime' ? 'fire' : 'slime';
+    const power=config.alienPowers[this._breathKind==='slime' ? 'galiant' : 'bahamut-nt'];
     this._aim.set(target.position.x, target.position.y + CHEST_HEIGHT, target.position.z).sub(this._muzzle).normalize();
     const spread = THREE.MathUtils.degToRad(cfg.volleySpreadDegrees);
     for (let i = 0; i < cfg.volleyBolts; i++) {
@@ -174,6 +187,8 @@ export class AlienWarden extends AlienCombatant {
         direction: this._direction,
         speed: cfg.volleySpeed,
         damage: cfg.volleyDamage,
+        attack:this._breathKind,
+        fraction:THREE.MathUtils.lerp(power.fractionMin,power.fractionMax,Math.random()),
         source: this,
         excludeCollider: this.collider
       });
@@ -183,6 +198,9 @@ export class AlienWarden extends AlienCombatant {
 
   _slam() {
     const cfg = this.cfg;
+    for(const target of this.squad?.targets || []) if(target.health && !target.health.isDead && target.position.distanceTo(this.position)<cfg.slamTriggerRange){
+      target.health.takeDamage({fraction:config.alienPowers.gorr.swordFraction,source:this});
+    }
     this.shockwave.start(this.position, {
       speed: cfg.shockwaveSpeed,
       maxRadius: cfg.shockwaveRadius,
@@ -205,6 +223,7 @@ export class AlienWarden extends AlienCombatant {
 
   lateUpdate(delta) {
     super.lateUpdate(delta);
+    this.tornado.lateUpdate(delta);
     this.shockwave.sync(this.position, this.attackPhase === 'windup' ? this.attackPose : 0);
     if (this.shieldMesh.visible) {
       this._shieldTime += delta;
@@ -213,6 +232,7 @@ export class AlienWarden extends AlienCombatant {
   }
 
   dispose() {
+    this.tornado.dispose();
     this.shockwave.dispose();
     this.shieldMesh.geometry.dispose();
     this._shieldMaterial.dispose();

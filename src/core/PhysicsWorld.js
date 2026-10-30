@@ -102,7 +102,7 @@ export class PhysicsWorld {
     // Crucial: minStepWidth 0.0 allows smoothly stepping over loop cuts and internal triangle edges
     const maxStepHeight = options.maxStepHeight !== undefined ? options.maxStepHeight : 0.45;
     const minStepWidth = options.minStepWidth !== undefined ? options.minStepWidth : 0.0;
-    controller.enableAutostep(maxStepHeight, minStepWidth, true);
+    controller.enableAutostep(maxStepHeight, minStepWidth, options.autostepDynamicBodies !== false);
 
     const maxSlope = options.maxSlope !== undefined ? options.maxSlope : (55 * Math.PI) / 180;
     controller.setMaxSlopeClimbAngle(maxSlope);

@@ -8,6 +8,9 @@ import { MusicDirector } from './MusicDirector.js';
 import { UIManager } from '../ui/UIManager.js';
 import { PostStack } from '../rendering/PostStack.js';
 
+// The HDR post stack (bloom, ACES, grade, vignette). Off: the game keeps its original lighting look.
+const POST_STACK_ENABLED = false;
+
 /**
  * GameWorld
  * Central root manager for the 3D WebGL context, scenegraph hierarchy,
@@ -59,17 +62,14 @@ export class GameWorld {
       powerPreference: 'high-performance'
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     // Graphics settings (resolution, shadows): the player's choice, with a recommendation for this computer
     this.quality = new RenderQuality(this.renderer, this.scene, { software: gpu.software, gpuName: gpu.renderer });
 
-    // The image pipeline: the frame renders through the post stack (bloom, tone mapping, grade).
-    // Software rasterizers skip it - they are slow enough as they are.
-    this.postStack = gpu.software ? null : new PostStack(this.renderer);
+    // The image pipeline: the frame can render through the post stack (bloom, tone mapping, grade).
+    // Off by default to keep the original direct-to-canvas look; software rasterizers always skip it.
+    this.postStack = POST_STACK_ENABLED && !gpu.software ? new PostStack(this.renderer) : null;
 
     // 4. Master Camera
     this.camera = new THREE.PerspectiveCamera(
@@ -256,6 +256,7 @@ export class GameWorld {
    * looking and shooting resume in place.
    */
   toggleMap() {
+    if(this.ui?.hallMode===true) return;
     if (!this.currentLevel || this.isLevelLoading || this.isPaused) return;
     const player = this.currentLevel.player;
     if (player && player.isDevSuspended) return; // Cinematics and the downed state own the screen
@@ -516,6 +517,7 @@ export class GameWorld {
     // =========================================================================
     // PHASE 7: WEBGL RENDER
     // =========================================================================
+    this.ui.combatRoster?.update?.(this.entities,this.getActiveCamera(),this.physics);
     this._renderFrame();
     if (this.currentLevel && !this.isLevelLoading) this.quality.update(); // Measures gameplay frames only
 
