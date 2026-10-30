@@ -13,6 +13,7 @@ import { LandingCinematic } from './level02/LandingCinematic.js';
 import { OperatorIntroAura } from './level02/OperatorIntroAura.js';
 import { VillageGate } from './level02/VillageGate.js';
 import { Level03 } from './Level03.js';
+import { SquadTransport } from './level02/SquadTransport.js';
 import { SoldierModel } from '../entities/models/SoldierModel.js';
 import { WaveDirector } from '../ai/WaveDirector.js';
 import config from '../config.json';
@@ -785,7 +786,7 @@ export class Level02 extends IslandLevel {
       aimPoint: this._villageLook,
       aimTowards: 0.25,
       onFrame: (t, elapsed) => this._walkIntoVillage(elapsed),
-      onFinished: () => this._onGateEntryFinished()
+      onFinished: () => this._beginTransportDeparture()
     });
     this.gameWorld.addEntity(this.cinematic);
   }
@@ -849,6 +850,51 @@ export class Level02 extends IslandLevel {
     this._gateEntryDone = true;
     if (this.gameWorld.ui) this.gameWorld.ui.showFade();
     this._gateEntryFade = GATE_ENTRY.fadeSeconds;
+  }
+
+  _beginTransportDeparture() {
+    const gate = this.gate.centre;
+    const ground = this.environment.heightAt(gate.x + 18, gate.z - 20);
+    const pad = new THREE.Vector3(gate.x + 18, ground + 3, gate.z - 20);
+    this.transport = this.trackDisposable(new SquadTransport(this.gameWorld.scene, pad));
+    const boarding = pad.clone().add(new THREE.Vector3(0, -2, 6));
+    const start = this.player.position.clone();
+    const crew = this.allies.members.filter(Boolean);
+    const crewStarts = crew.map((mate) => mate.position.clone());
+    this.cinematic = new LandingCinematic(this.gameWorld, {
+      player: this.player,
+      title: 'TO THE VILLAGE',
+      subtitle: 'Squad aboard. The landing craft heads inland.',
+      duration: 9,
+      endOnPlayer: false,
+      flightPath: [pad.clone().add(new THREE.Vector3(16, 9, 22)), pad.clone().add(new THREE.Vector3(-14, 12, 15)), pad.clone().add(new THREE.Vector3(8, 24, -30))],
+      focus: (out) => out.copy(this.transport.mesh.position),
+      onFrame: (t, elapsed) => {
+        const board = THREE.MathUtils.smoothstep(elapsed, 0.5, 3.5);
+        this.player.teleport(
+          THREE.MathUtils.lerp(start.x, boarding.x, board),
+          THREE.MathUtils.lerp(start.y, boarding.y, board),
+          THREE.MathUtils.lerp(start.z, boarding.z, board)
+        );
+        for (let i = 0; i < crew.length; i++) {
+          const from = crewStarts[i];
+          const destination = boarding.clone().add(new THREE.Vector3((i - (crew.length - 1) / 2) * 1.4, 0, 0));
+          const step = THREE.MathUtils.smoothstep(elapsed, 0.8 + i * 0.2, 3.8 + i * 0.2);
+          crew[i].teleport(THREE.MathUtils.lerp(from.x, destination.x, step), THREE.MathUtils.lerp(from.y, destination.y, step), THREE.MathUtils.lerp(from.z, destination.z, step));
+          crew[i].mesh.visible = elapsed < 4.8;
+        }
+        this.player.mesh.visible = elapsed < 4.8;
+        const lift = THREE.MathUtils.smoothstep(elapsed, 4.5, 8.5);
+        this.transport.mesh.position.copy(pad).add(new THREE.Vector3(0, lift * 35, -lift * 75));
+        this.transport.mesh.rotation.x = -lift * 0.14;
+      },
+      onFinished: () => {
+        this.player.mesh.visible = true;
+        for (const mate of crew) mate.mesh.visible = true;
+        this._onGateEntryFinished();
+      }
+    });
+    this.gameWorld.addEntity(this.cinematic);
   }
 
   /**

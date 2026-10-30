@@ -11,7 +11,7 @@ import { PlayerJet } from '../entities/player-jet/PlayerJet.js';
 import { EnemyJet } from '../entities/enemies/EnemyJet.js';
 import { EnemyJetManager } from '../entities/enemies/EnemyJetManager.js';
 import { EnemyBattleshipManager } from '../entities/enemies/EnemyBattleshipManager.js';
-import { CAMPAIGN_ENDING, CAMPAIGN_CREDITS } from './level01/ending.js';
+import { CAMPAIGN_ENDING } from './level01/ending.js';
 import { BeachEnvironment } from './level02/BeachEnvironment.js';
 import { BeachCover } from './level02/BeachCover.js';
 import { Level02 } from './Level02.js';
@@ -551,31 +551,11 @@ export class Level01 extends BaseLevel {
     if (this.state === 'ending') {
       this._endingTimer -= delta;
       if (this._endingTimer <= 0) {
-        this.state = 'credits';
-        this._creditsTimer = 0;
+        this.state = 'transitioning';
         this.gameWorld.ui?.hideCinematic();
-        this.gameWorld.ui?.showCredits(CAMPAIGN_CREDITS, CAMPAIGN_ENDING.creditsSeconds, '[Space] Skip');
+        this.gameWorld.loadLevel(new Level02(this.gameWorld));
       }
       return;
-    }
-
-    if (this.state !== 'credits') return;
-    this._creditsTimer += delta;
-    if (this._creditsTimer >= CAMPAIGN_ENDING.skipAfterSeconds &&
-      (this._creditsTimer >= CAMPAIGN_ENDING.creditsSeconds || this.gameWorld.input.isActionJustPressed('skipCutscene'))) {
-      this.gameWorld.ui?.hideCredits();
-      this.state = 'won';
-      this.gameWorld.isPaused = true;
-      this.gameWorld.ui?.showMissionResult({
-        ...this._endingResult,
-        title: 'OPERATION RETAKE COMPLETE',
-        message: 'Enemy airspace is clear and the battleship has arrived at the island shores.',
-        actions: [
-          { label: 'Play again', onClick: () => this.gameWorld.restartCurrentLevel() },
-          { label: 'Proceed to Level 2: The Beach', onClick: () => this.gameWorld.loadLevel(new Level02(this.gameWorld)) },
-          { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
-        ]
-      });
     }
   }
 

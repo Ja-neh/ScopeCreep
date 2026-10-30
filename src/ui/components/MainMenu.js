@@ -35,11 +35,14 @@ export class MainMenu {
           <p id="character-choice-help"></p>
         </div>
         <div class="ui-minimal-list" id="main-menu-level-list"></div>
+        <button type="button" class="ui-minimal-btn ui-menu-secondary" id="main-menu-credits">Credits</button>
       </div>
     `;
 
     this._listContainer = this.element.querySelector('#main-menu-level-list');
     this._characterButton = this.element.querySelector('#choose-characters');
+    this._creditsButton = this.element.querySelector('#main-menu-credits');
+    this._creditsButton.addEventListener('click', () => this._onCreditsCallback?.());
     this._characterButton.addEventListener('click', () => {
       this.element.classList.add('ui-hidden');this.characterSelection.show();
     });
@@ -48,7 +51,7 @@ export class MainMenu {
 
   _updateCharacterLabel() {
     this.element.querySelector('#character-choice-help').textContent=
-      `Playing as ${characterName(getSelectedCharacter())}. Select a mission to deploy.`;
+      `Playing as ${characterName(getSelectedCharacter())}.`;
   }
 
   /**
@@ -56,13 +59,14 @@ export class MainMenu {
    * @param {Array<{id: string, title: string}>} levels
    * @param {Function} onSelectLevel
    */
-  show(levels = [], onSelectLevel = null) {
+  show(levels = [], onSelectLevel = null, onCredits = null) {
     this._onSelectCallback = onSelectLevel;
+    this._onCreditsCallback = onCredits;
     this.characterSelection.hide();
     this._updateCharacterLabel();
 
     if (this._listContainer) {
-      this._listContainer.innerHTML = '';
+      this._listContainer.replaceChildren();
 
       levels.forEach((lvl) => {
         const btn = document.createElement('button');

@@ -517,7 +517,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: #87ceeb;
+  background: linear-gradient(90deg, rgba(3, 13, 25, 0.82), rgba(3, 13, 25, 0.3)), url('/assets/menu-island.webp') center / cover no-repeat #071320;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -526,8 +526,31 @@
 }
 
 .ui-main-menu .ui-minimal-title {
-  color: #0f172a;
+  color: #f0f8ff;
 }
+
+.ui-story-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  padding: clamp(20px, 5vw, 70px);
+  box-sizing: border-box;
+  background: linear-gradient(180deg, rgba(2, 8, 17, 0.3), rgba(2, 8, 17, 0.9)), url('/assets/menu-island.webp') center / cover no-repeat #071320;
+  color: #edf8ff;
+  pointer-events: auto;
+}
+.ui-story-intro.ui-hidden { display: none; }
+.ui-story-card { width: min(760px, 100%); text-align: center; font-family: var(--font-family-ui); }
+.ui-story-kicker { color: #8ed7e1; font-size: 12px; font-weight: 700; letter-spacing: .24em; }
+.ui-story-title { font-size: clamp(30px, 5vw, 60px); letter-spacing: .08em; margin: 8px 0 18px; }
+.ui-story-narration { font-size: clamp(17px, 2.2vw, 24px); line-height: 1.55; min-height: 4.6em; }
+.ui-story-progress { color: #9bb8c5; font-size: 12px; letter-spacing: .2em; }
+.ui-story-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 20px; }
+.ui-story-actions button { padding: 11px 20px; border: 1px solid #6a9baa; border-radius: 6px; background: rgba(8, 25, 40, .8); color: #edf8ff; font: inherit; cursor: pointer; }
+.ui-story-actions button:hover, .ui-story-actions button:focus-visible { background: #21485b; }
 
 .ui-main-menu {
   overflow-y: auto;
@@ -615,6 +638,23 @@
   border-color: #020617;
   color: #ffffff;
 }
+
+.ui-main-menu .ui-menu-secondary {
+  background: transparent;
+  color: #d7e8f2;
+  border-color: rgba(215, 232, 242, 0.4);
+}
+
+.ui-main-menu .ui-minimal-menu {
+  max-width: 380px;
+  padding: 32px;
+  border-radius: 16px;
+  background: rgba(8, 20, 32, 0.88);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+}
+
+.ui-main-menu .ui-character-choice { color: #b9cbd6; }
+.ui-main-menu #main-menu-extra-list { max-height: 38vh; overflow-y: auto; }
 
 .ui-pause-overlay {
   position: absolute;
@@ -1142,6 +1182,35 @@
   animation-name: ui-credits-roll;
   animation-timing-function: linear;
   animation-fill-mode: forwards;
+}
+
+.ui-credits.ui-credits-browse {
+  overflow-y: auto;
+  pointer-events: auto;
+  background: #071320;
+}
+
+.ui-credits-browse .ui-credits-roll {
+  position: relative;
+  top: auto;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 100px 22px 80px;
+  box-sizing: border-box;
+}
+
+.ui-credits-back {
+  position: fixed;
+  top: 22px;
+  left: 22px;
+  z-index: 1;
+  padding: 11px 18px;
+  border: 1px solid #6a9baa;
+  border-radius: 6px;
+  background: #102b3b;
+  color: #edf8ff;
+  font: inherit;
+  cursor: pointer;
 }
 
 @keyframes ui-credits-roll {
