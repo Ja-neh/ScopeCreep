@@ -21,6 +21,7 @@ import { MainMenu } from './components/MainMenu.js';
 import { PauseMenu } from './components/PauseMenu.js';
 import { PauseButton } from './components/PauseButton.js';
 import { CombatRoster } from './components/CombatRoster.js';
+import { ControlCenterPanel } from './components/ControlCenterPanel.js';
 
 /**
  * UIManager.js
@@ -63,6 +64,7 @@ export class UIManager {
     this.pauseMenu.setInstructions(this.devTools.element);
     this.pauseButton = new PauseButton(this.container);
     this.combatRoster = new CombatRoster(this.container);
+    this.controlCenter = new ControlCenterPanel(this.container);
   }
 
   // =========================================================================
@@ -144,6 +146,14 @@ export class UIManager {
     if (this.crosshair) {
       this.crosshair.hide();
     }
+  }
+
+  showControlCenter() {
+    this.controlCenter?.show();
+  }
+
+  hideControlCenter() {
+    this.controlCenter?.hide();
   }
 
   /**
@@ -700,6 +710,7 @@ export class UIManager {
     this.hidePrompt();
     this.hideStationHUD();
     this.hideCrosshair();
+    this.hideControlCenter();
     this.hideHealthBar();
     this.hideStatusIndicator();
     this.hideWeaponHUD();
@@ -741,6 +752,8 @@ export class UIManager {
    */
   dispose() {
     this.combatRoster.dispose();
+    this.controlCenter?.dispose();
+    this.controlCenter = null;
     if (this.prompt) {
       this.prompt.dispose();
       this.prompt = null;

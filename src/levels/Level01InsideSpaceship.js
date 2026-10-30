@@ -12,14 +12,21 @@ import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
 import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
 import { AlienModel } from '../entities/models/AlienModel.js';
+import { CONTROL_CENTER_BUTTONS } from '../ui/components/ControlCenterPanel.js';
 import config from '../config.json';
 
-const SPACESHIP_MODEL_URL = './assets/inside-spaceship.glb';
-const SPACESHIP_FALLBACK_URL = '/assets/inside-spaceship.glb';
+const base = import.meta.env?.BASE_URL || '/';
+const SPACESHIP_MODEL_URL = `${base}assets/inside-spaceship.glb`;
+const SPACESHIP_FALLBACK_URL = 'assets/inside-spaceship.glb';
+const CONTROL_CENTER_POSITION = new THREE.Vector3(-4, 12, 79);
+const CONTROL_CENTER_RADIUS = 9;
 
 let cachedSpaceshipGLTF = null;
 
 async function loadSpaceshipGLTF() {
+  if (typeof Image === 'undefined') {
+    return Promise.resolve({ scene: new THREE.Group() });
+  }
   if (cachedSpaceshipGLTF) return cachedSpaceshipGLTF;
 
   const loader = new GLTFLoader();
@@ -60,6 +67,16 @@ async function loadSpaceshipGLTF() {
  * - Compound cuboid and trimesh physics colliders for walls, floors, roofs, stairs, and furniture
  */
 export class Level01InsideSpaceship extends BaseLevel {
+  get controls() {
+    return [
+      { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Walk / Move' },
+      { actions: ['sprint'], label: 'Sprint / Jog' },
+      { actions: ['firePrimary'], label: 'Shoot pistol' },
+      { actions: ['toggleCamera'], label: 'First / Third person' },
+      { actions: ['pause'], label: 'Options / Menu' }
+    ];
+  }
+
   constructor(gameWorld) {
     super(gameWorld, 'Level 1: Inside the Spaceship');
 
@@ -73,6 +90,10 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.alienSpawns = [];
     this.missionStage = 'holdingBay';
     this.missionComplete = false;
+    this._fallDeathY = -20;
+    this._fallDeathTriggered = false;
+    this._controlCenterVisible = false;
+    this.controlCenterConsole = null;
 
     // Performance Optimization structures:
     this.levelLights = [];
@@ -107,6 +128,7 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.gameWorld.scene.background = new THREE.Color(0x0f172a);
     this._originalFog = this.gameWorld.scene.fog;
     this.gameWorld.scene.fog = null; // Disable outdoor daylight fog for crisp indoor visibility
+    this._createSpaceBackdrop();
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
     this.gameWorld.environmentGroup.add(ambientLight);
@@ -131,6 +153,10 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.spaceshipMesh.updateMatrixWorld(true);
     this.gameWorld.environmentGroup.add(this.spaceshipMesh);
     this.trackDisposable(this.spaceshipMesh);
+    const shipBounds = new THREE.Box3().setFromObject(this.spaceshipMesh);
+    if (Number.isFinite(shipBounds.min.y)) {
+      this._fallDeathY = shipBounds.min.y - 5;
+    }
 
     // 4. Parse Nodes, Colliders, Empties & Lighting Anchors
     const doorSpawnNodes = [];
@@ -205,6 +231,18 @@ export class Level01InsideSpaceship extends BaseLevel {
         if (node.material) {
           const mats = Array.isArray(node.material) ? node.material : [node.material];
           for (const mat of mats) {
+            // Transparent Window / Glass material configuration
+            if (/window|glass/i.test(name) || /window|glass/i.test(mat.name)) {
+              mat.transparent = true;
+              mat.opacity = 0.32;
+              mat.roughness = 0.12;
+              mat.metalness = 0.15;
+              mat.depthWrite = false;
+              mat.side = THREE.DoubleSide;
+              mat.color.setHex(0xa5f3fc); // Sleek sci-fi cyan tinted glass
+              node.renderOrder = 5; // Render after opaque room geometry
+            }
+
             // If the material has emissive color assigned in Blender, ensure it glows with bloom
             if (mat.emissive && (mat.emissive.r > 0 || mat.emissive.g > 0 || mat.emissive.b > 0)) {
               if (!mat.emissiveIntensity || mat.emissiveIntensity <= 1.0) {
@@ -291,17 +329,41 @@ export class Level01InsideSpaceship extends BaseLevel {
       this.levelLights.push(corridorLight);
     }
 
+    // E. Control Room Lighting (Floor 2: [-4, 12, 75] and [-4, 9.5, 83])
+    const crLight1 = new THREE.PointLight(0xe0f2fe, 12.0, 24);
+    crLight1.decay = 1.0;
+    crLight1.position.set(-4.0, 12.0, 75.0);
+    this.gameWorld.environmentGroup.add(crLight1);
+    this.trackDisposable(crLight1);
+    this.levelLights.push(crLight1);
+
+    const crLight2 = new THREE.PointLight(0x38bdf8, 10.0, 20);
+    crLight2.decay = 1.0;
+    crLight2.position.set(-4.0, 9.5, 83.0);
+    this.gameWorld.environmentGroup.add(crLight2);
+    this.trackDisposable(crLight2);
+    this.levelLights.push(crLight2);
+
+    this._createControlCenterConsole();
+
     // 6. Spawn All Modular Doors Automatically from Blender Empties
     for (const spawnNode of doorSpawnNodes) {
       await this._spawnDoorFromEmpty(spawnNode);
     }
 
-    // 7. Spawn Player inside the Stasis Holding Cell
+    // 7. Spawn Player inside the Stasis Holding Cell as Mr. Overalls (scaled 1.5x, no jumping)
     this.player = new Player(this.gameWorld, {
-      walkSpeed: 8.5,
-      sprintSpeed: 14.0,
-      jumpForce: 10.5,
-      maxHealth: config.player.vitals.maxHealth
+      characterId: 'mr-overalls',
+      scale: 1.5,
+      walkSpeed: 7.5,
+      sprintSpeed: 12.5,
+      canJump: false,
+      maxHealth: config.player.vitals.maxHealth,
+      capsuleRadius: 0.55,
+      capsuleHalfHeight: 0.75,
+      eyeHeight: 2.2,
+      thirdPersonTargetHeight: 2.1,
+      thirdPersonDistance: 4.2
     });
 
     this.player.setPosition(this.spawnPlayer.x, this.spawnPlayer.y, this.spawnPlayer.z);
@@ -364,6 +426,150 @@ export class Level01InsideSpaceship extends BaseLevel {
       this.enemySquad.add(alien);
       this.alienSpawns.push(alien);
     }
+  }
+
+  _createSpaceBackdrop() {
+    const starCount = 1400;
+    const starRadius = 1500;
+    const positions = new Float32Array(starCount * 3);
+    const colors = new Float32Array(starCount * 3);
+    const starColors = [0xffffff, 0xc9e3ff, 0xffe6c2];
+    let seed = 0x5eed1234;
+    const random = () => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return (seed >>> 0) / 0x100000000;
+    };
+
+    for (let i = 0; i < starCount; i++) {
+      const z = random() * 2 - 1;
+      const angle = random() * Math.PI * 2;
+      const radial = Math.sqrt(1 - z * z);
+      positions[i * 3] = starRadius * radial * Math.cos(angle);
+      positions[i * 3 + 1] = starRadius * z;
+      positions[i * 3 + 2] = starRadius * radial * Math.sin(angle);
+
+      const color = new THREE.Color(starColors[Math.floor(random() * starColors.length)]);
+      const brightness = 0.65 + random() * 0.35;
+      colors[i * 3] = color.r * brightness;
+      colors[i * 3 + 1] = color.g * brightness;
+      colors[i * 3 + 2] = color.b * brightness;
+    }
+
+    const starGeometry = new THREE.BufferGeometry();
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const stars = new THREE.Points(
+      starGeometry,
+      new THREE.PointsMaterial({
+        size: 1.25,
+        vertexColors: true,
+        sizeAttenuation: true,
+        depthWrite: false,
+        fog: false
+      })
+    );
+    stars.name = 'SpaceshipExteriorStars';
+    this.gameWorld.environmentGroup.add(stars);
+    this.trackDisposable(stars);
+
+    const bodies = [
+      { name: 'DistantMoon', position: [310, 170, -530], radius: 48, color: 0xc9cbd0 },
+      { name: 'DistantBluePlanet', position: [-700, 360, -920], radius: 72, color: 0x4389c4 },
+      { name: 'DistantRingedPlanet', position: [640, -250, -980], radius: 44, color: 0xd88755 }
+    ];
+
+    for (const body of bodies) {
+      const planet = new THREE.Mesh(
+        new THREE.SphereGeometry(body.radius, 32, 24),
+        new THREE.MeshBasicMaterial({ color: body.color })
+      );
+      planet.name = body.name;
+      planet.position.set(...body.position);
+      this.gameWorld.environmentGroup.add(planet);
+      this.trackDisposable(planet);
+
+      if (body.name === 'DistantRingedPlanet') {
+        const ring = new THREE.Mesh(
+          new THREE.RingGeometry(body.radius * 1.35, body.radius * 2.1, 48),
+          new THREE.MeshBasicMaterial({
+            color: 0xd8b37c,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.85,
+            depthWrite: false
+          })
+        );
+        ring.name = 'DistantPlanetRings';
+        ring.position.copy(planet.position);
+        ring.lookAt(0, 0, 0);
+        ring.rotateZ(0.35);
+        this.gameWorld.environmentGroup.add(ring);
+        this.trackDisposable(ring);
+      }
+    }
+  }
+
+  _createControlCenterConsole() {
+    const consoleGroup = new THREE.Group();
+    consoleGroup.name = 'SpaceshipControlCenterConsole';
+    consoleGroup.position.set(-4, 10.6, 81.5);
+    this.gameWorld.environmentGroup.add(consoleGroup);
+    this.trackDisposable(consoleGroup);
+    this.controlCenterConsole = consoleGroup;
+
+    const addMesh = (name, geometry, material, position) => {
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.name = name;
+      mesh.position.set(...position);
+      consoleGroup.add(mesh);
+      this.trackDisposable(mesh);
+    };
+
+    addMesh(
+      'ControlCenterPanelBacking',
+      new THREE.BoxGeometry(3.2, 1.9, 0.16),
+      new THREE.MeshStandardMaterial({
+        color: 0x172b3b,
+        metalness: 0.75,
+        roughness: 0.32
+      }),
+      [0, 0, 0]
+    );
+
+    addMesh(
+      'ControlCenterDisplay',
+      new THREE.BoxGeometry(1.7, 0.34, 0.04),
+      new THREE.MeshStandardMaterial({
+        color: 0x082f49,
+        emissive: 0x0284c7,
+        emissiveIntensity: 1.6,
+        metalness: 0.25,
+        roughness: 0.28
+      }),
+      [0, 0.58, -0.1]
+    );
+
+    const buttonColumns = [-0.85, 0, 0.85];
+    const buttonRows = [-0.05, -0.55];
+    CONTROL_CENTER_BUTTONS.forEach((button, index) => {
+      const column = index % buttonColumns.length;
+      const row = Math.floor(index / buttonColumns.length);
+      const color = Number.parseInt(button.color.slice(1), 16);
+      addMesh(
+        `ControlCenterButton-${button.label.replaceAll(' ', '-')}`,
+        new THREE.BoxGeometry(0.58, 0.25, 0.1),
+        new THREE.MeshStandardMaterial({
+          color,
+          emissive: color,
+          emissiveIntensity: 0.45,
+          metalness: 0.35,
+          roughness: 0.3
+        }),
+        [buttonColumns[column], buttonRows[row], -0.14]
+      );
+    });
   }
 
   /**
@@ -493,6 +699,10 @@ export class Level01InsideSpaceship extends BaseLevel {
       return;
     }
 
+    if (this._checkPlayerFall()) return;
+
+    this._updateControlCenterPanel();
+
     // Performance Optimization A & D: Dynamic Light Culling & Floor Occlusion Culling
     if (this.player && this.player.position) {
       const px = this.player.position.x;
@@ -595,6 +805,44 @@ export class Level01InsideSpaceship extends BaseLevel {
     }
   }
 
+  _updateControlCenterPanel() {
+    if (!this.player?.position || !this.gameWorld.ui) return;
+
+    const nearControlCenter =
+      this.player.position.distanceToSquared(CONTROL_CENTER_POSITION) <=
+      CONTROL_CENTER_RADIUS * CONTROL_CENTER_RADIUS;
+
+    if (nearControlCenter === this._controlCenterVisible) return;
+
+    this._controlCenterVisible = nearControlCenter;
+    if (nearControlCenter) {
+      this.gameWorld.ui.showControlCenter(CONTROL_CENTER_BUTTONS);
+    } else {
+      this.gameWorld.ui.hideControlCenter();
+    }
+  }
+
+  _checkPlayerFall() {
+    if (this._fallDeathTriggered || !this.player || this.player.position.y >= this._fallDeathY) {
+      return false;
+    }
+
+    this._fallDeathTriggered = true;
+    this.player.setFrozen(true);
+    this.gameWorld.input?.exitPointerLock();
+    this.gameWorld.isPaused = true;
+    this.gameWorld.ui?.showMissionResult({
+      outcome: 'defeat',
+      title: 'LOST IN SPACE',
+      message: 'You fell off the spaceship.',
+      actions: [
+        { label: 'Restart level', onClick: () => this.gameWorld.restartCurrentLevel() },
+        { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
+      ]
+    });
+    return true;
+  }
+
   get controls() {
     return [
       { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Move' },
@@ -624,7 +872,7 @@ export class Level01InsideSpaceship extends BaseLevel {
 
     // Create perspective camera inside sleeping capsule
     if (!this.introCamera) {
-      this.introCamera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 500);
+      this.introCamera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 2000);
       this.introCamera.name = 'IntroPodCamera';
       this.gameWorld.environmentGroup.add(this.introCamera);
       this.trackDisposable(this.introCamera);
@@ -793,6 +1041,10 @@ export class Level01InsideSpaceship extends BaseLevel {
 
   dispose() {
     this._endIntroCutscene();
+    if (this._controlCenterVisible) {
+      this.gameWorld.ui?.hideControlCenter();
+      this._controlCenterVisible = false;
+    }
 
     if (this.introCamera && this.gameWorld?.environmentGroup) {
       this.gameWorld.environmentGroup.remove(this.introCamera);
@@ -817,6 +1069,7 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.levelLights = [];
     this.floor1Meshes = [];
     this.floor2Meshes = [];
+    cachedSpaceshipGLTF = null; // Clear cached GLTF on dispose so updated models reload cleanly
     super.dispose();
   }
 }
