@@ -32,16 +32,32 @@ export class CinematicOverlay {
    * @param {string} title
    * @param {string} [subtitle]
    * @param {string} [hint] - e.g. '[Space] Skip'
+   * @param {boolean} [isThought=false] - Whether to style as centered inner monologue thoughts
    */
-  show(title, subtitle = '', hint = '') {
+  show(title, subtitle = '', hint = '', isThought = false) {
     this.titleEl.textContent = title;
     this.subtitleEl.textContent = subtitle;
     this.hintEl.textContent = hint;
+
+    if (isThought) {
+      this.element.classList.add('ui-cinematic-thought');
+    } else {
+      this.element.classList.remove('ui-cinematic-thought');
+    }
+
+    const caption = this.element.querySelector('.ui-cinematic-caption');
+    if (caption) {
+      caption.style.animation = 'none';
+      void caption.offsetWidth; // trigger reflow for smooth re-fade
+      caption.style.animation = '';
+    }
+
     this.element.classList.remove('ui-hidden');
   }
 
   hide() {
     this.element.classList.add('ui-hidden');
+    this.element.classList.remove('ui-cinematic-thought');
   }
 
   dispose() {

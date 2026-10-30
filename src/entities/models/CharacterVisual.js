@@ -31,13 +31,14 @@ function disposeAsset(gltf) {
 }
 
 /** Share immutable geometry/textures; keep poses and damage materials per actor. */
-function acquire(id) {
-  let entry = assets.get(id);
+function acquire(id, { assetUrl = null } = {}) {
+  const cacheKey = assetUrl ? `url:${assetUrl}` : id;
+  let entry = assets.get(cacheKey);
   if (!entry) {
     entry = { refs: 0, gltf: null };
     const base = import.meta.env?.BASE_URL || '/';
-    entry.promise = new GLTFLoader().loadAsync(`${base}assets/characters/${id}.glb`).then(async (gltf) => {
-      if (!['galiant','bahamut-nt','bahamut-xvi'].includes(id)) {
+    entry.promise = new GLTFLoader().loadAsync(assetUrl || `${base}assets/characters/${id}.glb`).then(async (gltf) => {
+      if (!assetUrl && !['galiant','bahamut-nt','bahamut-xvi'].includes(id)) {
         try {
           const response=await fetch(`${base}assets/animations/${id}.json`);
           if (response.ok) gltf.motion=await response.json();
@@ -48,17 +49,17 @@ function acquire(id) {
       return gltf;
     }).catch((error) => {
       // A stopped/restarted dev server must not poison subsequent level loads.
-      if (assets.get(id) === entry) assets.delete(id);
+      if (assets.get(cacheKey) === entry) assets.delete(cacheKey);
       throw error;
     });
-    assets.set(id, entry);
+    assets.set(cacheKey, entry);
   }
   entry.refs++;
   return {
     promise: entry.promise,
     release() {
       if (--entry.refs !== 0) return;
-      if (assets.get(id) === entry) assets.delete(id);
+      if (assets.get(cacheKey) === entry) assets.delete(cacheKey);
       if (entry.gltf) disposeAsset(entry.gltf);
     }
   };
@@ -67,9 +68,10 @@ function acquire(id) {
 /** Visual-only skin. Physics, weapons and entity lifecycles stay with their owners. */
 export class CharacterVisual {
   constructor(parent, id, { height = 1.9, hide = [], weakSpot = false,
-    enabled = typeof Image !== 'undefined', acquireAsset = acquire } = {}) {
+    enabled = typeof Image !== 'undefined', acquireAsset = acquire, ...characterOptions } = {}) {
     if (!CHARACTER_IDS.includes(id)) throw new Error(`Unknown character: ${id}`);
     this.id = id;
+    this.characterOptions = characterOptions;
     this.group = null;
     if (enabled) {
       this.group = new THREE.Group();
@@ -114,7 +116,12 @@ export class CharacterVisual {
     this._weakSpot = weakSpot;
     this.ready = Promise.resolve(false);
     if (!enabled) return;
-    this.lease = acquireAsset(id);
+    const customAssetUrl = characterOptions.assetUrl;
+    this.nativeMixer = null;
+    this.nativeActions = {};
+    this.nativeAction = null;
+    this.nativeShout = 0;
+    this.lease = customAssetUrl ? acquire(id, { assetUrl: customAssetUrl }) : acquireAsset(id);
     this.ready = this.lease.promise.then((asset) => {
       if (this.disposed) return false;
       this._attach(asset);
@@ -219,6 +226,14 @@ export class CharacterVisual {
       this.group.add(this.weakSpot);
     }
     this.loaded = true;
+    if (gltf.animations?.length && this.characterOptions?.assetUrl) {
+      this.nativeMixer = new THREE.AnimationMixer(this.root);
+      for (const clip of gltf.animations) {
+        const action = this.nativeMixer.clipAction(clip);
+        const normalized = clip.name.toLowerCase().replace(/[^a-z]+/g, '_');
+        this.nativeActions[normalized] = action;
+      }
+    }
     if (gltf.motion?.clips?.length) this.motion=new HumanoidAnimationPlayer(this.root,gltf.motion);
     this.animate(0, 0, false);
   }
@@ -233,6 +248,24 @@ export class CharacterVisual {
 
   animate(delta, speed, aiming, raise = 0) {
     if (!this.loaded || this.disposed) return;
+    if (this.nativeMixer) {
+      this.nativeShout = Math.max(0, this.nativeShout - delta);
+      const clips = this.nativeActions;
+      const clip = speed > 4.5
+        ? (clips.sprint_loop_fit || clips.jog_fwd_loop_fit || clips.walk_loop_fit)
+        : speed > 0.15
+          ? (clips.walk_loop_fit || clips.jog_fwd_loop_fit)
+          : (this.nativeShout > 0
+            ? (clips.pistol_shoot_fit || clips.pistol_idle_loop_fit)
+            : (clips.idle_loop_fit || clips.idle_no_loop_fit || clips.pistol_idle_loop_fit));
+      if (clip && clip !== this.nativeAction) {
+        clip.reset().fadeIn(0.12).play();
+        if (this.nativeAction) this.nativeAction.fadeOut(0.12);
+        this.nativeAction = clip;
+      }
+      this.nativeMixer.update(delta);
+      return;
+    }
     this.motionSpeed = THREE.MathUtils.damp(this.motionSpeed, speed, 10, delta);
     speed = this.motionSpeed;
     this.phase += delta * (speed > 0.1 ? Math.min(18, 4 + speed * 1.8) : 0);
@@ -313,7 +346,11 @@ export class CharacterVisual {
     this._pose('leftForearm',0.12);
     this._pose('rightForearm',0.12);
   }
-  kickRecoil() { this.recoilVelocity += 0.65; this.motion?.fire(); }
+  kickRecoil() {
+    this.recoilVelocity += 0.65;
+    if (this.nativeMixer) this.nativeShout = 0.35;
+    this.motion?.fire();
+  }
 
   _groundAuthoredFeet() {
     const actor=this.actor, physics=actor?.physicsWorld;

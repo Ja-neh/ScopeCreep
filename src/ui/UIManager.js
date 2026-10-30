@@ -22,6 +22,7 @@ import { StoryIntro } from './components/StoryIntro.js';
 import { PauseMenu } from './components/PauseMenu.js';
 import { PauseButton } from './components/PauseButton.js';
 import { CombatRoster } from './components/CombatRoster.js';
+import { ControlCenterPanel } from './components/ControlCenterPanel.js';
 
 /**
  * UIManager.js
@@ -65,6 +66,7 @@ export class UIManager {
     this.pauseMenu.setInstructions(this.devTools.element);
     this.pauseButton = new PauseButton(this.container);
     this.combatRoster = new CombatRoster(this.container);
+    this.controlCenter = new ControlCenterPanel(this.container);
   }
 
   // =========================================================================
@@ -146,6 +148,14 @@ export class UIManager {
     if (this.crosshair) {
       this.crosshair.hide();
     }
+  }
+
+  showControlCenter() {
+    this.controlCenter?.show();
+  }
+
+  hideControlCenter() {
+    this.controlCenter?.hide();
   }
 
   /**
@@ -327,10 +337,11 @@ export class UIManager {
    * @param {string} title
    * @param {string} [subtitle]
    * @param {string} [hint] - e.g. '[Space] Skip'
+   * @param {boolean} [isThought=false] - Whether styled as centered inner thoughts
    */
-  showCinematic(title, subtitle = '', hint = '') {
+  showCinematic(title, subtitle = '', hint = '', isThought = false) {
     if (this.cinematic) {
-      this.cinematic.show(title, subtitle, hint);
+      this.cinematic.show(title, subtitle, hint, isThought);
       this.container.classList.add('ui-cinematic-active');
     }
   }
@@ -352,16 +363,18 @@ export class UIManager {
   /**
    * Fades the screen to black (level handovers: Level 2's walk through the gate, and every
    * GameWorld.loadLevel swap, which stays covered until the new stage is built).
+   * @param {boolean} [slow=false]
    */
-  showFade() {
-    if (this.fade) this.fade.cover();
+  showFade(slow = false) {
+    if (this.fade) this.fade.cover(slow);
   }
 
   /**
    * Lifts the black curtain again
+   * @param {boolean} [slow=false]
    */
-  hideFade() {
-    if (this.fade) this.fade.reveal();
+  hideFade(slow = false) {
+    if (this.fade) this.fade.reveal(slow);
   }
 
   // =========================================================================
@@ -699,6 +712,7 @@ export class UIManager {
     this.hidePrompt();
     this.hideStationHUD();
     this.hideCrosshair();
+    this.hideControlCenter();
     this.hideHealthBar();
     this.hideStatusIndicator();
     this.hideWeaponHUD();
@@ -740,6 +754,8 @@ export class UIManager {
    */
   dispose() {
     this.combatRoster.dispose();
+    this.controlCenter?.dispose();
+    this.controlCenter = null;
     if (this.prompt) {
       this.prompt.dispose();
       this.prompt = null;

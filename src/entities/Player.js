@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseEntity } from './BaseEntity.js';
 import { SpringArmCamera, CameraMode } from './components/SpringArmCamera.js';
 import { PlayerModel } from './models/PlayerModel.js';
+import { MrOverallsModel } from './models/MrOverallsModel.js';
 import { getSelectedCharacter, isHumanCharacter } from './models/CharacterRoster.js';
 import { GroundProbe } from './player-components/GroundProbe.js';
 import { PlatformTracker } from './player-components/PlatformTracker.js';
@@ -35,6 +36,7 @@ export class Player extends BaseEntity {
 
     this.walkSpeed = options.walkSpeed || locCfg.walkSpeed;
     this.sprintSpeed = options.sprintSpeed || locCfg.sprintSpeed;
+    this.canJump = options.canJump !== undefined ? options.canJump : true;
     this.jumpForce = options.jumpForce || locCfg.jumpForce;
     this.gravity = options.gravity || locCfg.gravity;
     this.mouseSensitivity = options.mouseSensitivity || locCfg.mouseSensitivity;
@@ -63,6 +65,9 @@ export class Player extends BaseEntity {
           fx.bloodSpray(info.point, info.direction);
         }
       };
+      this.health.onDeath = () => {
+        this.die();
+      };
     }
 
     // Capsule dimensions from config or options
@@ -84,6 +89,8 @@ export class Player extends BaseEntity {
     this.isPlayer = true;
     this.isMounted = false; // True when operating a gun turret / vehicle
     this.isDevSuspended = false; // True when dev aerial camera is active
+    this.isFrozen = false; // True when inside cutscenes / scripted sequences
+    this.isDead = false; // True when character dies
 
     // Look angles (radians)
     this.yaw = 0;       // 0 = facing towards -Z
@@ -117,8 +124,13 @@ export class Player extends BaseEntity {
     this.characterController = null;
 
     // 1. Procedural Visual Model & Debug Wireframe
-    this.characterId = isHumanCharacter(options.characterId) ? options.characterId : getSelectedCharacter();
-    this.model = new PlayerModel(this.capsuleRadius, this.capsuleHalfHeight, this.capsuleCenter, this.characterId);
+    if (options.characterId === 'mr-overalls' || options.customModel === 'mr-overalls') {
+      this.characterId = 'mr-overalls';
+      this.model = new MrOverallsModel(this.capsuleRadius, this.capsuleHalfHeight, this.capsuleCenter, options);
+    } else {
+      this.characterId = isHumanCharacter(options.characterId) ? options.characterId : getSelectedCharacter();
+      this.model = new PlayerModel(this.capsuleRadius, this.capsuleHalfHeight, this.capsuleCenter, this.characterId);
+    }
     this.model.character.setActor(this);
     this.power = new CharacterPower(this, this.characterId);
     this.mesh = this.model.mesh;
@@ -138,9 +150,9 @@ export class Player extends BaseEntity {
     // 4. Moving Platform Tracker (Contact-based)
     this.platformTracker = new PlatformTracker(this.gameWorld);
 
-    // Request pointer lock on canvas pointerdown/click (unless in dev aerial camera, paused, or no level)
+    // Request pointer lock on canvas pointerdown/click (unless in dev aerial camera, paused, frozen, or no level)
     this._onPointerDown = () => {
-      if (this.isDevSuspended || (this.gameWorld && (this.gameWorld.isPaused || !this.gameWorld.currentLevel))) return;
+      if (this.isDevSuspended || this.isFrozen || (this.gameWorld && (this.gameWorld.isPaused || !this.gameWorld.currentLevel))) return;
       if (!this.input.isPointerLocked) {
         this.input.requestPointerLock(this.gameWorld.canvas);
       }
@@ -233,6 +245,23 @@ export class Player extends BaseEntity {
   }
 
   /**
+   * Sets frozen state during cutscenes/dialogues (hides avatar, suspends movement & mouse look)
+   */
+  setFrozen(frozen) {
+    this.isFrozen = !!frozen;
+    if (this.model) {
+      this.model.setVisible(!frozen);
+    }
+    if (frozen) {
+      this.velocity.set(0, 0, 0);
+      this.verticalVelocity = 0;
+      if (this.input && this.input.isPointerLocked) {
+        this.input.exitPointerLock();
+      }
+    }
+  }
+
+  /**
    * 0 standing to 1 fully crouched, eased (for posing held items).
    */
   get crouchAmount() {
@@ -281,8 +310,8 @@ export class Player extends BaseEntity {
    * displacement inheritance, and Rapier collision sweeps against current platform transforms.
    */
   postPhysicsUpdate(delta) {
-    // Suspend character update when operating a gun turret or when aerial dev camera is active
-    if (this.isMounted || this.isDevSuspended) {
+    // Suspend character update when operating a gun turret, frozen in cutscene, dead, or when aerial dev camera is active
+    if (this.isMounted || this.isDevSuspended || this.isFrozen || this.isDead) {
       return;
     }
 
@@ -373,7 +402,7 @@ export class Player extends BaseEntity {
       // Jump, gravity & movement assembly
       let desiredMovement;
       if (this.isGrounded) {
-        if (this.input.isActionJustPressed('jump') && !this.isCrouching) {
+        if (this.canJump && this.input.isActionJustPressed('jump') && !this.isCrouching) {
           this.verticalVelocity = this.jumpForce;
           this.isGrounded = false;
           desiredMovement = {
@@ -442,13 +471,50 @@ export class Player extends BaseEntity {
   /** Phase 5: animate the visual after the character sweep, before cameras. */
   gameplayUpdate(delta) {
     this.power.update(delta);
-    if (this.isMounted || this.isDevSuspended) return;
+    if (this.isMounted || this.isDevSuspended || this.isFrozen || this.isDead) return;
     if (this.input.isPointerLocked && this.input.isActionJustPressed('characterPower')) {
       if (!this.power.activate() && this.power.cooldown>0) this.gameWorld.ui?.showToast(
         `${this.power.cfg.name}: ready in ${Math.ceil(this.power.cooldown)}s`, 'info', 1200);
     }
+    if (this.input.isPointerLocked && this.input.isActionJustPressed('firePrimary')) {
+      this.shoot();
+    }
     this.model.character.animate(delta, this.isGrounded ? Math.hypot(this.velocity.x, this.velocity.z) : 0,
       this.input.isActionDown('aimDownSights'));
+  }
+
+  /**
+   * Triggers shooting animation on the visual model if supported.
+   */
+  shoot() {
+    if (this.isMounted || this.isDevSuspended || this.isFrozen || this.isDead) return false;
+    if (this.model && typeof this.model.shoot === 'function') {
+      return this.model.shoot();
+    }
+    return false;
+  }
+
+  /**
+   * Plays death animation and stops player locomotion.
+   */
+  die() {
+    if (this.isDead) return;
+    this.isDead = true;
+    this.velocity.set(0, 0, 0);
+    this.verticalVelocity = 0;
+    if (this.model && typeof this.model.playDeath === 'function') {
+      this.model.playDeath();
+    }
+  }
+
+  /**
+   * Triggers scripted chest open animation on the model if supported.
+   */
+  playChestOpen(options) {
+    if (this.model && typeof this.model.playChestOpen === 'function') {
+      return this.model.playChestOpen(options);
+    }
+    return false;
   }
 
   /**
@@ -456,8 +522,8 @@ export class Player extends BaseEntity {
    * after all character movements and external forces are fully settled.
    */
   lateUpdate(delta) {
-    this.power.lateUpdate();
-    if (this.isMounted || this.isDevSuspended) return;
+    if (this.power) this.power.lateUpdate();
+    if (this.isMounted || this.isDevSuspended || this.isFrozen) return;
 
     if (this.canCrouch) {
       this._updateCrouchPose(delta);

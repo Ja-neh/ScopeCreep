@@ -5,7 +5,8 @@
     "ashe": { "name": "Charged Shot", "kind": "shot", "cooldown": 9, "duration": 0.5, "damage": 75, "range": 90 },
     "firion": { "name": "Blade Pulse", "kind": "pulse", "cooldown": 12, "duration": 0.6, "damage": 50, "range": 9, "knockback": 7 },
     "junker-queen": { "name": "Battle Shout", "kind": "shout", "cooldown": 18, "duration": 4, "healPerSecond": 5, "shield": 45, "range": 10, "knockback": 10 },
-    "bob": { "name": "Iron Shield", "kind": "shield", "cooldown": 20, "duration": 5, "shield": 100 }
+    "bob": { "name": "Iron Shield", "kind": "shield", "cooldown": 20, "duration": 5, "shield": 100 },
+    "mr-overalls": { "name": "Adrenaline", "kind": "heal", "cooldown": 15, "duration": 4, "healPerSecond": 10 }
   },
   "alienTactics": { "strafeDistance": 4, "strafeSeconds": 1.2, "repositionSeconds": 3.2, "dodgeDistance": 5, "dodgeSeconds": 0.7, "dodgeCooldown": 2.5, "dodgeSpeedMultiplier": 1.4, "meleeDistance": 5, "probeHeight": 1, "maxDrop": 0.55 },
   "extraFlyingFraction": 0.2,
