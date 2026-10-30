@@ -227,6 +227,23 @@ export class BaseSlidingDoor extends BaseEntity {
     if (this.panelMesh) {
       this.initialPanelPos.copy(this.panelMesh.position);
       this.slideDelta.copy(this.openedPos).sub(this.closedPos);
+
+      // Modular door panel material (stylized slate from Level 1 theme)
+      if (options.panelMaterial) {
+        this.panelMesh.material = options.panelMaterial;
+      } else {
+        const panelColor = options.panelColor !== undefined ? options.panelColor : 0x94a3b8;
+        const panelRoughness = options.panelRoughness !== undefined ? options.panelRoughness : 0.5;
+        const panelMetalness = options.panelMetalness !== undefined ? options.panelMetalness : 0.2;
+
+        this.panelMesh.material = new THREE.MeshStandardMaterial({
+          color: panelColor,
+          roughness: panelRoughness,
+          metalness: panelMetalness
+        });
+      }
+      this.panelMesh.castShadow = true;
+      this.panelMesh.receiveShadow = true;
     }
 
     // Apply initial position / rotation if supplied in options
