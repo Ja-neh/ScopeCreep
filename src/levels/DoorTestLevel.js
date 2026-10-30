@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { BaseLevel } from './BaseLevel.js';
 import { Player } from '../entities/Player.js';
 import { ShadowFrustum } from '../rendering/ShadowFrustum.js';
+import { WeaponController } from '../weapons/WeaponController.js';
+import config from '../config.json';
 import {
   DoorSlidingSideways,
   loadDoorSlidingSideways,
@@ -28,6 +30,7 @@ export class DoorTestLevel extends BaseLevel {
     super(gameWorld, 'Doors Test: Modular Sliding Doors');
 
     this.player = null;
+    this.weapons = null;
     this.doorSideways = null;
     this.doorUp = null;
     this.bigDoorUp = null;
@@ -133,13 +136,22 @@ export class DoorTestLevel extends BaseLevel {
     this.player = new Player(this.gameWorld, {
       walkSpeed: 8.5,
       sprintSpeed: 14.0,
-      jumpForce: 10.5
+      jumpForce: 10.5,
+      maxHealth: config.player.vitals.maxHealth
     });
     // Spawn at (0, 0, 0) facing forward along -Z toward the doors
     this.player.setPosition(0, 0, 0);
     this.player.yaw = 0;
     this.gameWorld.addEntity(this.player);
     this.gameWorld.player = this.player;
+
+    this.weapons = new WeaponController(this.gameWorld, this.player);
+    this.gameWorld.addEntity(this.weapons);
+
+    if (this.gameWorld.ui) {
+      this.gameWorld.ui.showPlayerHealth();
+      this.gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
+    }
 
     console.log(`${this.name} initialized with 3 test doors and flat ground.`);
   }
@@ -231,6 +243,10 @@ export class DoorTestLevel extends BaseLevel {
     if (this.sunShadow && this.player) {
       this.sunShadow.update(this.player);
     }
+
+    if (this.player?.health && gameWorld.ui) {
+      gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
+    }
   }
 
   get controls() {
@@ -238,6 +254,9 @@ export class DoorTestLevel extends BaseLevel {
       { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Walk' },
       { actions: ['jump'], label: 'Jump' },
       { actions: ['sprint'], label: 'Sprint' },
+      { actions: ['aimDownSights'], label: 'Aim' },
+      { actions: ['firePrimary'], label: 'Fire' },
+      { actions: ['reload'], label: 'Reload' },
       { actions: ['toggleCamera'], label: 'Toggle View (V)' },
       { actions: ['toggleColliders'], label: 'Toggle Physics Wireframes (B / F2)' }
     ];
