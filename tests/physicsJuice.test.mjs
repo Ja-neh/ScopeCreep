@@ -163,7 +163,7 @@ test('a shockwave knocks a standing fighter off their feet', () => {
     });
     stepWorld(world, 1.5, { level });
 
-    assert.equal(player.health.currentHealth, 99, 'the ring caught the player once');
+    assert.equal(player.health.currentHealth, 100-config.player.damageMultiplier, 'the ring caught the protected player once');
     assert.equal(wave.active, false, 'the ring ran its course');
     const moved = player.position.x - startX;
     assert.ok(moved > 0.3, `pushed away from the slam (${moved.toFixed(2)}m)`);

@@ -69,7 +69,7 @@ export class HumanSquad {
     this.onMateKilled = onMateKilled;
     this.onLeaderLost = onLeaderLost;
 
-    this.bleedOutSeconds = revive.bleedOutSeconds;
+    this.bleedOutSeconds = revive.bleedOutSeconds ?? Infinity;
     this.reviveHoldSeconds = revive.holdSeconds;
     this.reviveHealthFraction = revive.healthFraction;
     this.reviveRadius = revive.radius;
@@ -153,6 +153,8 @@ export class HumanSquad {
     const health = member.health.maxHealth * this.reviveHealthFraction;
     if (typeof member.revive === 'function') member.revive(health);
     else member.health.revive(health);
+    member.model?.character?.resetPose();
+    if(member.isPlayer){member.mesh.rotation.x=member.mesh.rotation.z=0;member.isDevSuspended=false;}
     this._downed.delete(member);
     if (this.onMemberRevived) this.onMemberRevived(member, by);
   }

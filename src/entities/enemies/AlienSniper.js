@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { AlienTrooper } from './AlienTrooper.js';
+import { AlienModel } from '../models/AlienModel.js';
 import config from '../../config.json';
 
 const CHEST_HEIGHT = 1.2;
@@ -29,7 +30,7 @@ export class AlienSniper extends AlienTrooper {
       position,
       squad,
       cfg,
-      model,
+      model: model || new AlienModel({ characterId: 'bahamut-nt' }),
       name: 'AlienSniper',
       states: SNIPER_STATES,
       initialState: 'perch',

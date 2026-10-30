@@ -20,13 +20,13 @@ export class AlienHeavy extends AlienBrute {
    * @param {AlienSquad} options.squad
    * @param {Object} [options.cfg] - Overrides config.enemies.heavy
    */
-  constructor(gameWorld, { position, squad, cfg = config.enemies.heavy }) {
+  constructor(gameWorld, { position, squad, cfg = config.enemies.heavy, model = null }) {
     super(gameWorld, {
       position,
       squad,
       cfg,
       name: 'AlienHeavy',
-      model: new AlienModel({ armorColor: 0x4c3355, scale: HEAVY_SCALE, backpack: true, crest: true }),
+      model: model || new AlienModel({ armorColor: 0x4c3355, scale: HEAVY_SCALE, backpack: true, crest: true, characterId: 'galiant' }),
       capsule: HEAVY_CAPSULE
     });
 

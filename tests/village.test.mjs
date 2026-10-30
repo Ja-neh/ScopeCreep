@@ -27,7 +27,14 @@ after(() => {
   env.dispose();
 });
 
-function walkPlayer(player, waypoints, seconds) {
+function walkPlayer(player, waypoints, seconds = null) {
+  if (seconds===null) {
+    const length=waypoints.reduce((sum,p,i)=>{
+      const previous=i ? waypoints[i-1] : player.position;
+      return sum+Math.hypot(p.x-previous.x,p.z-previous.z);
+    },0);
+    seconds=length/player.walkSpeed*1.5+5;
+  }
   let index = 0;
   world.input.hold('forward');
   stepWorld(world, seconds, {
@@ -145,7 +152,7 @@ test('alien ships sit among the houses, up on legs: you can walk right under one
   const across = { x: Math.cos(ship.yaw), z: -Math.sin(ship.yaw) }; // The ship's own x axis
   const reach = ship.radius + 3;
   const player = newPlayer(ship.x - across.x * reach, ship.z - across.z * reach);
-  const reached = walkPlayer(player, [{ x: ship.x, z: ship.z }, { x: ship.x + across.x * reach, z: ship.z + across.z * reach }], 12);
+  const reached = walkPlayer(player, [{ x: ship.x, z: ship.z }, { x: ship.x + across.x * reach, z: ship.z + across.z * reach }]);
   assert.ok(reached, `stuck under the ship at ${player.position.x.toFixed(1)}, ${player.position.z.toFixed(1)}`);
   world.removeEntity(player);
 });
@@ -160,7 +167,7 @@ test('walk up from the jungle path through the gate and up the avenue to the squ
     { x: square.x + 6, z: square.z },
     { x: village.hall.entrance.x, z: village.hall.entrance.z },
     { x: village.hall.dais.x, z: village.hall.dais.z + 4 }
-  ], 80);
+  ]);
   assert.ok(reached, `stuck at ${player.position.x.toFixed(1)}, ${player.position.z.toFixed(1)}`);
   assert.ok(village.hall.contains(player.position.x, player.position.z), 'inside the hall');
   world.removeEntity(player);

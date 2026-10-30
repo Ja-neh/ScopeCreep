@@ -98,7 +98,4 @@ void main() {
   #endif
 
   gl_FragColor = vec4(finalColor, 0.96);
-
-  // 8. Output encoding (a no-op when the frame renders into the post stack's target)
-  #include <colorspace_fragment>
 }

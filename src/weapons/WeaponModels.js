@@ -47,6 +47,12 @@ export function createRifleModel(materials) {
   muzzle.position.set(0, 0.02, -0.82);
   mesh.add(muzzle);
 
+  mesh.userData.grips = {
+    right: new THREE.Vector3(0, -0.07, 0.06),
+    left: new THREE.Vector3(0, -0.035, -0.25),
+    magazine: new THREE.Vector3(0, -0.2, -0.14)
+  };
+
   return { mesh, muzzle };
 }
 
@@ -64,6 +70,7 @@ export function createKnifeModel(materials) {
   bladeGeo.rotateX(-Math.PI / 2);
   bladeGeo.scale(0.3, 1, 1);
   part(mesh, bladeGeo, materials.blade, 0, 0, -0.19);
+  mesh.userData.grips={right:new THREE.Vector3()};
 
   return { mesh };
 }
@@ -82,6 +89,7 @@ export function createBombModel(materials) {
   part(mesh, new THREE.CylinderGeometry(0.026, 0.026, 0.05, 6), materials.polymer, 0, 0.12, 0);
   const lever = part(mesh, new THREE.BoxGeometry(0.016, 0.02, 0.1), materials.gunmetal, 0.05, 0.08, -0.03);
   lever.rotation.x = 0.25;
+  mesh.userData.grips={right:new THREE.Vector3()};
 
   return { mesh };
 }

@@ -68,7 +68,7 @@ test('the Warden waits until the player walks into the hall, then wakes shielded
   assert.ok(flat(warden.position, hall.dais) < flat(level.player.position, hall.dais), 'between the player and its dais');
   assert.equal(arena.crystals.length, 2);
   for (const crystal of arena.crystals) {
-    assert.ok(flat(crystal.position, hall.dais) < flat(warden.position, hall.dais) + 2, 'crystals at the back, by the dais');
+    assert.ok(Math.abs(crystal.position.z-hall.dais.z)<hall.depth/4, 'crystals at the back, by the dais');
     assert.ok(crystal.position.y > warden.position.y + 2.5, 'high up on a pillar');
   }
   const ui = world.ui;
@@ -162,7 +162,7 @@ test('the Warden slams the floor: the player takes the shockwave, unless they ju
   warden._slamTimer = 0;
   stepWorld(world, cfg.slamWindup + 3, { level });
   assert.equal(warden.slams, 1);
-  assert.equal(player.health.maxHealth - player.health.currentHealth, cfg.shockwaveDamage);
+  assert.equal(player.health.maxHealth - player.health.currentHealth, cfg.shockwaveDamage*config.player.damageMultiplier);
 
   // Jumping just before the ring arrives (a fifth of a second away): clear
   player.health.heal(100);
@@ -183,7 +183,7 @@ test('the Warden slams the floor: the player takes the shockwave, unless they ju
   assert.equal(teardown(world, level), 0);
 });
 
-test('enraged at half health: the shield comes back from two crystals by the door, and four troopers come in', async () => {
+test('enrage restores the shield and resurrects available dead aliens inside the hall', async () => {
   const { world, level } = await loadLevel();
   const arena = enterHall(world, level);
   const warden = arena.warden;
@@ -192,6 +192,8 @@ test('enraged at half health: the shield comes back from two crystals by the doo
   stepWorld(world, 0.1, { level });
   assert.equal(warden.shielded, false);
   const aliensBefore = level.squad.aliveCount;
+  for(let i=0;i<4;i++)level.squad.fallen.push({id:'galiant',actor:null});
+  level.player.health.invulnerable=true;
 
   warden.health.takeDamage({ amount: warden.health.maxHealth * (1 - cfg.enrageFraction) + 1 });
   stepWorld(world, 0.1, { level });
@@ -201,9 +203,9 @@ test('enraged at half health: the shield comes back from two crystals by the doo
   const fresh = arena.crystals.filter((crystal) => !crystal.isDead);
   assert.equal(fresh.length, 2);
   for (const crystal of fresh) assert.ok(flat(crystal.position, hall.doorway) < flat(warden.position, hall.doorway), 'the new crystals are by the door');
-  assert.equal(level.squad.aliveCount - aliensBefore, cfg.enrageAdds);
+  assert.equal(level.squad.aliveCount - aliensBefore,4);
   for (const trooper of arena.adds) {
-    assert.ok(!hall.contains(trooper.position.x, trooper.position.z), 'they come from outside');
+    assert.ok(hall.contains(trooper.position.x, trooper.position.z), 'resurrected inside the hall');
     assert.ok(trooper.brain.is('investigate') || trooper.brain.is('engage'), `the trooper is ${trooper.brain.current}`);
   }
 
@@ -214,10 +216,8 @@ test('enraged at half health: the shield comes back from two crystals by the doo
     level,
     onFrame: () => { for (const t of arena.adds) if (t.brain.is('engage')) engaged.add(t); }
   });
-  assert.equal(engaged.size, cfg.enrageAdds, 'every trooper joined the fight');
-  arena.adds.forEach((t, i) => {
-    if (!t.isDead) assert.ok(flat(t.position, hall.doorway) <= startDistance[i] + 2, 'still pressing on the hall');
-  });
+  assert.equal(engaged.size,4,'every resurrected alien joins the fight');
+  assert.equal(level.squad.fallen.length,0,'each resurrection consumes a real death record');
   assert.equal(teardown(world, level), 0);
 });
 

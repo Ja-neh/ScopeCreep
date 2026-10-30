@@ -144,6 +144,7 @@ export class ProjectilePool extends BaseEntity {
       color: 0x6dff8f,
       toneMapped: false
     });
+    this._plasmaMaterial=plasmaMat;
 
     for (let i = 0; i < this.plasmaCapacity; i++) {
       const mesh = new THREE.Mesh(plasmaGeo, plasmaMat);
@@ -296,6 +297,8 @@ export class ProjectilePool extends BaseEntity {
     direction,
     speed,
     damage,
+    fraction = 0,
+    attack = 'plasma',
     source = null,
     excludeCollider = null,
     excludeRigidBody = null
@@ -325,6 +328,7 @@ export class ProjectilePool extends BaseEntity {
       drag: plasmaCfg.drag,
       maxLifeTime: plasmaCfg.maxLifeTime,
       damage: damage !== undefined ? damage : plasmaCfg.damage,
+      fraction,
       damageType: DamageType.KINETIC,
       source,
       excludeCollider,
@@ -332,6 +336,14 @@ export class ProjectilePool extends BaseEntity {
     });
 
     this.activeProjectiles.push(p);
+
+    // Materials are per pooled bolt: simultaneous acid, fire and bullets keep their own colour.
+    if (!p.attackMaterial) p.attackMaterial=p.mesh.material.clone();
+    p.mesh.material=p.attackMaterial;
+    p.mesh.material.color.setHex(attack==='bullet' ? 0xffdd88 : attack==='fire' ? 0xff661a : 0x67ff32);
+    p.mesh.scale.set(attack==='slime' ? 3 : attack==='fire' ? 4 : 0.4,
+      attack==='slime' ? 3 : attack==='fire' ? 4 : 0.4,attack==='slime' ? 0.45 : attack==='fire' ? 2 : 0.8);
+    p.attack=attack;
 
     if (this.gameWorld && this.gameWorld.audio) this.gameWorld.audio.play('plasma', origin);
     return p;
@@ -557,26 +569,13 @@ export class ProjectilePool extends BaseEntity {
    * GPU and resource cleanup
    */
   dispose() {
-    for (const p of this.flakPool) {
-      if (p.mesh && p.mesh.geometry) p.mesh.geometry.dispose();
-      if (p.mesh && p.mesh.material) p.mesh.material.dispose();
-    }
-    for (const p of this.artilleryPool) {
-      if (p.mesh) {
-        p.mesh.traverse((child) => {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) child.material.dispose();
-        });
-      }
-    }
-    for (const p of this.plasmaPool) {
-      if (p.mesh && p.mesh.geometry) p.mesh.geometry.dispose();
-      if (p.mesh && p.mesh.material) p.mesh.material.dispose();
-    }
-    for (const p of this.grenadePool) {
-      if (p.mesh && p.mesh.geometry) p.mesh.geometry.dispose();
-      if (p.mesh && p.mesh.material) p.mesh.material.dispose();
-    }
+    const geometries=new Set(),materials=new Set([this._plasmaMaterial]);
+    this.mesh.traverse(node=>{
+      if(node.geometry)geometries.add(node.geometry);
+      for(const material of Array.isArray(node.material) ? node.material : [node.material])if(material)materials.add(material);
+    });
+    for(const geometry of geometries)geometry.dispose();
+    for(const material of materials)material?.dispose();
     this.flakPool = [];
     this.artilleryPool = [];
     this.plasmaPool = [];

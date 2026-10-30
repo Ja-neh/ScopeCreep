@@ -21,6 +21,7 @@ export class AlienSquad {
     this.corpseSeconds = corpseSeconds;
     this.members = [];
     this.killCount = 0;
+    this.fallen=[];
   }
 
   add(member) {
@@ -78,8 +79,13 @@ export class AlienSquad {
       if (!member._counted) {
         member._counted = true;
         this.killCount++;
+        if(member.name!=='AlienWarden'){
+          this.fallen.push({actor:member,id:member.model.character.id});
+          if(this.fallen.length>100)this.fallen.shift();
+        }
       }
       if (member.deathTime >= this.corpseSeconds) {
+        for(const record of this.fallen)if(record.actor===member)record.actor=null;
         this.members.splice(i, 1);
         this.gameWorld.removeEntity(member);
       }
@@ -87,6 +93,7 @@ export class AlienSquad {
   }
 
   dispose() {
+    this.fallen=[];
     for (const member of this.members) this.gameWorld.removeEntity(member);
     this.members = [];
   }

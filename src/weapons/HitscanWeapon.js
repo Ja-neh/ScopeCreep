@@ -86,7 +86,10 @@ export class HitscanWeapon {
    * Advances the fire-rate cooldown, reload and spread recovery. Call every frame.
    */
   update(delta) {
-    if (this.cooldown > 0) this.cooldown -= delta;
+    if (this.cooldown > 0) {
+      this.cooldown=Math.max(0,this.cooldown-delta);
+      if(this.cooldown<1e-8)this.cooldown=0;
+    }
     if (this.bloom > 0) this.bloom = Math.max(0, this.bloom - this.cfg.spreadRecoveryPerSecond * delta);
 
     if (this.reloadTimer > 0) {

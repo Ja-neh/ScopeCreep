@@ -126,7 +126,7 @@ test('Level 2: the snipers hold the perches, wear a glint and never leave', asyn
   assert.equal(sniper._sight.parent, world.effectsGroup, 'the glint and beam live in the effects group');
   assert.ok(sawGlint, 'the glint rides the muzzle the whole time it watches');
   assert.ok(sawBeam, 'the laser trains on the player before the shot');
-  assert.ok(minHealth <= level.player.health.maxHealth - config.enemies.sniper.damage, `the shot lands (health fell to ${minHealth})`);
+  assert.ok(minHealth <= level.player.health.maxHealth*(1-config.alienPowers.galiant.fractionMin), `the acid shot lands (health fell to ${minHealth})`);
   assert.ok(moved < 0.05, `a sniper holds its perch (moved ${moved.toFixed(2)} m)`);
 
   // The gate guard is down to the snipers; cutting them down is what clears it
@@ -157,7 +157,7 @@ test('Level 2: the gate guard pours out, and the walker brings its bar', async (
   assert.equal(level._heavy.isBoss, true, "the walker is the gate's own boss");
   assert.equal(level._heavy.displayName, 'THE GATE WALKER');
   assert.equal(level._gateUnits.length, cfg.gate.sniper + cfg.gate.trooper + cfg.gate.brute + 1, 'snipers, garrison and the walker all stood');
-  assert.ok(world.ui.callsTo('showBossHealth').some((call) => call.args[0] === 'THE GATE WALKER'), 'the bar names the walker');
+  assert.ok(!world.ui.callsTo('showBossHealth').some((call) => call.args[0] === 'THE GATE WALKER'), 'red aliens use overhead health bars');
   assert.ok(world.ui.callsTo('updateBossHealth').length >= 1, 'and tracks its health');
   assert.ok(world.ui.callsTo('hideBossHealth').length >= 1, 'and comes down when it falls');
   assert.ok(world.ui.callsTo('showToast').some((call) => call.args[0] === 'The gate walker comes out!'));

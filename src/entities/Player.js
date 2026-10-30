@@ -2,9 +2,11 @@ import * as THREE from 'three';
 import { BaseEntity } from './BaseEntity.js';
 import { SpringArmCamera, CameraMode } from './components/SpringArmCamera.js';
 import { PlayerModel } from './models/PlayerModel.js';
+import { getSelectedCharacter, isHumanCharacter } from './models/CharacterRoster.js';
 import { GroundProbe } from './player-components/GroundProbe.js';
 import { PlatformTracker } from './player-components/PlatformTracker.js';
 import { HealthComponent } from './components/HealthComponent.js';
+import { CharacterPower } from './components/CharacterPower.js';
 import config from '../config.json';
 
 export { CameraMode };
@@ -44,6 +46,7 @@ export class Player extends BaseEntity {
     this.crouchEyeHeight = camCfg.crouchEyeHeight;
     this.crouchTargetHeight = camCfg.crouchTargetHeight;
     this.isCrouching = false;
+    this.isSprinting = false;
     this.isConcealed = false;
     this._crouchBlend = 0;
 
@@ -51,6 +54,7 @@ export class Player extends BaseEntity {
     // projectiles find the player through its collider's userData.
     this.faction = options.faction || 'humans';
     this.health = options.maxHealth ? new HealthComponent(options.maxHealth) : null;
+    if (this.health) this.health.damageMultiplier=config.player.damageMultiplier;
     // A hit draws blood where the round landed. Levels may chain their own onDamage off this.
     if (this.health) {
       this.health.onDamage = (info) => {
@@ -83,6 +87,9 @@ export class Player extends BaseEntity {
 
     // Look angles (radians)
     this.yaw = 0;       // 0 = facing towards -Z
+    this.inspectView=false;
+    this.lookYaw=0;
+    this.lookPitch=0;
     this.pitch = -0.15; // Natural slight downward tilt (~8.5 deg)
 
     // Spring Arm Camera Controller
@@ -110,7 +117,10 @@ export class Player extends BaseEntity {
     this.characterController = null;
 
     // 1. Procedural Visual Model & Debug Wireframe
-    this.model = new PlayerModel(this.capsuleRadius, this.capsuleHalfHeight, this.capsuleCenter);
+    this.characterId = isHumanCharacter(options.characterId) ? options.characterId : getSelectedCharacter();
+    this.model = new PlayerModel(this.capsuleRadius, this.capsuleHalfHeight, this.capsuleCenter, this.characterId);
+    this.model.character.setActor(this);
+    this.power = new CharacterPower(this, this.characterId);
     this.mesh = this.model.mesh;
     this.bodyMesh = this.model.bodyMesh;
     this.visorMesh = this.model.visorMesh;
@@ -280,6 +290,13 @@ export class Player extends BaseEntity {
     if (this.input.isActionJustPressed('toggleCamera')) {
       this.toggleCameraMode();
     }
+    if (this.input.isActionJustPressed('inspectPlayer')) {
+      this.inspectView=!this.inspectView;
+      this.lookYaw=this.yaw+Math.PI;this.lookPitch=-0.1;
+    }
+    this.freeLooking=this.inspectView || this.input.isActionDown('freeLook');
+    if (this.freeLooking && !this._wasFreeLooking && !this.inspectView) {this.lookYaw=this.yaw;this.lookPitch=this.pitch;}
+    this._wasFreeLooking=this.freeLooking;
 
     // 2. Mouse Look (Pointer Lock or Mouse Drag)
     const isDragging = this.input.isActionDown('mouseLook');
@@ -289,10 +306,12 @@ export class Player extends BaseEntity {
 
       if (deltaX !== 0 || deltaY !== 0) {
         // Mouse Right (deltaX > 0) -> Turn Right
-        this.yaw -= deltaX * this.mouseSensitivity;
+        if(this.freeLooking) this.lookYaw-=deltaX*this.mouseSensitivity;
+        else this.yaw -= deltaX * this.mouseSensitivity;
 
         // Mouse Up (deltaY < 0) -> Look Up
-        this.pitch -= deltaY * this.mouseSensitivity;
+        if(this.freeLooking) this.lookPitch=THREE.MathUtils.clamp(this.lookPitch-deltaY*this.mouseSensitivity,-1.4,1.4);
+        else this.pitch -= deltaY * this.mouseSensitivity;
 
         // Clamp vertical look between -80 deg and +80 deg
         const maxPitch = 1.4;
@@ -324,7 +343,8 @@ export class Player extends BaseEntity {
 
     // Crouch (hold) and sprint modifiers
     this.isCrouching = this.canCrouch && this.input.isActionDown('crouch');
-    const isSprinting = this.input.isActionDown('sprint');
+    const isSprinting = this.input.isActionDown('sprint') && !this.isCrouching;
+    this.isSprinting = isSprinting && this._moveDir.lengthSq() > 0;
     let speed = isSprinting ? this.sprintSpeed : this.walkSpeed;
     if (this.isCrouching) speed = this.crouchSpeed;
 
@@ -379,6 +399,7 @@ export class Player extends BaseEntity {
       }
 
       // Rapier sweeps 1 capsule collider and returns resolved movement
+      this.groundProbe.clipBarrierMovement(currPos,desiredMovement,this.isGrounded,this.controllerOffset*2+0.05);
       this.characterController.computeColliderMovement(
         this.collider,
         desiredMovement
@@ -418,24 +439,40 @@ export class Player extends BaseEntity {
     this.mesh.rotation.y = this.yaw;
   }
 
+  /** Phase 5: animate the visual after the character sweep, before cameras. */
+  gameplayUpdate(delta) {
+    this.power.update(delta);
+    if (this.isMounted || this.isDevSuspended) return;
+    if (this.input.isPointerLocked && this.input.isActionJustPressed('characterPower')) {
+      if (!this.power.activate() && this.power.cooldown>0) this.gameWorld.ui?.showToast(
+        `${this.power.cfg.name}: ready in ${Math.ceil(this.power.cooldown)}s`, 'info', 1200);
+    }
+    this.model.character.animate(delta, this.isGrounded ? Math.hypot(this.velocity.x, this.velocity.z) : 0,
+      this.input.isActionDown('aimDownSights'));
+  }
+
   /**
    * Phase 6 (Late Update): Updates camera positioning and spring-arm obstacle raycasting
    * after all character movements and external forces are fully settled.
    */
   lateUpdate(delta) {
+    this.power.lateUpdate();
     if (this.isMounted || this.isDevSuspended) return;
 
     if (this.canCrouch) {
       this._updateCrouchPose(delta);
     }
 
+    const savedMode=this.springArm.mode;
+    if(this.freeLooking) this.springArm.mode=CameraMode.THIRD_PERSON;
     const { isTooClose, mode } = this.springArm.update(
       delta,
       this.position,
-      this.yaw,
-      this.pitch,
+      this.freeLooking ? this.lookYaw : this.yaw,
+      this.freeLooking ? this.lookPitch : this.pitch,
       this.collider
     );
+    this.springArm.mode=savedMode;
 
     const hideMesh = isTooClose || mode === CameraMode.FIRST_PERSON;
     if (this.model) {
@@ -461,6 +498,7 @@ export class Player extends BaseEntity {
    * Clean up
    */
   dispose() {
+    this.power.dispose();
     this.gameWorld.canvas.removeEventListener('pointerdown', this._onPointerDown);
     this.gameWorld.canvas.removeEventListener('click', this._onPointerDown);
 

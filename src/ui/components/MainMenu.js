@@ -2,6 +2,9 @@
  * MainMenu.js
  * Minimalist title and level selector for ScopeCreep.
  */
+import { HUMAN_CHARACTERS, getSelectedCharacter, selectCharacter } from '../../entities/models/CharacterRoster.js';
+import config from '../../config.json';
+
 export class MainMenu {
   /**
    * @param {HTMLElement} parentContainer
@@ -24,11 +27,35 @@ export class MainMenu {
     this.element.innerHTML = `
       <div class="ui-minimal-menu">
         <h1 class="ui-minimal-title">Scope Creep</h1>
+        <div class="ui-character-choice">
+          <label for="player-character">Play as</label>
+          <select id="player-character" aria-describedby="character-choice-help"></select>
+          <p id="character-choice-help">Choose your character, then select a mission.</p>
+        </div>
         <div class="ui-minimal-list" id="main-menu-level-list"></div>
       </div>
     `;
 
     this._listContainer = this.element.querySelector('#main-menu-level-list');
+    this._characterSelect = this.element.querySelector('#player-character');
+    for (const character of HUMAN_CHARACTERS) {
+      const option = document.createElement('option');
+      option.value = character.id;
+      option.textContent = character.name;
+      this._characterSelect.appendChild(option);
+    }
+    this._characterSelect.value = getSelectedCharacter();
+    this._characterSelect.addEventListener('change', () => {
+      selectCharacter(this._characterSelect.value);
+      this._updatePowerHelp();
+    });
+    this._updatePowerHelp();
+  }
+
+  _updatePowerHelp() {
+    const power=config.characterPowers[this._characterSelect.value];
+    this.element.querySelector('#character-choice-help').textContent=
+      `H: ${power.name} · ${power.cooldown}s cooldown. Choose a mission below.`;
   }
 
   /**
@@ -38,6 +65,8 @@ export class MainMenu {
    */
   show(levels = [], onSelectLevel = null) {
     this._onSelectCallback = onSelectLevel;
+    this._characterSelect.value = getSelectedCharacter();
+    this._updatePowerHelp();
 
     if (this._listContainer) {
       this._listContainer.innerHTML = '';
@@ -77,6 +106,7 @@ export class MainMenu {
     }
     this.element = null;
     this._listContainer = null;
+    this._characterSelect = null;
     this._onSelectCallback = null;
   }
 }

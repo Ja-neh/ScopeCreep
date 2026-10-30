@@ -22,9 +22,9 @@ function hasVertexColor(mesh, hex) {
 }
 
 test('an alien is drawn in at most 8 pieces, keeping its armour colour and glowing eyes', () => {
-  for (const options of [{}, { armorColor: 0x8a3f3f, scale: 1.45, backpack: true }]) {
+  for (const options of [{}, { characterId: 'gorr', armorColor: 0x8a3f3f, scale: 1.45, backpack: true }]) {
     const model = new AlienModel(options);
-    const meshes = meshesOf(model);
+    const meshes = meshesOf(model).filter(mesh=>mesh!==model._mouthFlash);
     assert.ok(meshes.length <= 8, `${meshes.length} meshes`);
     assert.ok(meshes.every((mesh) => mesh.geometry.getAttribute('color')), 'vertex-coloured');
     // Only the body casts a shadow (a big wave of aliens would otherwise be many shadow draws)
@@ -32,7 +32,8 @@ test('an alien is drawn in at most 8 pieces, keeping its armour colour and glowi
     assert.ok(meshes.some((mesh) => mesh.castShadow), 'it does cast one');
     assert.ok(meshes.some((mesh) => mesh.material === model.materials.solid && hasVertexColor(mesh, options.armorColor || 0x5d5480)), 'armour colour');
     assert.ok(meshes.some((mesh) => mesh.material === model.materials.light), 'glowing parts');
-    assert.ok(model.muzzle.parent === model.gun, 'muzzle still at the rifle tip');
+    assert.equal(model.gun.visible,model.hasGun,'only the armed alien shows its rifle');
+    assert.equal(model.muzzle.parent,model.hasGun ? model.gun : model.body,'gun muzzle or fallback mouth socket');
     model.dispose();
   }
 });

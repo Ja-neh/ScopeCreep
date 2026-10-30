@@ -52,7 +52,7 @@ export class AlienTrooper extends AlienCombatant {
 
     // Flush grenade: only some troopers carry one, on their own cooldown
     this._grenadeCfg = cfg.grenade || null;
-    this._hasGrenade = !!this._grenadeCfg && Math.random() < this._grenadeCfg.chance;
+    this._hasGrenade = this.model.hasGun && !!this._grenadeCfg && Math.random() < this._grenadeCfg.chance;
     this._grenadeTimer = this._grenadeCfg ? this._grenadeCfg.cooldownSeconds * (0.5 + Math.random() * 0.5) : 0;
 
     // Engagement state
@@ -74,6 +74,15 @@ export class AlienTrooper extends AlienCombatant {
     this.isAiming = this.brain.is('engage') && target !== null;
     if (!this.isAiming) {
       this._burstLeft = 0;
+      return;
+    }
+    if(!this.model.hasGun){
+      this._burstLeft=0;
+      this._pauseTimer-=delta;
+      if(this._pauseTimer<=0){
+        this._fireAt(target);
+        this._pauseTimer=config.alienPowers[this.model.character.id]?.cooldown || this.cfg.burstPause;
+      }
       return;
     }
 
@@ -132,6 +141,7 @@ export class AlienTrooper extends AlienCombatant {
 
     this.model.muzzle.getWorldPosition(this._muzzle);
     this._aimDir.set(target.position.x, target.position.y + CHEST_HEIGHT, target.position.z).sub(this._muzzle).normalize();
+    this.model.releasePower?.();
 
     // Scatter inside the aim-error cone
     this._right.set(-this._aimDir.z, 0, this._aimDir.x).normalize();
@@ -141,13 +151,18 @@ export class AlienTrooper extends AlienCombatant {
     this._aimDir.addScaledVector(this._right, Math.cos(angle) * radius).addScaledVector(this._up, Math.sin(angle) * radius).normalize();
 
     // cfg.damage / cfg.boltSpeed are optional: left out, the bolt is the standard plasma round
+    const id=this.model.character.id;
+    const power=config.alienPowers[id];
+    const attack=id==='gorr' ? 'bullet' : id==='galiant' ? 'slime' : 'fire';
     pool.firePlasma({
       origin: this._muzzle,
       direction: this._aimDir,
       source: this,
       excludeCollider: this.collider,
       damage: this.cfg.damage,
-      speed: this.cfg.boltSpeed
+      fraction:power?.fractionMin===undefined ? 0 : THREE.MathUtils.lerp(power.fractionMin,power.fractionMax,Math.random()),
+      attack,
+      speed:power?.speed || this.cfg.boltSpeed
     });
   }
 

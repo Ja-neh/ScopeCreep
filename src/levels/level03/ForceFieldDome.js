@@ -121,6 +121,7 @@ export class ForceFieldDome extends ForceField {
     this.mesh.position.copy(this.centre);
     this.mesh.scale.setScalar(this.radius);
     this.collider = this.physicsWorld.createStaticBox ? this.physicsWorld.createStaticBall(this.radius, this.centre) : null;
+    if (this.collider) this.collider.userData={isUnclimbable:true};
     this.state = 'up';
   }
 
@@ -128,6 +129,7 @@ export class ForceFieldDome extends ForceField {
   blocks(x, z, margin = 0) {
     return this.isUp && Math.hypot(x - this.centre.x, z - this.centre.z) < this.radius + margin;
   }
+
 }
 
 /**

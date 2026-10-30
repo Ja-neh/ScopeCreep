@@ -190,7 +190,7 @@ test('a generator far away calls no help; in the village aliens come at the play
           alien._bearing = Math.atan2(alien.position.x - level.player.position.x, alien.position.z - level.player.position.z);
           bearings.push(alien._bearing);
           const distance = flat(alien.position, level.player.position);
-          assert.ok(distance >= levelCfg.spawnMinPlayerDistance, `appeared ${distance.toFixed(0)} m away`);
+          assert.ok(level.village.ships.some(ship=>flat(alien.position,ship)<ship.radius+6),'emerged beside a spaceship');
           seen++;
         }
       }
@@ -252,8 +252,7 @@ test('wave 2: with all three generators down the dome falls, the hall door is se
         seen.add(alien);
         const offset = new THREE.Vector3().subVectors(alien.position, hall.centre);
         const sideways = offset.dot(across);
-        assert.ok(Math.abs(sideways) > hall.width / 2 && Math.abs(sideways) < hall.width / 2 + wave.sideDistance + wave.spawnSpread + 1,
-          'appears beside the hall');
+        assert.ok(level.village.ships.some(ship=>flat(alien.position,ship)<ship.radius+6),'hall reinforcements emerge from a spaceship');
         sides.add(Math.sign(sideways));
       }
       if (frames % 120 === 0) {
@@ -383,10 +382,10 @@ test('every revive point has a supply crate by it; shield pickups lie in the str
   const player = level.player;
   player.health.takeDamage({ amount: 40 });
   assert.equal(player.health.currentHealth, player.health.maxHealth, 'the shield took it');
-  assert.equal(level.shield.health, shieldCfg.health - 40);
-  player.health.takeDamage({ amount: shieldCfg.health });
+  assert.equal(level.shield.health, shieldCfg.health - 40*config.player.damageMultiplier);
+  player.health.takeDamage({ amount: shieldCfg.health/config.player.damageMultiplier });
   assert.equal(level.shield.health, 0, 'broken');
-  assert.equal(player.health.currentHealth, player.health.maxHealth - 40, 'what got through hurt');
+  assert.equal(player.health.currentHealth, player.health.maxHealth - 40*config.player.damageMultiplier, 'what got through hurt');
   stepWorld(world, 0.1, { level });
   assert.equal(level.shield.mesh.visible, false, 'the bubble is gone');
 
