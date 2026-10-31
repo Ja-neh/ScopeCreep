@@ -72,7 +72,8 @@ export class WeaponHUD {
 
     const hasAmmo = ammo !== null && ammo !== undefined;
     this.ammoEl.textContent = hasAmmo ? String(ammo) : '—';
-    this.reserveEl.textContent = hasAmmo && reserve !== null && reserve !== undefined ? `/ ${reserve}` : '';
+    const reserveText = reserve === Infinity ? '∞' : reserve;
+    this.reserveEl.textContent = hasAmmo && reserve !== null && reserve !== undefined ? `/ ${reserveText}` : '';
     this.ammoEl.classList.toggle('empty', hasAmmo && ammo === 0);
 
     if (slot !== undefined) {

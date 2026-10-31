@@ -91,6 +91,7 @@ export class Player extends BaseEntity {
     this.isDevSuspended = false; // True when dev aerial camera is active
     this.isFrozen = false; // True when inside cutscenes / scripted sequences
     this.isDead = false; // True when character dies
+    this.hasGun = options.hasGun !== undefined ? options.hasGun : true;
 
     // Look angles (radians)
     this.yaw = 0;       // 0 = facing towards -Z
@@ -471,12 +472,20 @@ export class Player extends BaseEntity {
   /** Phase 5: animate the visual after the character sweep, before cameras. */
   gameplayUpdate(delta) {
     this.power.update(delta);
-    if (this.isMounted || this.isDevSuspended || this.isFrozen || this.isDead) return;
+    if (this.isMounted || this.isDevSuspended || this.isFrozen) return;
+    if (this.isDead) {
+      if (this.model && typeof this.model.update === 'function') {
+        this.model.update(delta, 0, false);
+      } else if (this.model?.character?.animate) {
+        this.model.character.animate(delta, 0, false);
+      }
+      return;
+    }
     if (this.input.isPointerLocked && this.input.isActionJustPressed('characterPower')) {
       if (!this.power.activate() && this.power.cooldown>0) this.gameWorld.ui?.showToast(
         `${this.power.cfg.name}: ready in ${Math.ceil(this.power.cooldown)}s`, 'info', 1200);
     }
-    if (this.input.isPointerLocked && this.input.isActionJustPressed('firePrimary')) {
+    if (this.input.isPointerLocked && this.input.isActionDown('firePrimary')) {
       this.shoot();
     }
     this.model.character.animate(delta, this.isGrounded ? Math.hypot(this.velocity.x, this.velocity.z) : 0,
@@ -487,11 +496,22 @@ export class Player extends BaseEntity {
    * Triggers shooting animation on the visual model if supported.
    */
   shoot() {
-    if (this.isMounted || this.isDevSuspended || this.isFrozen || this.isDead) return false;
+    if (!this.hasGun || this.isMounted || this.isDevSuspended || this.isFrozen || this.isDead) return false;
     if (this.model && typeof this.model.shoot === 'function') {
       return this.model.shoot();
     }
     return false;
+  }
+
+  /**
+   * Sets whether the player has a firearm in hand.
+   * @param {boolean} has
+   */
+  setHasGun(has) {
+    this.hasGun = !!has;
+    if (this.model && typeof this.model.setGunVisible === 'function') {
+      this.model.setGunVisible(this.hasGun);
+    }
   }
 
   /**
@@ -502,6 +522,9 @@ export class Player extends BaseEntity {
     this.isDead = true;
     this.velocity.set(0, 0, 0);
     this.verticalVelocity = 0;
+    if (this.springArm && this.springArm.mode === CameraMode.FIRST_PERSON) {
+      this.toggleCameraMode();
+    }
     if (this.model && typeof this.model.playDeath === 'function') {
       this.model.playDeath();
     }

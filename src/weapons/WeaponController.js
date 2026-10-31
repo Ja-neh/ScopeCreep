@@ -44,12 +44,21 @@ export class WeaponController extends BaseEntity {
    *   per shot that lands, with its flight line: lets levels damage thin scenery (bushes) that
    *   has no collider to stop the bullet
    */
-  constructor(gameWorld, player, { onGunshot = null, onBulletImpact = null } = {}) {
+  constructor(gameWorld, player, {
+    onGunshot = null,
+    onBulletImpact = null,
+    showHeldWeapons = true,
+    showWeaponHUD = true,
+    hasGun = true
+  } = {}) {
     super('WeaponController');
     this.gameWorld = gameWorld;
     this.player = player;
     this.onGunshot = onGunshot;
     this.onBulletImpact = onBulletImpact;
+    this.showHeldWeapons = showHeldWeapons !== false;
+    this.showWeaponHUD = showWeaponHUD !== false;
+    this.hasGun = hasGun !== false;
 
     this.gunCfg = config.weapons.machineGun;
     this.knifeCfg = config.weapons.knife;
@@ -72,7 +81,10 @@ export class WeaponController extends BaseEntity {
     this.materials = createWeaponMaterials();
     this.heldPivot = new THREE.Group();
     this.heldPivot.position.copy(HELD_PIVOT);
-    player.mesh.add(this.heldPivot);
+    this.heldPivot.visible = this.showHeldWeapons;
+    if (this.showHeldWeapons) {
+      player.mesh.add(this.heldPivot);
+    }
     this.heldRifle = createRifleModel(this.materials);
     this.heldKnife = createKnifeModel(this.materials);
     this.heldBomb = createBombModel(this.materials);
@@ -108,12 +120,29 @@ export class WeaponController extends BaseEntity {
     this._tmp = new THREE.Vector3();
 
     this._hud = { weapon: null, ammo: -1, reserve: -1, bombs: -1, reloadStep: -2 };
-    if (gameWorld.ui) {
+    if (this.hasGun && gameWorld.ui) {
       gameWorld.ui.showCrosshair('rifle');
-      gameWorld.ui.showWeaponHUD();
+      if (this.showWeaponHUD) {
+        gameWorld.ui.showWeaponHUD();
+      }
     }
     this._showModels();
     this._refreshHud(true);
+  }
+
+  /**
+   * Sets whether the player has acquired a weapon.
+   * @param {boolean} has
+   */
+  setHasGun(has) {
+    this.hasGun = !!has;
+    if (this.hasGun && this.gameWorld.ui) {
+      this.gameWorld.ui.showCrosshair('rifle');
+      if (this.showWeaponHUD) {
+        this.gameWorld.ui.showWeaponHUD();
+      }
+      this._refreshHud(true);
+    }
   }
 
   /**
@@ -139,7 +168,7 @@ export class WeaponController extends BaseEntity {
       if (this.quickMeleeTimer <= 0) this._showModels();
     }
 
-    const canAct = input.isPointerLocked && !player.isDevSuspended && !player.isMounted && !player.freeLooking;
+    const canAct = this.hasGun && input.isPointerLocked && !player.isDevSuspended && !player.isMounted && !player.freeLooking;
     this.isAiming = canAct && this.activeWeapon === 'rifle' && input.isActionDown('aimDownSights');
 
     if (canAct) {
@@ -187,8 +216,10 @@ export class WeaponController extends BaseEntity {
     }
 
     this._refreshHud(false);
-    player.model.character.reloadProgress=this.rifle.reloadProgress;
-    player.model.character.throwProgress=this.throwTimer>0 ? 1-this.throwTimer/this.bombCfg.throwSeconds : -1;
+    if (player.model?.character) {
+      player.model.character.reloadProgress = this.rifle.reloadProgress;
+      player.model.character.throwProgress = this.throwTimer > 0 ? 1 - this.throwTimer / this.bombCfg.throwSeconds : -1;
+    }
   }
 
   _equip(weapon) {
@@ -380,14 +411,18 @@ export class WeaponController extends BaseEntity {
     this._recoil = Math.max(0, this._recoil - delta * 0.6);
 
     // Held weapon: follows aim pitch, lowers when crouching, hidden whenever the body is
-    this.heldPivot.position.y = HELD_PIVOT.y * (1 - 0.35 * player.crouchAmount);
-    this.heldPivot.rotation.x = player.pitch;
-    this.heldPivot.visible = player.model.character.loaded ? player.model.character.group.visible : player.bodyMesh.visible;
-    this.heldPivot.visible = this.heldPivot.visible && !this.isPickingUp;
-    this.heldRifle.mesh.position.z = this._recoil;
-    if (this.activeWeapon === 'rifle') {
-      player.model.character.fitWeapon(this.heldRifle.mesh, this.isAiming, this._recoil);
-      player.model.character.poseWeapon(this.heldRifle.mesh, true, this.rifle.reloadProgress);
+    if (this.showHeldWeapons) {
+      this.heldPivot.position.y = HELD_PIVOT.y * (1 - 0.35 * player.crouchAmount);
+      this.heldPivot.rotation.x = player.pitch;
+      this.heldPivot.visible = player.model?.character?.loaded ? player.model.character.group?.visible : (player.bodyMesh?.visible ?? true);
+      this.heldPivot.visible = this.heldPivot.visible && !this.isPickingUp;
+      this.heldRifle.mesh.position.z = this._recoil;
+      if (this.activeWeapon === 'rifle') {
+        player.model?.character?.fitWeapon?.(this.heldRifle.mesh, this.isAiming, this._recoil);
+        player.model?.character?.poseWeapon?.(this.heldRifle.mesh, true, this.rifle.reloadProgress);
+      }
+    } else {
+      this.heldPivot.visible = false;
     }
 
     // First-person view model in front of the camera
@@ -420,10 +455,10 @@ export class WeaponController extends BaseEntity {
     this.heldBomb.mesh.rotation.x = -toss * 1.4;
     this.viewBomb.mesh.rotation.x = -toss * 1.4;
 
-    if (this.activeWeapon!=='rifle') {
-      const held=this.activeWeapon==='knife' ? this.heldKnife.mesh : this.heldBomb.mesh;
-      player.model.character.fitWeapon(held,false,0);
-      player.model.character.poseWeapon(held,false);
+    if (this.showHeldWeapons && this.activeWeapon !== 'rifle') {
+      const held = this.activeWeapon === 'knife' ? this.heldKnife.mesh : this.heldBomb.mesh;
+      player.model?.character?.fitWeapon?.(held, false, 0);
+      player.model?.character?.poseWeapon?.(held, false);
     }
 
     this.effects.update(delta);
@@ -437,10 +472,10 @@ export class WeaponController extends BaseEntity {
 
   _showModels() {
     const weapon = this.activeWeapon;
-    this.player.model.character.setArmed(weapon === 'rifle');
-    this.heldRifle.mesh.visible = weapon === 'rifle';
-    this.heldKnife.mesh.visible = weapon === 'knife';
-    this.heldBomb.mesh.visible = weapon === 'bomb';
+    this.player.model?.character?.setArmed?.(weapon === 'rifle');
+    this.heldRifle.mesh.visible = this.showHeldWeapons && (weapon === 'rifle');
+    this.heldKnife.mesh.visible = this.showHeldWeapons && (weapon === 'knife');
+    this.heldBomb.mesh.visible = this.showHeldWeapons && (weapon === 'bomb');
     this.viewRifle.mesh.visible = weapon === 'rifle';
     this.viewKnife.mesh.visible = weapon === 'knife';
     this.viewBomb.mesh.visible = weapon === 'bomb';
@@ -450,6 +485,7 @@ export class WeaponController extends BaseEntity {
    * Sends the ammo panel new values only when something it shows has changed.
    */
   _refreshHud(force) {
+    if (!this.showWeaponHUD) return;
     const ui = this.gameWorld.ui;
     if (!ui) return;
 
@@ -491,7 +527,9 @@ export class WeaponController extends BaseEntity {
 
     if (this.gameWorld.ui) {
       this.gameWorld.ui.hideCrosshair();
-      this.gameWorld.ui.hideWeaponHUD();
+      if (this.showWeaponHUD) {
+        this.gameWorld.ui.hideWeaponHUD();
+      }
     }
     super.dispose();
   }
