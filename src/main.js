@@ -16,10 +16,6 @@ const AVAILABLE_LEVELS = [
     create: (gw) => new Level01InsideSpaceship(gw)
   },
   {
-    id: 'doors',
-    title: 'Test Level: Doors',
-    create: (gw) => new DoorTestLevel(gw)
-  },
   {
     id: 'level02',
     title: 'Level 2: The Beach',
