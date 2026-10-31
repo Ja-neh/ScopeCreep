@@ -84,7 +84,7 @@ export class InputManager {
 
       toggleCamera: ['KeyV', 'Tab'],
       toggleMap: ['KeyM'],
-      toggleColliders: [], // Unbound: player cannot use KeyB to view collider debug meshes
+      toggleColliders: ['KeyB', 'F2'],
       devCamera: ['F1'],
       devSpawn: ['F3'],
       devSquad: ['F4'],

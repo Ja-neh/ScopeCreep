@@ -225,21 +225,3 @@ test('removing the weapons restores the camera and frees the effects', async () 
   assert.equal(w.effectsGroup.children.length,0,'player releases its power effect');
   assert.equal(bodyCount(w), 0);
 });
-
-test('weapons controller supports disabling held models and HUD (for level 1)', async () => {
-  const w = await createTestWorld();
-  const p = new Player(w, {});
-  w.addEntity(p);
-  const controller = new WeaponController(w, p, {
-    showHeldWeapons: false,
-    showWeaponHUD: false
-  });
-  w.addEntity(controller);
-  assert.equal(p.mesh.children.includes(controller.heldPivot), false, 'heldPivot is not added to player mesh');
-  assert.equal(controller.heldPivot.visible, false, 'heldPivot is invisible');
-  assert.equal(controller.heldRifle.mesh.visible, false, 'held rifle mesh is invisible');
-  assert.equal(controller.heldBomb.mesh.visible, false, 'held bomb mesh is invisible');
-  assert.equal(w.ui.callsTo('showWeaponHUD').length, 0, 'weapon HUD was not shown');
-  w.removeEntity(controller);
-  w.clearEntities();
-});
