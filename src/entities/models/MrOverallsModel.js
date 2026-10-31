@@ -93,7 +93,7 @@ function createUpperBodyClip(clip) {
 /**
  * Procedural tactical handgun model attached to Mr. Overalls' right hand.
  */
-function createHandgunMesh() {
+export function createHandgunMesh() {
   const group = new THREE.Group();
   group.name = 'Handgun';
 
@@ -227,6 +227,7 @@ export class MrOverallsModel {
     this.useSprintAnim = options.useSprintAnim === true;
 
     // State flags
+    this.hasGun = options.hasGun !== undefined ? options.hasGun : true;
     this.isLoaded = false;
     this.isDead = false;
     this.isShooting = false;
@@ -332,6 +333,7 @@ export class MrOverallsModel {
     // Orient barrel forward along the arm/fingers (+Y), slide top towards back of hand (+X)
     this.handgunPivot.position.set(-0.02, 0.08, 0.01);
     this.handgunPivot.rotation.set(Math.PI / 2, 0, -Math.PI / 2);
+    this.handgunPivot.visible = this.hasGun;
 
     this.handgunPivot.add(this.handgun.mesh);
 
@@ -347,6 +349,17 @@ export class MrOverallsModel {
         console.warn('[MrOverallsModel] hand_r bone not found, gun attached to avatar root.');
         this.avatarRoot.add(this.handgunPivot);
       }
+    }
+  }
+
+  /**
+   * Sets whether the procedural handgun is visible in the player's hand.
+   * @param {boolean} visible
+   */
+  setGunVisible(visible) {
+    this.hasGun = !!visible;
+    if (this.handgunPivot) {
+      this.handgunPivot.visible = this.hasGun;
     }
   }
 
@@ -466,15 +479,38 @@ export class MrOverallsModel {
   }
 
   /**
-   * Triggers the shoot animation (pistol_shoot_fit) as a crisp one-shot action,
-   * activating muzzle flash light and recoil feel.
+   * Helper that checks if the actor is actively holding down the primary fire trigger.
    */
-  shoot() {
-    if (!this.isLoaded || this.isDead || this.isOpeningChest) return false;
+  _isHoldingTrigger() {
+    if (!this.actor || !this.actor.input) return false;
+    const isLocked = this.actor.input.isPointerLocked !== false;
+    return (
+      isLocked &&
+      typeof this.actor.input.isActionDown === 'function' &&
+      this.actor.input.isActionDown('firePrimary') &&
+      this.hasGun &&
+      !this.isDead &&
+      !this.actor.isDead &&
+      !this.actor.isMounted &&
+      !this.actor.isFrozen &&
+      !this.actor.isDevSuspended
+    );
+  }
+
+  /**
+   * Triggers the shoot animation (pistol_shoot_fit) as a crisp action,
+   * activating muzzle flash light, gunshot audio, and recoil feel.
+   * If held, loops continuously every clip cycle.
+   * @param {boolean} [force=false] - Force re-triggering even if currently playing
+   */
+  shoot(force = false) {
+    if (!this.hasGun || !this.isLoaded || this.isDead || this.isOpeningChest) return false;
     if (!this.actions.shoot) return false;
+    if (this.isShooting && this.shootTimer > 0 && !force) return false;
 
     this.isShooting = true;
-    this.shootTimer = 0.63; // Clip duration is ~0.633s
+    const timeScale = 1.35;
+    this.shootTimer = 0.633 / timeScale; // Duration is ~0.468s per shot cycle
 
     const speed = this.actor ? Math.hypot(this.actor.velocity.x, this.actor.velocity.z) : 0;
     const isMoving = speed > 0.15;
@@ -483,8 +519,9 @@ export class MrOverallsModel {
       // Shooting while moving:
       // 1. Play upper-body shoot animation on arms/torso
       const shootUpper = this.actions.shootUpper || this.actions.shoot;
+      shootUpper.stop();
       shootUpper.reset();
-      shootUpper.setEffectiveTimeScale(1.15);
+      shootUpper.setEffectiveTimeScale(timeScale);
       shootUpper.setEffectiveWeight(1);
       shootUpper.play();
 
@@ -512,8 +549,9 @@ export class MrOverallsModel {
     } else {
       // Standing still: play full body shoot
       const shootAction = this.actions.shoot;
+      shootAction.stop();
       shootAction.reset();
-      shootAction.setEffectiveTimeScale(1.15);
+      shootAction.setEffectiveTimeScale(timeScale);
       shootAction.setEffectiveWeight(1);
       shootAction.play();
 
@@ -532,6 +570,11 @@ export class MrOverallsModel {
       this.flashTimer = 0.06;
     }
 
+    // Gunshot audio
+    if (this.actor?.gameWorld?.audio) {
+      this.actor.gameWorld.audio.play('gunshot', this.actor.position, 0.75);
+    }
+
     return true;
   }
 
@@ -540,6 +583,10 @@ export class MrOverallsModel {
    */
   _onShootFinished() {
     if (!this.isShooting) return;
+    if (this._isHoldingTrigger()) {
+      this.shoot(true);
+      return;
+    }
     this.isShooting = false;
     this.shootTimer = 0;
 
@@ -667,6 +714,14 @@ export class MrOverallsModel {
       const isSprinting = this.actor?.isSprinting === true;
 
       if (isMoving) {
+        // If moving while shooting, ensure upper body is shooting and lower body is striding
+        if (this.currentAction === this.actions.shoot && this.actions.shootUpper) {
+          this.actions.shoot.fadeOut(0.08);
+          this.actions.shootUpper.reset().fadeIn(0.08).play();
+          this.currentAction = this.actions.shootUpper;
+          this.currentActionName = 'shootUpper';
+        }
+
         const targetLower = isSprinting
           ? (this.useSprintAnim ? (this.actions.sprintLower || this.actions.jogLower) : (this.actions.jogLower || this.actions.sprintLower))
           : this.actions.walkLower;
@@ -681,14 +736,26 @@ export class MrOverallsModel {
           const nominalSpeed = isSprinting ? (this.useSprintAnim ? 10.0 : 7.0) : 3.8;
           this.currentLowerAction.timeScale = THREE.MathUtils.clamp(speed / nominalSpeed, 0.7, 1.4);
         }
-      } else if (this.currentLowerAction) {
-        this.currentLowerAction.fadeOut(0.15);
-        this.currentLowerAction = null;
+      } else {
+        if (this.currentLowerAction) {
+          this.currentLowerAction.fadeOut(0.15);
+          this.currentLowerAction = null;
+        }
+        if (this.currentAction === this.actions.shootUpper && this.actions.shoot) {
+          this.actions.shootUpper.fadeOut(0.08);
+          this.actions.shoot.reset().fadeIn(0.08).play();
+          this.currentAction = this.actions.shoot;
+          this.currentActionName = 'shoot';
+        }
       }
 
       this.shootTimer -= delta;
       if (this.shootTimer <= 0) {
-        this._onShootFinished();
+        if (this._isHoldingTrigger()) {
+          this.shoot(true);
+        } else {
+          this._onShootFinished();
+        }
       }
       return;
     }
