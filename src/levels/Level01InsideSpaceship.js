@@ -12,6 +12,7 @@ import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
 import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
 import { AlienModel } from '../entities/models/AlienModel.js';
+import { WeaponPickup } from '../entities/WeaponPickup.js';
 import { CONTROL_CENTER_BUTTONS } from '../ui/components/ControlCenterPanel.js';
 import config from '../config.json';
 
@@ -90,6 +91,13 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.alienSpawns = [];
     this.missionStage = 'holdingBay';
     this.missionComplete = false;
+    this.controlActivated = false;
+    this.sleepingGuard = null;
+    this.riflePickup = null;
+    this.corridorGuards = [];
+    this.rifleCollected = false;
+    this.guardAwakened = false;
+    this.corridorWaveSpawned = false;
     this._fallDeathY = -20;
     this._fallDeathTriggered = false;
     this._controlCenterVisible = false;
@@ -372,7 +380,7 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.gameWorld.addEntity(this.player);
     this.gameWorld.player = this.player;
 
-    this.weapons = new WeaponController(this.gameWorld, this.player);
+    this.weapons = new WeaponController(this.gameWorld, this.player, { startUnequipped: true });
     this.gameWorld.addEntity(this.weapons);
     this.projectilePool = new ProjectilePool(this.gameWorld);
     this.gameWorld.addEntity(this.projectilePool);
@@ -383,7 +391,7 @@ export class Level01InsideSpaceship extends BaseLevel {
       alertRadius: 60,
       corpseSeconds: 8
     }));
-    this._spawnMissionAliens(alienSpawnNodes);
+    this._spawnMissionAliens();
     if (this.gameWorld.ui) {
       this.gameWorld.ui.showPlayerHealth();
       this.gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
@@ -400,31 +408,50 @@ export class Level01InsideSpaceship extends BaseLevel {
     console.log(`${this.name} initialized with ${doorSpawnNodes.length} doors, ${lightFixtureNodes.length} corridor fixtures, and red staircase lighting.`);
   }
 
-  _spawnMissionAliens(spawnNodes = []) {
-    const positions = [];
-    for (const node of spawnNodes) {
-      positions.push(node.getWorldPosition(new THREE.Vector3()));
-    }
-    if (!positions.length) {
-      positions.push(
-        new THREE.Vector3(12, 1, -38),
-        new THREE.Vector3(4, 1, -28),
-        new THREE.Vector3(1, 1, 16),
-        new THREE.Vector3(-4, 11, 0),
-        new THREE.Vector3(5, 11, 18)
-      );
-    }
+  _spawnMissionAliens() {
+    const guardPosition = new THREE.Vector3(this.spawnPlayer.x - 5, this.spawnPlayer.y, this.spawnPlayer.z);
+    this.sleepingGuard = new AlienTrooper(this.gameWorld, {
+      position: guardPosition,
+      squad: this.enemySquad,
+      model: new AlienModel({ characterId: 'gorr' }),
+      sleeping: true
+    });
+    this.sleepingGuard.missionStage = 'holdingGuard';
+    this.enemySquad.add(this.sleepingGuard);
+    this.alienSpawns.push(this.sleepingGuard);
+    if (this.sleepingGuard.collider) this.sleepingGuard.collider.setEnabled(false);
 
-    for (let i = 0; i < positions.length; i++) {
-      const position = positions[i];
-      const model = new AlienModel({ characterId: 'gorr', characterOptions: {
-        assetUrl: `${this.gameWorld.assetBaseUrl || '/'}assets/alien-level1.glb`
-      } });
-      const alien = new AlienTrooper(this.gameWorld, { position, squad: this.enemySquad, model });
-      alien.missionFloor = position.y > 7 ? 2 : 1;
-      alien.missionStage = i < 3 ? 'holdingBay' : 'lab';
+    const riflePosition = guardPosition.clone();
+    riflePosition.x += 1.0;
+    riflePosition.y += 0.12;
+    this.riflePickup = new WeaponPickup(this.gameWorld, this.player, this.weapons, riflePosition);
+    this.gameWorld.addEntity(this.riflePickup);
+    this.trackDisposable(this.riflePickup);
+
+    for (const door of this.doors) door.lock?.();
+  }
+
+  _spawnCorridorGuards() {
+    if (this.corridorWaveSpawned) return;
+    this.corridorWaveSpawned = true;
+
+    const positions = [
+      new THREE.Vector3(this.spawnPlayer.x - 10, this.spawnPlayer.y, this.spawnPlayer.z + 2.5),
+      new THREE.Vector3(this.spawnPlayer.x - 12, this.spawnPlayer.y, this.spawnPlayer.z - 2.5),
+      new THREE.Vector3(this.spawnPlayer.x - 15, this.spawnPlayer.y, this.spawnPlayer.z + 2.5),
+      new THREE.Vector3(this.spawnPlayer.x - 18, this.spawnPlayer.y, this.spawnPlayer.z - 2.5)
+    ];
+
+    for (const position of positions) {
+      const alien = new AlienTrooper(this.gameWorld, {
+        position,
+        squad: this.enemySquad,
+        model: new AlienModel({ characterId: 'gorr' })
+      });
+      alien.missionStage = 'corridor';
       this.enemySquad.add(alien);
       this.alienSpawns.push(alien);
+      this.corridorGuards.push(alien);
     }
   }
 
@@ -765,28 +792,47 @@ export class Level01InsideSpaceship extends BaseLevel {
 
   _updateMissionProgress(delta) {
     if (this.missionComplete || this.isIntroPlaying || !this.enemySquad) return;
-    const floorEnemies = this.enemySquad.members.filter((alien) => !alien.isDead && alien.missionStage === this.missionStage);
 
-    if (this.missionStage === 'holdingBay' && floorEnemies.length === 0) {
+    if (this.missionStage === 'holdingBay' && this.riflePickup?.collected && !this.rifleCollected) {
+      this.rifleCollected = true;
+      if (this.sleepingGuard.collider) this.sleepingGuard.collider.setEnabled(true);
+      this.sleepingGuard.awaken();
+      this.guardAwakened = true;
+      this.gameWorld.ui?.showObjective('ELIMINATE THE GUARD', 'Take the rifle and kill the sleeping bodyguard.');
+    }
+
+    if (this.missionStage === 'holdingBay' && this.rifleCollected && this.sleepingGuard?.isDead && !this.corridorWaveSpawned) {
+      this._spawnCorridorGuards();
+      this.missionStage = 'corridor';
+      this.gameWorld.ui?.showObjective('CLEAR THE PASSAGE', 'Kill all four guards blocking the passage.');
+      for (const door of this.doors) door.lock?.();
+    } else if (this.missionStage === 'corridor' && this.corridorGuards.every((alien) => alien.isDead)) {
       this.missionStage = 'stairwell';
-      this.gameWorld.ui?.showObjective('REACH THE STAIRWELL', 'Clear the holding bay, then climb to Floor 2.');
+      for (const door of this.doors) door.unlock?.();
+      this.gameWorld.ui?.showObjective('REACH THE STAIRWELL', 'The passage is clear. Reach the stairwell and climb to Floor 2.');
     } else if (this.missionStage === 'stairwell' && this.player.position.y >= 7 && this.player.position.z < 55) {
       this.missionStage = 'lab';
+      for (const door of this.doors) door.unlock?.();
       this.gameWorld.ui?.showObjective('SECURE THE LAB', 'Eliminate the remaining aliens in the research lab.');
     } else if (this.missionStage === 'lab' && !this.enemySquad.members.some((alien) => !alien.isDead && alien.missionStage === 'lab')) {
       this.missionStage = 'controlRoom';
-      this.gameWorld.ui?.showObjective('REACH THE CONTROL ROOM', 'The ship systems can be shut down from the upper control room.');
-    } else if (this.missionStage === 'controlRoom' && this.player.position.distanceTo(this.checkpoint2) < 5) {
-      this.missionComplete = true;
-      this.gameWorld.ui?.hideObjective?.();
-      this.gameWorld.ui?.showMissionResult?.({
-        title: 'MISSION COMPLETE',
-        message: 'Alien control of the spaceship has been broken.',
-        actions: [
-          { label: 'Play again', onClick: () => this.gameWorld.restartCurrentLevel() },
-          { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
-        ]
-      });
+      this.gameWorld.ui?.showObjective('REACH THE CONTROL ROOM', 'Enter the upper control room and press [E] to restore ship control.');
+    } else if (this.missionStage === 'controlRoom' && !this.controlActivated) {
+      const nearControlCenter = this.player.position.distanceToSquared(CONTROL_CENTER_POSITION) <= CONTROL_CENTER_RADIUS * CONTROL_CENTER_RADIUS;
+      if (nearControlCenter && gameWorld.input.isActionJustPressed('specialAction')) {
+        this.controlActivated = true;
+        this.missionComplete = true;
+        this.gameWorld.ui?.hideObjective?.();
+        this.gameWorld.ui?.showMissionResult?.({
+          title: 'MISSION COMPLETE',
+          outcome: 'victory',
+          message: 'Alien control of the spaceship has been broken.',
+          actions: [
+            { label: 'Play again', onClick: () => this.gameWorld.restartCurrentLevel() },
+            { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
+          ]
+        });
+      }
     }
 
     if (this.player.health?.isDead && !this._respawning) {
@@ -846,8 +892,8 @@ export class Level01InsideSpaceship extends BaseLevel {
   get controls() {
     return [
       { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Move' },
-      { actions: ['jump'], label: 'Jump' },
       { actions: ['sprint'], label: 'Sprint' },
+      { actions: ['specialAction'], label: 'Interact' },
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['firePrimary'], label: 'Fire' },
       { actions: ['reload'], label: 'Reload' },
@@ -1028,8 +1074,8 @@ export class Level01InsideSpaceship extends BaseLevel {
       if (this.gameWorld.ui) {
         this.gameWorld.ui.hideCinematic();
         this.gameWorld.ui.hideFade(false);
-        this.gameWorld.ui.showToast('Find a way out of the Stasis Holding Bay.', 'info', 4000);
-        this.gameWorld.ui.showObjective('ESCAPE THE HOLDING BAY', 'Clear the aliens and find the exit.');
+        this.gameWorld.ui.showToast('Take the sleeping guard’s rifle. You cannot leave without killing him.', 'warning', 5000);
+        this.gameWorld.ui.showObjective('TAKE THE GUARD’S RIFLE', 'Get near the rifle beside the sleeping guard and press [E].');
       }
 
       // Resume ambient score for level exploration

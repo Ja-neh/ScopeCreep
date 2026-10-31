@@ -251,10 +251,27 @@ export class MrOverallsModel {
 
     // Unified interface matching PlayerModel.character
     this.character = {
+      id: 'mr-overalls',
+      loaded: false,
+      group: this.mesh,
+      armed: false,
+      reloadProgress: 1,
+      throwProgress: -1,
+      pickupProgress: -1,
+      pickupBlend: 0,
+      pickupTarget: null,
       animate: (delta, speed, isAiming) => this.update(delta, speed, isAiming),
       setActor: (actor) => { this.actor = actor; },
       setVisible: (visible) => this.setVisible(visible),
       setCrouchAmount: (amount) => this.setCrouchAmount(amount),
+      setArmed: (armed) => {
+        this.character.armed = armed;
+        if (this.handgunPivot) this.handgunPivot.visible = armed;
+      },
+      kickRecoil: () => { this.isShooting = true; this.shootTimer = 0.18; },
+      resetPose: () => this.resetPose(),
+      fitWeapon: () => {},
+      poseWeapon: () => {},
       dispose: () => this.dispose(),
       ready: null
     };
@@ -269,6 +286,7 @@ export class MrOverallsModel {
       const gltf = await loadMrOverallsAsset();
       this._buildAvatar(gltf);
       this.isLoaded = true;
+      if (this.character) this.character.loaded = true;
       return this;
     } catch (err) {
       console.error('[MrOverallsModel] Initialization failed:', err);
@@ -334,6 +352,7 @@ export class MrOverallsModel {
     this.handgunPivot.rotation.set(Math.PI / 2, 0, -Math.PI / 2);
 
     this.handgunPivot.add(this.handgun.mesh);
+    this.handgunPivot.visible = false;
 
     if (this.handBone) {
       this.handBone.add(this.handgunPivot);
@@ -624,6 +643,16 @@ export class MrOverallsModel {
     if (this.currentAction && this.currentAction !== deathAction) {
       this.currentAction.crossFadeTo(deathAction, 0.2, true);
     }
+  }
+
+  resetPose() {
+    this.isShooting = false;
+    this.isOpeningChest = false;
+    this.shootTimer = 0;
+    this.chestTimer = 0;
+    this.flashTimer = 0;
+    this.character.reloadProgress = 1;
+    this.character.throwProgress = -1;
   }
 
   /**

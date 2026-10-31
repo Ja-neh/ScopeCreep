@@ -33,7 +33,7 @@ export class AlienTrooper extends AlienCombatant {
    * @param {string} [options.initialState='patrol']
    * @param {Object} [options.engageState] - Fighting style of its own (e.g. a sniper holds its post)
    */
-  constructor(gameWorld, { position, squad, cfg = config.enemies.trooper, model = null, name = 'AlienTrooper', states = {}, initialState = 'patrol', engageState = TROOPER_ENGAGE }) {
+  constructor(gameWorld, { position, squad, cfg = config.enemies.trooper, model = null, name = 'AlienTrooper', states = {}, initialState = 'patrol', engageState = TROOPER_ENGAGE, sleeping = false }) {
     super(gameWorld, {
       name,
       position,
@@ -63,6 +63,26 @@ export class AlienTrooper extends AlienCombatant {
     this._aimDir = new THREE.Vector3();
     this._right = new THREE.Vector3();
     this._up = new THREE.Vector3();
+    this.isSleeping = sleeping;
+    if (this.isSleeping) {
+      this.stop();
+      this.model?.setFallen?.(0.95);
+      this.model?.character?.ready?.then(() => {
+        if (this.isSleeping) this.model?.setFallen?.(0.95);
+      });
+    }
+  }
+
+  awaken() {
+    this.isSleeping = false;
+    this.model?.setFallen?.(0);
+    this.perception.share(this.gameWorld.player?.position || this.position);
+    this.brain.change('investigate');
+  }
+
+  gameplayUpdate(delta) {
+    if (this.isSleeping && !this.isDead) return;
+    super.gameplayUpdate(delta);
   }
 
   // ---------------------------------------------------------------------------

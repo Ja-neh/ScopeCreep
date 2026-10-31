@@ -44,7 +44,7 @@ export class WeaponController extends BaseEntity {
    *   per shot that lands, with its flight line: lets levels damage thin scenery (bushes) that
    *   has no collider to stop the bullet
    */
-  constructor(gameWorld, player, { onGunshot = null, onBulletImpact = null } = {}) {
+  constructor(gameWorld, player, { onGunshot = null, onBulletImpact = null, startUnequipped = false } = {}) {
     super('WeaponController');
     this.gameWorld = gameWorld;
     this.player = player;
@@ -59,7 +59,9 @@ export class WeaponController extends BaseEntity {
     this.rifle = new HitscanWeapon(this.gunCfg);
     this.knife = new MeleeWeapon(this.knifeCfg);
     this.bombsLeft = this.bombCfg.count;
-    this.equipped = 'rifle';
+    this.equipped = startUnequipped ? 'knife' : 'rifle';
+    this.startUnequipped = startUnequipped;
+    this.riflePickupCollected = !startUnequipped;
     this.switchTimer = 0;
     this.quickMeleeTimer = 0; // > 0 while a quick knife swing stands in for the gun
     this.throwTimer = 0;      // Cools down between bomb throws and clocks the toss pose
@@ -109,7 +111,7 @@ export class WeaponController extends BaseEntity {
 
     this._hud = { weapon: null, ammo: -1, reserve: -1, bombs: -1, reloadStep: -2 };
     if (gameWorld.ui) {
-      gameWorld.ui.showCrosshair('rifle');
+      if (!startUnequipped) gameWorld.ui.showCrosshair('rifle');
       gameWorld.ui.showWeaponHUD();
     }
     this._showModels();
@@ -201,6 +203,8 @@ export class WeaponController extends BaseEntity {
   }
 
   pickUpRifle() {
+    this.startUnequipped = false;
+    this.riflePickupCollected = true;
     this._equip('rifle');
     this.rifle.ammo = this.rifle.magazineSize;
     this.rifle.reserve = this.gunCfg.reserveAmmo;
@@ -216,6 +220,7 @@ export class WeaponController extends BaseEntity {
   }
 
   _fireRifle(gameWorld) {
+    if (this.startUnequipped && !this.riflePickupCollected) return;
     if (!this.rifle.canFire()) {
       if (this.rifle.ammo === 0 && this.rifle.startReload() && gameWorld.audio) {
         gameWorld.audio.play('reload');
@@ -382,7 +387,10 @@ export class WeaponController extends BaseEntity {
     // Held weapon: follows aim pitch, lowers when crouching, hidden whenever the body is
     this.heldPivot.position.y = HELD_PIVOT.y * (1 - 0.35 * player.crouchAmount);
     this.heldPivot.rotation.x = player.pitch;
-    this.heldPivot.visible = player.model.character.loaded ? player.model.character.group.visible : player.bodyMesh.visible;
+    const character = player.model.character;
+    const bodyVisible = player.bodyMesh?.visible ?? true;
+    const characterGroupVisible = character.group?.visible ?? bodyVisible;
+    this.heldPivot.visible = character.loaded ? characterGroupVisible : bodyVisible;
     this.heldPivot.visible = this.heldPivot.visible && !this.isPickingUp;
     this.heldRifle.mesh.position.z = this._recoil;
     if (this.activeWeapon === 'rifle') {
