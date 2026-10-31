@@ -26,11 +26,11 @@ export class BaseLevel {
     this.gameWorld.addEntity(this.decals);
     this.gameWorld.decals = this.decals;
 
-    // Every level opens dramatically: the intro groove under the deploy swell (an opening cinematic ends it into the ambience)
+    // Gameplay starts with only environmental ambience; actions provide the combat sounds.
     const music = this.gameWorld && this.gameWorld.music;
     if (music) {
-      music.setState('deploy');
-      music.stinger('deploy');
+      music.setEffectsOnly(true);
+      music.setState('ambient');
     }
   }
 

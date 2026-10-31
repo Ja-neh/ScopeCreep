@@ -1,9 +1,11 @@
-// The sound engine: seven procedural one-shots, lazy unlock, saved mix, throttles, the voice
+// The sound engine: procedural one-shots, lazy unlock, saved mix, throttles, the voice
 // cap, and distance fall-off - all checked against a fake AudioContext, because Node has none.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { AudioManager } from '../src/core/AudioManager.js';
+import { SOUND_FILES, AUDIO_FILES } from '../src/core/SoundLibrary.js';
+import { readFileSync } from 'node:fs';
 
 function fakeParam() {
   return {
@@ -54,8 +56,41 @@ function fakeStorage() {
   };
 }
 
-test('the manager exposes exactly the seven core sounds', () => {
-  assert.deepEqual(AudioManager.soundNames, ['gunshot', 'plasma', 'hit', 'hurt', 'explosion', 'reload', 'alienCall']);
+test('the manager exposes combat, creature, movement, and flight sounds', () => {
+  assert.deepEqual(AudioManager.soundNames, Object.keys(SOUND_FILES));
+  for (const file of AUDIO_FILES) {
+    const bytes = readFileSync(new URL(`../public/assets/audio/${file}`, import.meta.url));
+    assert.ok(['RIFF','OggS'].includes(bytes.toString('ascii',0,4)), `${file} is playable audio`);
+  }
+});
+
+test('imported recordings decode once and replace synthesized voices, alternating footsteps', async () => {
+  const context = createFakeContext();
+  let decodes = 0;
+  context.decodeAudioData = async () => ({ sample: ++decodes });
+  const manager = new AudioManager(null, { contextFactory: () => context });
+  await manager.preloadSamples(() => {}, async () => ({ok:true,arrayBuffer:async()=>new ArrayBuffer(8)}));
+  assert.equal(decodes,0,'no audio context before a user gesture');
+  manager.unlock();
+  await manager._decodeSamples();
+  assert.equal(decodes,AUDIO_FILES.length);
+  assert.equal(manager.play('gunshot').buffer,manager._samples.get('rifle-shot.wav'));
+  const first=manager.play('footstep').buffer;
+  context.currentTime=1;
+  const second=manager.play('footstep').buffer;
+  assert.notEqual(first,second,'left and right steps alternate');
+  manager.dispose();
+});
+
+test('player footsteps are not swallowed by a teammate and cinematic audio uses its camera', () => {
+  const context=createFakeContext();
+  const camera=new THREE.PerspectiveCamera(); camera.position.set(0,0,-540); camera.updateMatrixWorld();
+  const manager=new AudioManager({cinematic:{camera}}, {contextFactory:()=>context});
+  manager.unlock();
+  assert.ok(manager.play('footstep',{x:0,y:0,z:-541}));
+  assert.ok(manager.play('footstep'));
+  assert.equal(manager.play('gunshot',{x:0,y:0,z:0}),null);
+  manager.dispose();
 });
 
 test('without an AudioContext every call is a safe no-op', () => {

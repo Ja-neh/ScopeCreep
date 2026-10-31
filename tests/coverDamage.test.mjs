@@ -226,7 +226,7 @@ test('a thrown grenade arcs, detonates and tears cover apart where it lands', ()
   world.projectilePool = null;
 });
 
-test('red aliens attack with 10% acid instead of legacy grenades and never damage their own side', () => {
+test('ground aliens stretch-strike for 10% without mouth projectiles or friendly damage', () => {
   const pool = new ProjectilePool(world);
   world.addEntity(pool);
   world.projectilePool = pool;
@@ -271,17 +271,17 @@ test('red aliens attack with 10% acid instead of legacy grenades and never damag
   run(2, () => thrower.brain.is('engage'));
   assert.ok(thrower.brain.is('engage'), 'the engagement started');
 
-  let acidShots=0;
+  let mouthShots=0;
   const fire=pool.firePlasma.bind(pool);
-  pool.firePlasma=options=>{assert.equal(options.attack,'slime');assert.equal(options.fraction,.1);acidShots++;return fire(options);};
+  pool.firePlasma=options=>{mouthShots++;return fire(options);};
   run(5);
-  assert.ok(acidShots>0,'acid is spat from the mouth');
+  assert.equal(mouthShots,0,'ground aliens do not spit projectiles');
   assert.equal(blasts.length,0,'no unconfigured grenade explosion');
   assert.ok(pool.activeProjectiles.every(p=>p.type!=='GRENADE'));
-  assert.equal(ally.health.currentHealth,ally.health.maxHealth,'friendly acid does not hurt another alien');
+  assert.equal(ally.health.currentHealth,ally.health.maxHealth,'the strike does not hurt another alien');
   const hurt=100-player.health.currentHealth;
-  assert.ok(hurt>0,'acid hits the watched player');
-  assert.ok(Math.abs(hurt/10-Math.round(hurt/10))<1e-6,'each landed acid shot removes 10% final health');
+  assert.ok(hurt>0,'the strike hits the watched player');
+  assert.ok(Math.abs(hurt/10-Math.round(hurt/10))<1e-6,'each strike removes 10% final health');
 
   squad.dispose();
   world.clearEntities();

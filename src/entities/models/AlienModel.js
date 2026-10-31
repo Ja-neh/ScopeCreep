@@ -20,12 +20,21 @@ export class AlienModel {
    * @param {boolean} [options.crest] - A crest of glowing spikes on the head and shoulders (the Warden)
    */
   constructor({ armorColor = 0x5d5480, scale = 1, backpack = false, crest = false, characterId = 'galiant', characterOptions = {} } = {}) {
+    // Collection skins retain the established combat roles. Only Gorr carries a gun.
+    const base = import.meta.env?.BASE_URL || '/';
+    const collectionAsset = characterId === 'gorr' ? 'alien-reptilian.glb'
+      : characterId === 'galiant' ? 'distortus-rex.glb' : null;
+    characterOptions = { ...(collectionAsset ? { assetUrl: `${base}assets/characters/${collectionAsset}` } : {}), ...characterOptions };
+    const asset = characterOptions.assetUrl || '';
+    this.isReptilian = asset.endsWith('alien-reptilian.glb');
+    this.groundPower = characterId === 'galiant' ? asset.endsWith('heavy-bot.glb') ? 'charge'
+      : asset.endsWith('elite-afton.glb') ? 'dash' : 'stretch' : null;
     this.hasGun = characterId === 'gorr';
     this.canFly = characterId.startsWith('bahamut');
     this.mesh = new THREE.Group();
     this.mesh.name = 'Alien';
     this.body = new THREE.Group(); // Leans and falls as one piece
-    this.body.scale.setScalar(scale);
+    this.body.scale.setScalar(this.isReptilian ? 1 : scale);
     this.mesh.add(this.body);
 
     this.materials = {
@@ -87,6 +96,8 @@ export class AlienModel {
       new THREE.MeshBasicMaterial({color: characterId === 'bahamut-xvi' ? 0xff8540 : 0x77ddff, toneMapped:false}));
     this._mouthFlash.visible=false;
     this._powerFlashTime=0;
+    this._stretchTime=0;
+    this._stretchBones=[];
     if (!this.hasGun) this.muzzle.add(this._mouthFlash);
 
     // Power pack on the back, with glowing cells: shots there do extra damage
@@ -124,6 +135,17 @@ export class AlienModel {
     this.character.setArmed(this.hasGun);
     this.character.ready.then((loaded) => {
       if (!loaded || this.character.disposed) return;
+      if (this.groundPower === 'stretch') {
+        for (const side of ['left', 'right']) {
+          const forearm=this.character.joints[`${side}Forearm`]?.bone;
+          const hand=this.character.joints[`${side}Hand`]?.bone;
+          if (!forearm || !hand) continue;
+          const offset=hand.position;
+          const axis=Math.abs(offset.x)>Math.abs(offset.y) && Math.abs(offset.x)>Math.abs(offset.z) ? 'x'
+            : Math.abs(offset.y)>Math.abs(offset.z) ? 'y' : 'z';
+          this._stretchBones.push({bone:forearm,axis,rest:forearm.scale[axis]});
+        }
+      }
       if (!this.hasGun) {
         const head=this.character.joints.head?.bone;
         if (head) {
@@ -174,6 +196,9 @@ export class AlienModel {
     this.gun.visible=this.hasGun && raise<=0;
     this.character.setArmed(this.gun.visible);
     this.character?.animate(delta, speed, this.hasGun && aiming, raise);
+    this._stretchTime=Math.max(0,this._stretchTime-delta);
+    const stretch=Math.sin(this._stretchTime/0.3*Math.PI);
+    for (const joint of this._stretchBones) joint.bone.scale[joint.axis]=joint.rest*(1+Math.max(0,stretch)*2.5);
     this._walkPhase += delta * speed * 2.2;
     const swing = Math.min(1, speed / 4) * 0.6;
     const s = Math.sin(this._walkPhase) * swing;
@@ -191,15 +216,17 @@ export class AlienModel {
       this.character.poseWeapon(this.gun);
     }
     this._powerFlashTime=Math.max(0,this._powerFlashTime-delta);
-    this._mouthFlash.visible=!this.hasGun && this._powerFlashTime>0;
+    this._mouthFlash.visible=!this.hasGun && !this.groundPower && this._powerFlashTime>0;
   }
 
-  releasePower() { this._powerFlashTime=0.22; this.character.kickRecoil(); }
+  releasePower() { if (!this.groundPower) this._powerFlashTime=0.22; this.character.kickRecoil(); }
+  stretchStrike() { this._stretchTime=0.3; }
 
   /**
    * Topple backwards over `progress` 0..1 (death).
    */
   setFallen(progress) {
+    for (const joint of this._stretchBones) joint.bone.scale[joint.axis]=joint.rest;
     this.body.rotation.x = progress * (Math.PI / 2) * 0.95;
     this.body.position.y = -progress * 0.1;
   }

@@ -138,7 +138,10 @@ export class BossArena {
   _resurrect(){
     const squad=this.level.squad;
     let count=0;
-    while(count<config.bossPowers.resurrectCount && squad.fallen.length){
+    const roomAlive=squad.members.filter(member=>member!==this.warden && !member.isDead &&
+      this.hall.contains(member.position.x,member.position.z)).length;
+    const available=Math.max(0,config.bossPowers.resurrectMaxAlive-roomAlive);
+    while(count<Math.min(config.bossPowers.resurrectCount,available) && squad.fallen.length){
       const record=squad.fallen.pop();
       if(record.actor && !record.actor.isDead)continue;
       const angle=count*Math.PI*2/config.bossPowers.resurrectCount;

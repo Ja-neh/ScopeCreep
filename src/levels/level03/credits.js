@@ -6,6 +6,10 @@ export const CREDITS = [
   {
     heading: 'THE TEAM',
     lines: [
+      { text: 'Distortus Rex — Vasian-Digital3D (CC BY 4.0), Sketchfab', url: 'https://sketchfab.com/3d-models/distortus-rex-8c69f448fe3e4b8ba042da9c7a758ac0' },
+      { text: 'Alien Reptilian — Vasian-Digital3D (CC BY 4.0), Sketchfab', url: 'https://sketchfab.com/3d-models/alien-reptilian-5ee3f02399de452181e40d311cd764c6' },
+      { text: 'Low Poly - Heavy Bot — nataliedesign (CC BY 4.0), Sketchfab', url: 'https://sketchfab.com/3d-models/low-poly-heavy-bot-0c9a3b189fd0499a9f037d3b97f6bce3' },
+      { text: 'Elite Afton — U.A.C.WAD (CC BY 4.0), Sketchfab', url: 'https://sketchfab.com/3d-models/elite-afton-7b0a45fd59324fa39acab97c8a8dcfb3' },
       'Lead developer and online play: Dev 1',
       'Sea and air: Dev 2',
       'Crew and player: Dev 3',
@@ -26,6 +30,14 @@ export const CREDITS = [
   { heading: 'CHARACTER ANIMATIONS', lines: [
     { text: 'Adobe Mixamo — motion clips and Y Bot reference', url: 'https://www.mixamo.com/' },
     'Animations retargeted for the game characters'
+  ] },
+  { heading: 'SOUND EFFECTS — CC0', lines: [
+    { text: 'Tabasco — recorded gunfire', url: 'https://opengameart.org/content/gunshot-sounds' },
+    { text: 'SpringySpringo — rifle reload', url: 'https://opengameart.org/content/gun-reload-sounds' },
+    { text: 'Fantozzi / qubodup — sand and stone footsteps', url: 'https://opengameart.org/content/fantozzis-footsteps-grasssand-stone' },
+    { text: 'artisticdude — creature voices', url: 'https://opengameart.org/content/rpg-sound-pack' },
+    { text: 'Darsycho — monster snarls', url: 'https://opengameart.org/content/monster-snarls' },
+    { text: 'Kenney — spacecraft, weapons and force fields', url: 'https://kenney.nl/assets/sci-fi-sounds' }
   ] },
   { heading: 'BUILT WITH', lines: [
     { text: 'Three.js', url: 'https://threejs.org/' },

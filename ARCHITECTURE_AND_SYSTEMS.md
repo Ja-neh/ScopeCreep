@@ -361,15 +361,16 @@ Level 3 is the finale, at night: the squad comes up the jungle path to the villa
 
 ### 3.1 Startup & Bootstrapping
 1. Browser loads `index.html` and executes `src/main.js`.
-2. `bootstrap()` instantiates `GameWorld(canvas)` and awaits `gameWorld.init()`.
-3. `PhysicsWorld.init()` downloads, compiles, and initializes the Rapier 3D WebAssembly binary.
-4. `gameWorld.loadLevel()` loads the initial stage (e.g. `Level1` or `TestLevel`).
-5. `gameWorld.start()` ignites the 60 FPS animation loop.
+2. `bootstrap()` instantiates `GameWorld(canvas)`, shows the loading overlay, and awaits `gameWorld.init()`.
+3. `PhysicsWorld.init()` initializes Rapier 3D WebAssembly; `CampaignPreloader` then downloads campaign assets and updates the loading bar.
+4. `CampaignCinematic3D` prepares the actual human and alien character models, the Level 3 village layout, the Level 2 transport craft, and the Level 1 ship interior. `gameWorld.start()` starts the animation loop; its WebGL renderer plays the invasion prologue before the three-level menu opens. Gunfire, footsteps, alien calls, and flybys cue off the cutscene action.
+5. Each `gameWorld.loadLevel()` call pauses gameplay for a scripted 3D opening, then shows its mission card over the held final frame before constructing the stage.
 
 ---
 
 ### 3.2 Level Loading & Teardown
 1. `gameWorld.loadLevel(newLevel)` is invoked.
+   - The registered level opening runs first; the player confirms its mission card before loading continues.
 2. If a stage is currently active, its `dispose()` method is called:
    - Level-specific colliders (e.g. ocean safety plane or ground plane) are removed from Rapier.
    - Dev tools DOM elements and event listeners are detached.

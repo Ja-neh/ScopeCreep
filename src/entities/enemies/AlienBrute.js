@@ -28,14 +28,15 @@ export class AlienBrute extends AlienCombatant {
    * @param {{radius: number, halfHeight: number}} [options.capsule]
    */
   constructor(gameWorld, { position, squad, cfg = config.enemies.brute, name = 'AlienBrute', model = null, capsule = null }) {
+    const alienModel = model || new AlienModel({ armorColor: 0x8a3f3f, scale: BRUTE_SCALE, backpack: true, characterId: 'gorr' });
     super(gameWorld, {
       name,
       position,
       squad,
       cfg,
-      model: model || new AlienModel({ armorColor: 0x8a3f3f, scale: BRUTE_SCALE, backpack: true, characterId: 'gorr' }),
+      model: alienModel,
       engageState: BRUTE_ENGAGE,
-      capsule: capsule || BRUTE_CAPSULE
+      capsule: capsule || (alienModel.isReptilian ? config.alienPowers.gorr.reptilianCapsule : BRUTE_CAPSULE)
     });
 
     this.attackPhase = 'approach'; // approach -> charge -> windup -> recover
@@ -48,6 +49,7 @@ export class AlienBrute extends AlienCombatant {
   }
 
   updateAttack(delta) {
+    if (this.model.groundPower) return;
     this._rangedTimer-=delta;
     const target=this.perception.target;
     const power=config.alienPowers[this.model.character.id];
@@ -78,8 +80,9 @@ export class AlienBrute extends AlienCombatant {
   _slam(target) {
     const reach = this.cfg.slamRange + SLAM_REACH_BONUS;
     if (target && !target.health.isDead && target.position.distanceTo(this.position) <= reach) {
+      const groundPower=config.groundAlienPowers[this.model.groundPower];
       target.health.takeDamage({ amount: this.cfg.slamDamage,
-        fraction:this.model.hasGun ? config.alienPowers.gorr.swordFraction : 0, source: this });
+        fraction:this.model.hasGun ? config.alienPowers.gorr.swordFraction : groundPower?.fraction || 0, source: this });
       if (this.model.character.id==='gorr') this.health.heal(config.alienPowers.gorr.healOnSlam);
     }
   }
@@ -99,19 +102,12 @@ const BRUTE_ENGAGE = {
     const distance = Math.hypot(threat.x - b.position.x, threat.z - b.position.z);
     b.lookAt(threat);
 
-    if (b.model.character.id==='galiant') {
-      b.attackPhase='approach';b.attackPose=0;
-      if (distance>config.alienPowers.galiant.range*0.6) b.moveTo(threat,b.cfg.runSpeed);
-      else b.stop();
-      return !target && b.perception.timeSinceSeen>LOST_SIGHT_SECONDS ? 'search' : null;
-    }
-
     if (!target && b.perception.timeSinceSeen > LOST_SIGHT_SECONDS && b.attackPhase === 'approach') return 'search';
 
     switch (b.attackPhase) {
       case 'approach':
         b.attackPose = 0;
-        b.moveTo(threat, b.cfg.runSpeed);
+        b.moveTo(threat, b.cfg.runSpeed*(config.groundAlienPowers[b.model.groundPower]?.speedMultiplier || 1));
         if (target && distance <= b.cfg.chargeRange) {
           b.attackPhase = 'charge';
           b._phaseTimer = b.cfg.chargeSeconds;

@@ -268,6 +268,12 @@ export class MusicDirector {
   get state() { return this._state; }
   get isRunning() { return this._running; }
 
+  /** Keep environmental ambience, but leave combat to positional sound effects. */
+  setEffectsOnly(enabled) {
+    this.effectsOnly = !!enabled;
+    if (this.effectsOnly) this.setState('ambient');
+  }
+
   /**
    * Crossfades to a mission state. 'silent' stops the score and the ambience; the others start
    * it. Unknown names are ignored. Safe before the AudioContext exists: the requested state is
@@ -276,6 +282,7 @@ export class MusicDirector {
    */
   setState(name) {
     if (!STATES[name]) return;
+    if (this.effectsOnly && name !== 'silent') name = 'ambient';
     this._running = name !== 'silent';
     // Leaving a mission must not carry its zone mix away: silence and the menu park the mix back
     // at the defaults, so the next stage opens on its own air, not the last island's
@@ -293,6 +300,7 @@ export class MusicDirector {
    * @returns {Object|null} The stinger's first source node, or null
    */
   stinger(name) {
+    if (this.effectsOnly) return null;
     const def = STINGERS[name];
     if (!def || !this._ensureBuilt()) return null;
     return def.build({ ctx: this._ctx, out: this.buses.master, when: this._ctx.currentTime, noise: this._noise }) || null;

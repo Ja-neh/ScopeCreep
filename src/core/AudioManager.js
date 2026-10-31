@@ -1,7 +1,7 @@
 /**
  * AudioManager
- * The game's sound engine. Every effect is synthesized procedurally with the Web Audio API
- * (oscillators plus one shared white-noise buffer), so the game ships no audio files. Sounds
+ * The game's sound engine. Local CC0 recordings supply combat, movement and creature effects.
+ * Procedural voices are a fallback if a sample cannot be decoded. Sounds
  * are short one-shot voices routed through a single master gain; the mix (volume and mute)
  * belongs to the player and is saved in localStorage, like the graphics settings.
  *
@@ -16,6 +16,8 @@
  * positional plays obey a tighter floor so a whole squad firing bursts cannot stack dozens
  * of voices. The player's own weapons are never throttled - their gun must always be heard.
  */
+
+import { SOUND_FILES, AUDIO_FILES } from './SoundLibrary.js';
 
 const STORAGE_KEY = 'scopecreep.audio';
 const DEFAULT_VOLUME = 0.8;
@@ -248,13 +250,43 @@ const SOUNDS = {
       wobble.stop(when + 1.35);
       return osc;
     }
+  },
+  footstep: {
+    gain: 0.22, minInterval: 0.16, pitchJitter: 0.14,
+    build({ ctx, when, out, noise, pitch }) {
+      const source = ctx.createBufferSource(); source.buffer = noise;
+      const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 620 * pitch;
+      const envelope = ctx.createGain();
+      envelope.gain.setValueAtTime(.7, when);
+      envelope.gain.exponentialRampToValueAtTime(.001, when + .11);
+      source.connect(filter); filter.connect(envelope); envelope.connect(out);
+      source.start(when); source.stop(when + .12);
+      return source;
+    }
+  },
+  flyby: {
+    gain: 0.48, minInterval: .8, pitchJitter: .1,
+    build({ ctx, when, out, noise, pitch }) {
+      const source = ctx.createBufferSource(); source.buffer = noise;
+      const filter = ctx.createBiquadFilter(); filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(160 * pitch, when);
+      filter.frequency.exponentialRampToValueAtTime(1300 * pitch, when + .35);
+      filter.frequency.exponentialRampToValueAtTime(200 * pitch, when + 1.2);
+      const envelope = ctx.createGain();
+      envelope.gain.setValueAtTime(.001, when);
+      envelope.gain.exponentialRampToValueAtTime(.7, when + .35);
+      envelope.gain.exponentialRampToValueAtTime(.001, when + 1.25);
+      source.connect(filter); filter.connect(envelope); envelope.connect(out);
+      source.start(when); source.stop(when + 1.3);
+      return source;
+    }
   }
 };
 
 export class AudioManager {
   /** Names of every sound this manager can play (in definition order). */
   static get soundNames() {
-    return Object.keys(SOUNDS);
+    return Object.keys(SOUND_FILES);
   }
 
   /**
@@ -278,6 +310,12 @@ export class AudioManager {
     this._lastVoiceGain = 1;              // mix telemetry: gain of the most recent voice (tests/debug)
     this._spatial = { gain: 1, pan: 0 };  // scratch result, reused to avoid per-play allocations
     this._unlockBound = null;
+    this._encodedSamples = new Map();
+    this._samples = new Map();
+    this._sampleCursor = Object.create(null);
+    this._sampleLoad = null;
+    this._decodeLoad = null;
+    this._disposed = false;
     this.onUnlocked = null; // fired once with the fresh context; companion systems (the score) start here
 
     this._load();
@@ -293,6 +331,38 @@ export class AudioManager {
 
   /** The node every voice connects to; companion systems (the music director) route through it too. */
   get outputNode() { return this._master; }
+
+  /** Fetch before the opening starts; decoding waits for the audio gesture. */
+  preloadSamples(onProgress = () => {}, fetchAsset = fetch) {
+    if (this._sampleLoad) return this._sampleLoad;
+    const base = import.meta.env?.BASE_URL || '/';
+    let complete = 0;
+    this._sampleLoad = Promise.all(AUDIO_FILES.map(async (file) => {
+      const response = await fetchAsset(`${base}assets/audio/${file}`, { cache: 'force-cache' });
+      if (!response.ok) throw new Error(`Could not load sound ${file} (${response.status})`);
+      const bytes = await response.arrayBuffer();
+      if (!this._disposed) this._encodedSamples.set(file, bytes);
+      onProgress(++complete / AUDIO_FILES.length, 'Loading combat and movement sounds');
+    })).then(() => this._decodeSamples()).catch(error => {
+      this._sampleLoad = null;
+      throw error;
+    });
+    return this._sampleLoad;
+  }
+
+  async _decodeSamples() {
+    if (!this._ctx?.decodeAudioData || !this._encodedSamples.size) return;
+    if (this._decodeLoad) return this._decodeLoad;
+    this._decodeLoad = Promise.all([...this._encodedSamples].map(async ([file, bytes]) => {
+      if (this._samples.has(file)) return;
+      try {
+        const buffer = await this._ctx.decodeAudioData(bytes.slice(0));
+        if (!this._disposed) this._samples.set(file, buffer);
+      } catch (error) { console.warn(`Sound unavailable: ${file}`, error); }
+    }));
+    await this._decodeLoad;
+    this._decodeLoad = null;
+  }
 
   set volume(value) {
     this._volume = Math.max(0, Math.min(1, Number(value) || 0));
@@ -327,6 +397,7 @@ export class AudioManager {
     this._master.connect(ctx.destination);
     if (ctx.state === 'suspended' && typeof ctx.resume === 'function') ctx.resume();
     if (this.onUnlocked) this.onUnlocked(ctx);
+    void this._decodeSamples();
     return ctx;
   }
 
@@ -341,7 +412,9 @@ export class AudioManager {
     if (this._muted) return null;
     const ctx = this._ctx;
     if (!ctx) return null;
-    const def = SOUNDS[name];
+    const fallback = { footstepSand: 'footstep', wingbeat: 'flyby', abduction: 'flyby',
+      cageOpen: 'reload', fire: 'flyby', slime: 'plasma' };
+    const def = SOUNDS[name] || SOUNDS[fallback[name]];
     if (!def) return null;
     if (this._activeVoices >= MAX_VOICES) return null;
 
@@ -356,10 +429,10 @@ export class AudioManager {
     const now = ctx.currentTime;
     const minInterval = position ? Math.max(def.minInterval, POSITIONAL_MIN_INTERVAL) : def.minInterval;
     if (minInterval > 0) {
-      const last = this._lastPlayAt[name];
+      const last = this._lastPlayAt[`${name}:${position ? 'world' : 'player'}`];
       if (last !== undefined && now - last < minInterval) return null;
     }
-    this._lastPlayAt[name] = now;
+    this._lastPlayAt[`${name}:${position ? 'world' : 'player'}`] = now;
 
     const voice = ctx.createGain();
     voice.gain.setValueAtTime(gain, now);
@@ -374,15 +447,36 @@ export class AudioManager {
     this._lastVoiceGain = gain;
 
     const pitch = 1 + (Math.random() * 2 - 1) * def.pitchJitter;
-    const source = def.build({ ctx, when: now, out: voice, noise: this._ensureNoise(ctx), pitch });
+    const files = SOUND_FILES[name] || [];
+    const cursor = this._sampleCursor[name] || 0;
+    const buffer = this._samples.get(files[cursor % files.length]);
+    let source;
+    if (buffer) {
+      this._sampleCursor[name] = cursor + 1;
+      source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.playbackRate.value = pitch;
+      source.connect(voice);
+      source.start(now);
+    } else {
+      source = def.build({ ctx, when: now, out: voice, noise: this._ensureNoise(ctx), pitch });
+    }
     if (source) {
       this._activeVoices += 1;
-      source.onended = () => { this._activeVoices = Math.max(0, this._activeVoices - 1); };
+      source.onended = () => {
+        this._activeVoices = Math.max(0, this._activeVoices - 1);
+        voice.disconnect();
+        if (tail !== voice) tail.disconnect();
+        source.disconnect();
+      };
     }
     return source;
   }
 
   dispose() {
+    this._disposed = true;
+    this._samples.clear();
+    this._encodedSamples.clear();
     this._removeUnlockListeners();
     const ctx = this._ctx;
     this._ctx = null;
@@ -455,6 +549,7 @@ export class AudioManager {
 
   _listener() {
     if (!this.gameWorld) return null;
+    if (this.gameWorld.cinematic) return this.gameWorld.cinematic.camera;
     if (typeof this.gameWorld.getActiveCamera === 'function') return this.gameWorld.getActiveCamera();
     return this.gameWorld.camera || null;
   }

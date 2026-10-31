@@ -4,6 +4,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MusicDirector } from '../src/core/MusicDirector.js';
 
+test('gameplay keeps ambience while suppressing the score and stingers', () => {
+  const director = new MusicDirector(null);
+  director.setEffectsOnly(true);
+  director.setState('combat');
+  assert.equal(director.state, 'ambient');
+  assert.equal(director.stinger('deploy'), null);
+  director.setEffectsOnly(false);
+  director.setState('menu');
+  assert.equal(director.state, 'menu');
+  director.dispose();
+});
+
 function fakeParam() {
   return {
     value: 0,

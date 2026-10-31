@@ -59,6 +59,8 @@ export class AlienTrooper extends AlienCombatant {
     this._repositionTimer = 0;
     this._dugInTimer = 0;
     this._targetAnchor = new THREE.Vector3();
+    this._pounceTime = 0;
+    this._pounceCooldown = 0;
     this._muzzle = new THREE.Vector3();
     this._aimDir = new THREE.Vector3();
     this._right = new THREE.Vector3();
@@ -70,10 +72,23 @@ export class AlienTrooper extends AlienCombatant {
   // ---------------------------------------------------------------------------
 
   updateAttack(delta) {
+    this.attackPose=Math.max(0,this.attackPose-delta*5);
     const target = this.perception.target;
     this.isAiming = this.brain.is('engage') && target !== null;
     if (!this.isAiming) {
       this._burstLeft = 0;
+      return;
+    }
+    if (this.model.groundPower) {
+      const power=config.groundAlienPowers[this.model.groundPower];
+      this._pauseTimer-=delta;
+      if (power && this._pauseTimer<=0 && !target.health.isDead &&
+        this.position.distanceTo(target.position)<=power.range) {
+        target.health.takeDamage({fraction:power.fraction,source:this});
+        this.attackPose=0.65;
+        if (this.model.groundPower==='stretch') this.model.stretchStrike();
+        this._pauseTimer=power.cooldown;
+      }
       return;
     }
     if(!this.model.hasGun){
@@ -203,6 +218,22 @@ const TROOPER_ENGAGE = {
     t.lookAt(threat);
 
     if (!t.perception.target && t.perception.timeSinceSeen > LOST_SIGHT_SECONDS) return 'search';
+
+    if (t.model.groundPower) {
+      const power=config.groundAlienPowers[t.model.groundPower];
+      const target=t.perception.target;
+      const distance=target ? t.position.distanceTo(target.position) : Infinity;
+      t._pounceTime=Math.max(0,t._pounceTime-delta);
+      t._pounceCooldown=Math.max(0,t._pounceCooldown-delta);
+      if (t.model.groundPower==='dash' && target && distance>power.range &&
+        distance<power.burstRange && t._pounceCooldown<=0) {
+        t._pounceTime=power.burstSeconds;
+        t._pounceCooldown=power.burstCooldown;
+      }
+      if (target && distance<=power.range*0.85) t.stop();
+      else t.moveTo(threat,t.cfg.runSpeed*power.speedMultiplier*(t._pounceTime>0 ? power.burstMultiplier : 1));
+      return null;
+    }
 
     // Is the target dug in (barely moving) while we can't see it? Then go around.
     if (t._targetAnchor.distanceTo(threat) > TARGET_STILL_DISTANCE) {

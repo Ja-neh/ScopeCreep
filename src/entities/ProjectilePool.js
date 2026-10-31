@@ -345,7 +345,9 @@ export class ProjectilePool extends BaseEntity {
       attack==='slime' ? 3 : attack==='fire' ? 4 : 0.4,attack==='slime' ? 0.45 : attack==='fire' ? 2 : 0.8);
     p.attack=attack;
 
-    if (this.gameWorld && this.gameWorld.audio) this.gameWorld.audio.play('plasma', origin);
+    if (this.gameWorld && this.gameWorld.audio) {
+      this.gameWorld.audio.play(attack === 'bullet' ? 'gunshot' : attack === 'fire' ? 'fire' : attack === 'slime' ? 'slime' : 'plasma', origin);
+    }
     return p;
   }
 

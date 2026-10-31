@@ -6,6 +6,7 @@ import {HealthComponent} from '../src/entities/components/HealthComponent.js';
 import {Player} from '../src/entities/Player.js';
 import {SquadMate} from '../src/entities/allies/SquadMate.js';
 import {AlienBrute} from '../src/entities/enemies/AlienBrute.js';
+import {AlienHeavy} from '../src/entities/enemies/AlienHeavy.js';
 import {AlienTrooper} from '../src/entities/enemies/AlienTrooper.js';
 import {AlienSniper} from '../src/entities/enemies/AlienSniper.js';
 import {IslandLevel} from '../src/levels/IslandLevel.js';
@@ -56,35 +57,55 @@ test('simultaneous slime, fire and bullets keep distinct visuals and percentage 
 
 test('Gorr sword deals 25% final health damage; only black and white winged aliens can fly',async()=>{
  const w=await createTestWorld(),gorr=new AlienBrute(w,{position:new THREE.Vector3(),squad:{targets:[]}});
+ assert.equal(gorr.model.body.scale.y,1,'Reptilian stays at normal character height');
+ assert.deepEqual(gorr.capsule,config.alienPowers.gorr.reptilianCapsule);
  const target={position:new THREE.Vector3(0,0,1),health:new HealthComponent(200)};target.health.damageMultiplier=.7;
  gorr._slam(target);assert.equal(target.health.currentHealth,150);
  for(const id of ['galiant','bahamut-nt','bahamut-xvi']){const m=new AlienModel({characterId:id});assert.equal(m.canFly,id!=='galiant');assert.equal(m.hasGun,false);m.dispose();}
  gorr.dispose();
 });
 
-test('boss resurrection takes at most ten dead aliens per cast and places them inside the hall',async()=>{
+test('boss resurrection never leaves more than seven living aliens in the hall',async()=>{
  const w=await createTestWorld(),squad=new AlienSquad(w,{targets:[],alertRadius:50,corpseSeconds:8});
  const created=[];const level={gameWorld:w,squad,player:{position:new THREE.Vector3()},createAlien(type,x,z,y){const a=new AlienTrooper(w,{position:new THREE.Vector3(x,y,z),squad});created.push(a);squad.add(a);return a;}};
  const hall={centre:new THREE.Vector3(),contains:(x,z)=>Math.abs(x)<20 && Math.abs(z)<26};
  const arena=new BossArena(level,hall);
+ for(let i=0;i<2;i++)squad.add(new AlienTrooper(w,{position:new THREE.Vector3(i,0,0),squad}));
  for(let i=0;i<14;i++)squad.fallen.push({actor:null,id:i%2 ? 'gorr' : 'galiant'});
- assert.equal(arena._resurrect(),10);assert.equal(squad.fallen.length,4);
+ assert.equal(arena._resurrect(),5);assert.equal(squad.fallen.length,9);
  assert.ok(created.every(a=>hall.contains(a.position.x,a.position.z)));
- assert.equal(arena._resurrect(),4);assert.equal(squad.fallen.length,0);squad.dispose();
+ assert.equal(arena._resurrect(),0);assert.equal(squad.fallen.length,9);squad.dispose();
 });
 
-test('actual Gorr, red and black attacks use bullets, acid and fire with their own final damage ranges',async()=>{
+test('Gorr fires bullets, ground aliens strike without projectiles, and flyers breathe fire',async()=>{
  const w=await createTestWorld();let shot;
  w.projectilePool={firePlasma:options=>{shot=options;return options;}};
  const target={position:new THREE.Vector3(0,0,-10),health:new HealthComponent(100)};
  const squad={targets:[target]};
  const gorr=new AlienBrute(w,{position:new THREE.Vector3(),squad});gorr.perception.target=target;gorr.updateAttack(1);
  assert.equal(shot.attack,'bullet');assert.ok(shot.fraction>=.03 && shot.fraction<=.05);
- const red=new AlienTrooper(w,{position:new THREE.Vector3(),squad});red._fireAt(target);
- assert.equal(shot.attack,'slime');assert.equal(shot.fraction,.1);
+ const red=new AlienTrooper(w,{position:new THREE.Vector3(),squad});
+ target.position.z=-3;red.perception.target=target;red.brain.change('engage');red._pauseTimer=0;
+ const before=target.health.currentHealth,bullet=shot;red.updateAttack(0.1);
+ assert.equal(target.health.currentHealth,before-10);assert.equal(shot,bullet);
  const black=new AlienSniper(w,{position:new THREE.Vector3(),squad});black._fireAt(target);
  assert.equal(shot.attack,'fire');assert.ok(shot.fraction>=.15 && shot.fraction<=.2);
  for(const a of [gorr,red,black])a.dispose();
+});
+
+test('Elite Afton pounces quickly while Heavy Bot charges and slams',async()=>{
+ const w=await createTestWorld(),target={position:new THREE.Vector3(0,0,-4),health:new HealthComponent(100)};
+ const eliteModel=new AlienModel({characterId:'galiant',characterOptions:{assetUrl:'/assets/characters/elite-afton.glb'}});
+ const elite=new AlienTrooper(w,{position:new THREE.Vector3(),squad:{targets:[target]},model:eliteModel});
+ elite.perception.target=target;elite.brain.change('engage');elite._pauseTimer=0;elite.brain.update(0.1);
+ assert.ok(elite.moveSpeed>elite.cfg.runSpeed*config.groundAlienPowers.dash.speedMultiplier);
+ target.position.z=-2;elite.updateAttack(0.1);
+ assert.equal(elite.model.groundPower,'dash');assert.equal(target.health.currentHealth,92);
+ const heavyModel=new AlienModel({characterId:'galiant',characterOptions:{assetUrl:'/assets/characters/heavy-bot.glb'}});
+ const heavy=new AlienHeavy(w,{position:new THREE.Vector3(),squad:{targets:[target]},model:heavyModel});
+ heavy._slam(target);
+ assert.equal(heavy.model.groundPower,'charge');assert.equal(target.health.currentHealth,80);
+ elite.dispose();heavy.dispose();
 });
 
 test('level-two factories exclude black and white aliens; level three adds black and reserves white for the Warden',async()=>{

@@ -9,6 +9,39 @@ const assets = new Map();
 const X = new THREE.Vector3(1, 0, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion();
+const collectionRig = {
+  'heavy-bot.glb': {
+    head: /^mixamorig_Head_06$/, spine: /^mixamorig_Spine2_04$/,
+    leftUpperArm: /^mixamorig_LeftArm_09$/, leftForearm: /^mixamorig_LeftForeArm_010$/, leftHand: /^mixamorig_LeftHand_011$/,
+    rightUpperArm: /^mixamorig_RightArm_033$/, rightForearm: /^mixamorig_RightForeArm_034$/, rightHand: /^mixamorig_RightHand_035$/,
+    leftThigh: /^mixamorig_LeftUpLeg_056$/, leftShin: /^mixamorig_LeftLeg_057$/, leftFoot: /^mixamorig_LeftFoot_058$/,
+    rightThigh: /^mixamorig_RightUpLeg_061$/, rightShin: /^mixamorig_RightLeg_00$/, rightFoot: /^mixamorig_RightFoot_062$/
+  },
+  'elite-afton.glb': {
+    head: /^bip01_head_Armature$/, spine: /^bip01_spine1_Armature$/,
+    leftUpperArm: /^bip01_l_upperarm_Armature$/, leftForearm: /^bip01_l_forearm_Armature$/, leftHand: /^bip01_l_hand_Armature$/,
+    rightUpperArm: /^bip01_r_upperarm_Armature$/, rightForearm: /^bip01_r_forearm_Armature$/, rightHand: /^bip01_r_hand_Armature$/,
+    leftThigh: /^bip01_l_thigh_Armature$/, leftShin: /^bip01_l_calf_Armature$/, leftFoot: /^bip01_l_foot_Armature$/,
+    rightThigh: /^bip01_r_thigh_Armature$/, rightShin: /^bip01_r_calf_Armature$/, rightFoot: /^bip01_r_foot_Armature$/
+  },
+  'alien-reptilian.glb': {
+    head: /^head_09$/,
+    spine: /^spine_03_06$/,
+    leftUpperArm: /^upperarm_l_020$/, leftForearm: /^lowerarm_l_021$/, leftHand: /^hand_l_024$/,
+    rightUpperArm: /^upperarm_r_048$/, rightForearm: /^lowerarm_r_049$/, rightHand: /^hand_r_052$/,
+    leftThigh: /^thigh_l_071$/, leftShin: /^calf_l_072$/, leftFoot: /^foot_l_073$/,
+    rightThigh: /^thigh_r_086$/, rightShin: /^calf_r_087$/, rightFoot: /^foot_r_089$/
+  },
+  'distortus-rex.glb': {
+    head: /^head_neck_upper_040$/,
+    spine: /^spine_upper_038$/,
+    leftUpperArm: /^arm_left_shoulder_2_059$/, leftForearm: /^arm_left_elbow_060$/, leftHand: /^arm_left_wrist_061$/,
+    rightUpperArm: /^arm_right_shoulder_2_079$/, rightForearm: /^arm_right_elbow_080$/, rightHand: /^arm_right_wrist_081$/,
+    leftThigh: /^leg_left_thigh_06$/, leftShin: /^leg_left_knee_07$/, leftFoot: /^leg_left_ankle_09$/,
+    rightThigh: /^leg_right_thigh_019$/, rightShin: /^leg_right_knee_020$/, rightFoot: /^leg_right_ankle_022$/,
+    tail: /^tail_1_032$/
+  }
+};
 // A boot must never plant on another character's capsule (including a nearby ally).
 const terrainSupport = collider => !collider.userData?.entity?.health;
 
@@ -121,7 +154,7 @@ export class CharacterVisual {
     this.nativeActions = {};
     this.nativeAction = null;
     this.nativeShout = 0;
-    this.lease = customAssetUrl ? acquire(id, { assetUrl: customAssetUrl }) : acquireAsset(id);
+    this.lease = acquireAsset !== acquire ? acquireAsset(id) : customAssetUrl ? acquire(id, { assetUrl: customAssetUrl }) : acquire(id);
     this.ready = this.lease.promise.then((asset) => {
       if (this.disposed) return false;
       this._attach(asset);
@@ -173,9 +206,12 @@ export class CharacterVisual {
         };
         node.material = Array.isArray(node.material) ? node.material.map(copy) : copy(node.material);
       }
-      if (node.isBone && node.name.startsWith('SC_')) {
+      const rig = Object.entries(collectionRig).find(([asset]) => this.characterOptions.assetUrl?.endsWith(asset))?.[1];
+      const role = node.isBone && (node.name.startsWith('SC_') ? node.name.slice(3)
+        : Object.entries(rig || {}).find(([, pattern]) => pattern.test(node.name))?.[0]);
+      if (role) {
         const world = node.getWorldQuaternion(new THREE.Quaternion()).invert();
-        this.joints[node.name.slice(3)] = { bone: node, rest: node.quaternion.clone(),
+        this.joints[role] = { bone: node, rest: node.quaternion.clone(),
           x: X.clone().applyQuaternion(world), z: Z.clone().applyQuaternion(world), neutral: 0 };
       }
     });
@@ -226,7 +262,7 @@ export class CharacterVisual {
       this.group.add(this.weakSpot);
     }
     this.loaded = true;
-    if (gltf.animations?.length && this.characterOptions?.assetUrl) {
+    if (gltf.animations?.some(clip => /(?:idle|walk|jog|sprint)_.*fit/i.test(clip.name)) && this.characterOptions?.assetUrl) {
       this.nativeMixer = new THREE.AnimationMixer(this.root);
       for (const clip of gltf.animations) {
         const action = this.nativeMixer.clipAction(clip);

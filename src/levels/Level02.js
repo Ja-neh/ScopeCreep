@@ -396,7 +396,7 @@ export class Level02 extends IslandLevel {
       maxAlive: this.cfg.maxAliveAliens
     });
 
-    this._showObjective('OBJECTIVE', 'Get off the ship and hold the beach');
+    this._showObjective('RETAKE THE BEACH', 'Defeat the alien forces, then seize their transport to reach the village.');
   }
 
   /** Per-frame scenario logic: the mission's states. */
@@ -443,7 +443,7 @@ export class Level02 extends IslandLevel {
           this.state = 'objective';
           this.beacon.setVisible(true);
           this._setMusic('tense');
-          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The island is quiet — push on to the gate!', 'success', 3500);
+          if (this.gameWorld.ui) this.gameWorld.ui.showToast('The beach is clear. Push toward the alien transport!', 'success', 3500);
           break;
         }
         this._showObjective('HUNT THE HOLDERS', `${left} aliens still hiding on the island — find them (map: [M])`);
@@ -456,7 +456,7 @@ export class Level02 extends IslandLevel {
           this._startAmbush();
           break;
         }
-        this._showObjective('PUSH TO THE GATE', `Reach the village gate (green beacon) — ${Math.round(distance)} m`);
+        this._showObjective('SECURE THE TRANSPORT', `Follow the green beacon to the alien landing zone — ${Math.round(distance)} m`);
         break;
       }
 
@@ -477,7 +477,7 @@ export class Level02 extends IslandLevel {
         // The walker's fall gets its own beat first: the walk through waits until the view is back
         if (this.killCam && this.killCam.isPlaying) break;
         const distance = Math.hypot(this.player.position.x - this._objectivePoint.x, this.player.position.z - this._objectivePoint.z);
-        this._showObjective('THROUGH THE GATE', `Walk into the village — ${Math.round(distance)} m`);
+        this._showObjective('BOARD THE TRANSPORT', `Reach the captured craft beyond the gate — ${Math.round(distance)} m`);
         if (distance <= this.cfg.objectiveRadius) this._beginGateEntry();
         break;
       }

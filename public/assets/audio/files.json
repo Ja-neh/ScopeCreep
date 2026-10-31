@@ -1,0 +1,94 @@
+{
+  "acid-spit.ogg": {
+    "bytes": 20870,
+    "sha256": "480ee82b690136ea9db6966a3c3033356b8274752795c4e37afd6b6defcfacff"
+  },
+  "cell-release.ogg": {
+    "bytes": 19616,
+    "sha256": "5b7e07eccd4413ad9ef3720c2d14f9cc699f4c50111e9b2f48bd60e6f1a164c3"
+  },
+  "creature-1.wav": {
+    "bytes": 126912,
+    "sha256": "4d4979bb409239dee5e7848c9931d2c28c165069db4cdab5a2e38be52d8fb10d"
+  },
+  "creature-2.wav": {
+    "bytes": 144934,
+    "sha256": "5a017cb86406c3c6f4ffc1a26170654a41571c383091607392c491578cc33a60"
+  },
+  "creature-3.wav": {
+    "bytes": 156950,
+    "sha256": "c0876bdcff8443cd50389ca296cb79dab225091a690b47b8f28ba4c520b196d2"
+  },
+  "creature-snarl.ogg": {
+    "bytes": 75510,
+    "sha256": "dbc7b5e621892b5dbc27ee25230b57daaddbc83daadfb20131988b7367f967e1"
+  },
+  "explosion.ogg": {
+    "bytes": 28274,
+    "sha256": "4b597d658d0ae101f0a030fbeea5fc3a4292ab85f017470a8254a8e7959cbd69"
+  },
+  "fire-breath.ogg": {
+    "bytes": 201216,
+    "sha256": "0fdc474d93f209debf1fc4ea77765a669dcb7676db31b4d8a0a509685bccf374"
+  },
+  "impact.ogg": {
+    "bytes": 15491,
+    "sha256": "956c6612a256aa1a67a2327fffe2454f6b1d82e4c1c2be28fd66916335d5b1d6"
+  },
+  "plasma.ogg": {
+    "bytes": 25566,
+    "sha256": "a56d95794cd732d6c2d66ce488c14cf557fe526c282897c9a77675c2bd9b77e6"
+  },
+  "reload.wav": {
+    "bytes": 274476,
+    "sha256": "efb2d724d634eabe6ba8d3065686abca848bb7497d4d43a5e4aed5e5ea23016f"
+  },
+  "rifle-shot.wav": {
+    "bytes": 73196,
+    "sha256": "47e24c530f11c490b8786ef3206967151a19fe14a0a0ac2779b3aca572f7dbbe"
+  },
+  "ship-engine.ogg": {
+    "bytes": 189900,
+    "sha256": "885aeda16116b715be5e8fd03d0d77959761015e1ca5823fd3b53d4fd965107f"
+  },
+  "step-sand-l1.ogg": {
+    "bytes": 10440,
+    "sha256": "fe6ec00cbe8790be0f37540cb8db8d245ca062337b121003685b6a96700cd0ae"
+  },
+  "step-sand-l2.ogg": {
+    "bytes": 8922,
+    "sha256": "68ba66063efa32b3a83979194582b1420f808cd217ccb5839c382d0e08522e18"
+  },
+  "step-sand-r1.ogg": {
+    "bytes": 9796,
+    "sha256": "439ffe4d6fdf38194caf87e103897354756d69607bd4e48cef923e1ade68ee70"
+  },
+  "step-sand-r2.ogg": {
+    "bytes": 8716,
+    "sha256": "5eec48117da8fa433963ba06a93f67705f0bbd86ac3f473ab7b3bd120bf55fce"
+  },
+  "step-stone-l1.ogg": {
+    "bytes": 8889,
+    "sha256": "2d85768f04a85b6068f3548b33d6e0b0424c5e62b0941042d593affd3a9555d4"
+  },
+  "step-stone-l2.ogg": {
+    "bytes": 8516,
+    "sha256": "1cdd36f02590d2b968b1dd311334e71db8514d7c276e62ad474d01c26b37d4de"
+  },
+  "step-stone-r1.ogg": {
+    "bytes": 8855,
+    "sha256": "d6949efd0255d50efe4853cc077b18e3ee96b155707ccf4199fd530aaac82d58"
+  },
+  "step-stone-r2.ogg": {
+    "bytes": 8346,
+    "sha256": "075c27afbf29b7771cb01a7bf51530b835e82c56698ca5551318fa0c6b7adb9f"
+  },
+  "tractor-beam.ogg": {
+    "bytes": 25672,
+    "sha256": "c2916f2a062c8ddd1aca2826d134fe90847037db31342726ffb0f9097afe339c"
+  },
+  "wing-rush.ogg": {
+    "bytes": 116880,
+    "sha256": "2bec8ff75d81f0c37a6b78bd63beea6c70375e49ee30b0bbe7f38d654d576831"
+  }
+}

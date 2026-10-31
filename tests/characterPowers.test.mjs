@@ -62,7 +62,7 @@ test('Junker Queen shout grants temporary protection, heals, and knocks nearby e
  p.power.update(4);assert.equal(p.health.currentHealth,70);w.clearEntities();
 });
 
-for(const id of ['gorr','galiant','bahamut-nt','bahamut-xvi']) test(`${id}: only Gorr holds a visible rifle; creature projectiles originate at the head`,async()=>{
+for(const id of ['gorr','galiant','bahamut-nt','bahamut-xvi']) test(`${id}: only Gorr holds a visible rifle; flying creature projectiles originate at the head`,async()=>{
  const asset=await loadCharacterAsset(id);
  const m=new AlienModel({characterId:id,characterOptions:{enabled:true,acquireAsset:()=>({promise:Promise.resolve(asset),release(){}})}});
  await m.character.ready;await Promise.resolve();m.animate(0.1,0,false);
@@ -70,7 +70,8 @@ for(const id of ['gorr','galiant','bahamut-nt','bahamut-xvi']) test(`${id}: only
  if(id!=='gorr'){
   assert.equal(m.muzzle.parent,m.character.joints.head.bone);
   const head=m.muzzle.parent.getWorldPosition(new THREE.Vector3()),mouth=m.muzzle.getWorldPosition(new THREE.Vector3());
-  assert.ok(head.distanceTo(mouth)<0.3);m.releasePower();m.animate(0.01,0,true);assert.equal(m._mouthFlash.visible,true);
+  assert.ok(head.distanceTo(mouth)<0.3);m.releasePower();m.animate(0.01,0,true);
+  assert.equal(m._mouthFlash.visible,id!=='galiant');
  }
  m.dispose();
 });

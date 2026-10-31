@@ -76,6 +76,7 @@ export class IslandLevel extends BaseLevel {
     this._squadmatesLost = 0;
     this._respawnTimer = -1;   // Counting down to a respawn (see _respawnPlayer)
     this._mapRefreshTimer = 0; // Throttles redraws of an open island map
+    this._groundAlienVisualIndex = 0;
   }
 
   async init() {
@@ -373,7 +374,11 @@ export class IslandLevel extends BaseLevel {
     const position = new THREE.Vector3(x, y === null ? this.environment.heightAt(x, z) + 0.1 : y, z);
     const AlienType = ALIEN_TYPES[type] || AlienTrooper;
     const characterId=type==='brute' ? 'gorr' : this.village && type==='sniper' ? 'bahamut-nt' : 'galiant';
-    const model=new AlienModel({characterId,scale:type==='heavy' ? 1.6 : type==='brute' ? 1.45 : 1});
+    const base = import.meta.env?.BASE_URL || '/';
+    const collectionAsset = type === 'heavy' ? 'heavy-bot.glb'
+      : type === 'trooper' && this._groundAlienVisualIndex++ % 3 === 0 ? 'elite-afton.glb' : null;
+    const model=new AlienModel({characterId,scale:type==='heavy' ? 1.6 : type==='brute' ? 1.45 : 1,
+      characterOptions: collectionAsset ? { assetUrl: `${base}assets/characters/${collectionAsset}` } : {} });
     return this.squad.add(new AlienType(this.gameWorld, { position, squad: this.squad,model }));
   }
 

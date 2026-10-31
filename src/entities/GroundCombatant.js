@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { footstepSound } from '../core/SoundLibrary.js';
 import { BaseEntity } from './BaseEntity.js';
 import { HealthComponent } from './components/HealthComponent.js';
 import { Ragdoll } from './components/Ragdoll.js';
@@ -390,6 +391,22 @@ export class GroundCombatant extends BaseEntity {
   gameplayUpdate(delta) {
     if (this._hitFlash > 0) this._hitFlash = Math.max(0, this._hitFlash - delta * 8);
     if (this.isDead) this.deathTime += delta;
+    if (this.isDead) return;
+    const movement = Math.hypot(this.actualVelocity.x, this.actualVelocity.z);
+    this._stepTimer = (this._stepTimer || 0) - delta;
+    if (this.isGrounded && movement > config.audioEffects.stepMinSpeed && this._stepTimer <= 0) {
+      this.gameWorld.audio?.play(footstepSound(this.gameWorld), this.position, this.faction === 'aliens' ? .7 : .5);
+      this._stepTimer = movement > 7 ? config.audioEffects.runStepSeconds : config.audioEffects.walkStepSeconds;
+    }
+    if (this.faction === 'aliens') {
+      this._approachSoundTimer = (this._approachSoundTimer || 0) - delta;
+      const player = this.gameWorld.player;
+      if (player && movement > config.audioEffects.stepMinSpeed && this._approachSoundTimer <= 0 &&
+          this.position.distanceToSquared(player.position) < config.audioEffects.alienApproachRange ** 2) {
+        this.gameWorld.audio?.play(this.model?.canFly && !this.isGrounded ? 'wingbeat' : 'alienCall', this.position, .65);
+        this._approachSoundTimer = this.model?.canFly && !this.isGrounded ? config.audioEffects.flightPulseSeconds : config.audioEffects.alienApproachSeconds;
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

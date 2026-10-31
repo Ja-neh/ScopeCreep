@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { BRIG_CAPTIVES, createCaptiveCell } from './level01/CaptiveCells.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BaseLevel } from './BaseLevel.js';
 import { Player } from '../entities/Player.js';
@@ -12,6 +13,11 @@ import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
 import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
 import { AlienModel } from '../entities/models/AlienModel.js';
+import { HumanSquad } from '../ai/HumanSquad.js';
+import { SquadMate } from '../entities/allies/SquadMate.js';
+import { SoldierModel } from '../entities/models/SoldierModel.js';
+import { HUMAN_CHARACTERS, getSelectedCharacter } from '../entities/models/CharacterRoster.js';
+import { Level02 } from './Level02.js';
 import { CONTROL_CENTER_BUTTONS } from '../ui/components/ControlCenterPanel.js';
 import config from '../config.json';
 
@@ -87,9 +93,12 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.weapons = null;
     this.projectilePool = null;
     this.enemySquad = null;
+    this.allies = null;
     this.alienSpawns = [];
     this.missionStage = 'holdingBay';
     this.missionComplete = false;
+    this.captives = [];
+    this._departureSeconds = 0;
     this._fallDeathY = -20;
     this._fallDeathTriggered = false;
     this._controlCenterVisible = false;
@@ -351,10 +360,9 @@ export class Level01InsideSpaceship extends BaseLevel {
       await this._spawnDoorFromEmpty(spawnNode);
     }
 
-    // 7. Spawn Player inside the Stasis Holding Cell as Mr. Overalls (scaled 1.5x, no jumping)
+    // 7. The chosen hero wakes in the holding cell; the other heroes are captives nearby.
     this.player = new Player(this.gameWorld, {
-      characterId: 'mr-overalls',
-      scale: 1.5,
+      characterId: getSelectedCharacter(),
       walkSpeed: 7.5,
       sprintSpeed: 12.5,
       canJump: false,
@@ -371,6 +379,12 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.player.yaw = -Math.PI / 2;
     this.gameWorld.addEntity(this.player);
     this.gameWorld.player = this.player;
+    this._createCaptives();
+    this.allies = this.trackDisposable(new HumanSquad(this.gameWorld, {
+      leader: this.player,
+      isWalkable: (x, z) => x > -22 && x < 22 && z > -90 && z < 90,
+      corpseSeconds: config.levels.level01.corpseSeconds
+    }));
 
     this.weapons = new WeaponController(this.gameWorld, this.player);
     this.gameWorld.addEntity(this.weapons);
@@ -379,10 +393,11 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.gameWorld.projectilePool = this.projectilePool;
 
     this.enemySquad = this.trackDisposable(new AlienSquad(this.gameWorld, {
-      targets: [this.player],
+      targets: this.allies.members,
       alertRadius: 60,
-      corpseSeconds: 8
+      corpseSeconds: config.levels.level01.corpseSeconds
     }));
+    this.allies.enemySquad = this.enemySquad;
     this._spawnMissionAliens(alienSpawnNodes);
     if (this.gameWorld.ui) {
       this.gameWorld.ui.showPlayerHealth();
@@ -398,6 +413,61 @@ export class Level01InsideSpaceship extends BaseLevel {
     this._startIntroCutscene();
 
     console.log(`${this.name} initialized with ${doorSpawnNodes.length} doors, ${lightFixtureNodes.length} corridor fixtures, and red staircase lighting.`);
+  }
+
+  _createCaptives() {
+    const remaining = HUMAN_CHARACTERS.filter((hero) => hero.id !== this.player.characterId);
+    for (let index = 0; index < remaining.length; index++) {
+      const hero = remaining[index];
+      const cell = createCaptiveCell();
+      const { group, cage, geometry, material } = cell;
+      group.position.set(...BRIG_CAPTIVES[index]);
+      group.name = `Captive ${hero.name}`;
+      const model = new SoldierModel({ characterId: hero.id });
+      model.gun.visible = false;
+      model.character?.setArmed?.(false);
+      group.add(model.mesh);
+      this.gameWorld.environmentGroup.add(group);
+      this.captives.push({ hero, group, model, cage, geometry, material, cell, freed: false, progress: 0 });
+    }
+  }
+
+  _updateCaptives(delta) {
+    if (this.isIntroPlaying || this.missionStage !== 'rescue') {
+      this.gameWorld.ui?.hidePrompt?.(this);
+      return;
+    }
+    const nearby = this.captives.find((captive) => !captive.freed &&
+      this.player.position.distanceToSquared(captive.group.position) < config.levels.level01.captiveRescueRadius ** 2);
+    if (!nearby) {
+      this.gameWorld.ui?.hidePrompt?.(this);
+      for (const captive of this.captives) captive.progress = 0;
+      return;
+    }
+    if (this.gameWorld.input.isActionDown('specialAction')) {
+      nearby.progress += delta;
+      if (nearby.progress >= config.levels.level01.captiveRescueSeconds) {
+        nearby.freed = true;
+        nearby.cage.visible = false;
+        nearby.model.mesh.visible = false;
+        const position = nearby.group.position.clone();
+        position.x += position.x < 13 ? -1 : 1;
+        const ally = new SquadMate(this.gameWorld, {
+          name: nearby.hero.name,
+          position,
+          squad: this.allies,
+          model: new SoldierModel({ characterId: nearby.hero.id })
+        });
+        this.allies.add(ally);
+        ally.follow();
+        this.gameWorld.ui?.hidePrompt?.(this);
+        this.gameWorld.ui?.showToast?.(`${nearby.hero.name} is free!`, 'success', 2500);
+        return;
+      }
+    } else {
+      nearby.progress = 0;
+    }
+    this.gameWorld.ui?.showPrompt?.('E', `FREE ${nearby.hero.name.toUpperCase()} (${Math.floor(nearby.progress / config.levels.level01.captiveRescueSeconds * 100)}%)`, '#76e9ec', this);
   }
 
   _spawnMissionAliens(spawnNodes = []) {
@@ -743,6 +813,8 @@ export class Level01InsideSpaceship extends BaseLevel {
     }
 
     if (this.enemySquad) this.enemySquad.update();
+    this.allies?.update(delta);
+    this._updateCaptives(delta);
     this._updateMissionProgress(delta);
     if (this.player?.health && gameWorld.ui) {
       gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
@@ -764,29 +836,36 @@ export class Level01InsideSpaceship extends BaseLevel {
   }
 
   _updateMissionProgress(delta) {
-    if (this.missionComplete || this.isIntroPlaying || !this.enemySquad) return;
+    if (this.missionComplete) {
+      this._departureSeconds -= delta;
+      if (this._departureSeconds <= 0 && !this._departing) {
+        this._departing = true;
+        this.gameWorld.ui?.hideCinematic?.();
+        this.gameWorld.loadLevel(new Level02(this.gameWorld));
+      }
+      return;
+    }
+    if (this.isIntroPlaying || !this.enemySquad) return;
     const floorEnemies = this.enemySquad.members.filter((alien) => !alien.isDead && alien.missionStage === this.missionStage);
 
     if (this.missionStage === 'holdingBay' && floorEnemies.length === 0) {
+      this.missionStage = 'rescue';
+      this.gameWorld.ui?.showObjective('FREE THE CAPTIVES', 'Hold E beside each cage to rescue the other main characters.');
+    } else if (this.missionStage === 'rescue' && this.captives.every((captive) => captive.freed)) {
       this.missionStage = 'stairwell';
-      this.gameWorld.ui?.showObjective('REACH THE STAIRWELL', 'Clear the holding bay, then climb to Floor 2.');
+      this.gameWorld.ui?.showObjective('REACH THE STAIRWELL', 'Everyone is free. Climb to Floor 2 and fight toward the bridge.');
     } else if (this.missionStage === 'stairwell' && this.player.position.y >= 7 && this.player.position.z < 55) {
       this.missionStage = 'lab';
       this.gameWorld.ui?.showObjective('SECURE THE LAB', 'Eliminate the remaining aliens in the research lab.');
     } else if (this.missionStage === 'lab' && !this.enemySquad.members.some((alien) => !alien.isDead && alien.missionStage === 'lab')) {
       this.missionStage = 'controlRoom';
-      this.gameWorld.ui?.showObjective('REACH THE CONTROL ROOM', 'The ship systems can be shut down from the upper control room.');
-    } else if (this.missionStage === 'controlRoom' && this.player.position.distanceTo(this.checkpoint2) < 5) {
+      this.gameWorld.ui?.showObjective('TAKE CONTROL OF THE SHIP', 'Reach the bridge console and turn the transport back toward Earth.');
+    } else if (this.missionStage === 'controlRoom' && this.player.position.distanceTo(CONTROL_CENTER_POSITION) < CONTROL_CENTER_RADIUS) {
       this.missionComplete = true;
+      this._departureSeconds = config.levels.level01.departureSeconds;
+      this.player.setFrozen(true);
       this.gameWorld.ui?.hideObjective?.();
-      this.gameWorld.ui?.showMissionResult?.({
-        title: 'MISSION COMPLETE',
-        message: 'Alien control of the spaceship has been broken.',
-        actions: [
-          { label: 'Play again', onClick: () => this.gameWorld.restartCurrentLevel() },
-          { label: 'Main menu', onClick: () => this.gameWorld.returnToMainMenu() }
-        ]
-      });
+      this.gameWorld.ui?.showCinematic?.('COURSE: EARTH', 'The crew takes the bridge. The captured ship turns toward the occupied island.');
     }
 
     if (this.player.health?.isDead && !this._respawning) {
@@ -1028,8 +1107,8 @@ export class Level01InsideSpaceship extends BaseLevel {
       if (this.gameWorld.ui) {
         this.gameWorld.ui.hideCinematic();
         this.gameWorld.ui.hideFade(false);
-        this.gameWorld.ui.showToast('Find a way out of the Stasis Holding Bay.', 'info', 4000);
-        this.gameWorld.ui.showObjective('ESCAPE THE HOLDING BAY', 'Clear the aliens and find the exit.');
+        this.gameWorld.ui.showToast('Fight through the guards and free the captives.', 'info', 4000);
+        this.gameWorld.ui.showObjective('ESCAPE THE HOLDING BAY', 'Defeat the guards, then rescue every captive.');
       }
 
       // Resume ambient score for level exploration
@@ -1041,6 +1120,13 @@ export class Level01InsideSpaceship extends BaseLevel {
 
   dispose() {
     this._endIntroCutscene();
+    this.gameWorld.ui?.hidePrompt?.(this);
+    for (const captive of this.captives) {
+      captive.group.parent?.remove(captive.group);
+      captive.model.dispose();
+      captive.cell.dispose();
+    }
+    this.captives = [];
     if (this._controlCenterVisible) {
       this.gameWorld.ui?.hideControlCenter();
       this._controlCenterVisible = false;

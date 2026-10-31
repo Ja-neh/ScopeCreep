@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { footstepSound } from '../core/SoundLibrary.js';
 import { BaseEntity } from './BaseEntity.js';
 import { SpringArmCamera, CameraMode } from './components/SpringArmCamera.js';
 import { PlayerModel } from './models/PlayerModel.js';
@@ -472,6 +473,12 @@ export class Player extends BaseEntity {
   gameplayUpdate(delta) {
     this.power.update(delta);
     if (this.isMounted || this.isDevSuspended || this.isFrozen || this.isDead) return;
+    const footSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+    this._stepTimer = (this._stepTimer || 0) - delta;
+    if (this.isGrounded && footSpeed > config.audioEffects.stepMinSpeed && this._stepTimer <= 0) {
+      this.gameWorld.audio?.play(footstepSound(this.gameWorld), null, footSpeed > 7 ? 1 : .7);
+      this._stepTimer = footSpeed > 7 ? config.audioEffects.runStepSeconds : config.audioEffects.walkStepSeconds;
+    }
     if (this.input.isPointerLocked && this.input.isActionJustPressed('characterPower')) {
       if (!this.power.activate() && this.power.cooldown>0) this.gameWorld.ui?.showToast(
         `${this.power.cfg.name}: ready in ${Math.ceil(this.power.cooldown)}s`, 'info', 1200);

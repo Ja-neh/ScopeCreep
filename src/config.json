@@ -1,4 +1,5 @@
 {
+  "audioEffects": { "walkStepSeconds": 0.39, "runStepSeconds": 0.27, "stepMinSpeed": 1.2, "alienApproachSeconds": 4.2, "alienApproachRange": 24, "flightPulseSeconds": 2.4 },
   "weaponPickup": { "radius": 1.1, "reachSeconds": 2.4 },
   "characterPowers": {
     "deadpool": { "name": "Regeneration", "kind": "heal", "cooldown": 16, "duration": 4, "healPerSecond": 14 },
@@ -11,13 +12,18 @@
   "alienTactics": { "strafeDistance": 4, "strafeSeconds": 1.2, "repositionSeconds": 3.2, "dodgeDistance": 5, "dodgeSeconds": 0.7, "dodgeCooldown": 2.5, "dodgeSpeedMultiplier": 1.4, "meleeDistance": 5, "probeHeight": 1, "maxDrop": 0.55 },
   "extraFlyingFraction": 0.2,
   "alienPowers": {
-    "gorr": { "name": "Shadow Blade", "cooldown": 0.5, "fractionMin": 0.03, "fractionMax": 0.05, "swordFraction": 0.25, "speed": 460, "range": 70, "healOnSlam": 18 },
+    "gorr": { "name": "Shadow Blade", "cooldown": 0.5, "fractionMin": 0.03, "fractionMax": 0.05, "swordFraction": 0.25, "speed": 460, "range": 70, "healOnSlam": 18, "reptilianCapsule": { "radius": 0.45, "halfHeight": 0.55 } },
     "galiant": { "name": "Acid Slime", "cooldown": 2.4, "fractionMin": 0.10, "fractionMax": 0.10, "speed": 35, "range": 55 },
     "bahamut-nt": { "name": "Inferno Breath", "fractionMin": 0.15, "fractionMax": 0.20, "cooldown": 3, "speed": 45, "range": 65 },
     "bahamut-xvi": { "name": "Flame Breath" },
     "flight": { "altitude": 4.5, "climbSpeed": 3.5, "response": 2.5, "groundProbe": 40, "landBeforeSlamSeconds": 3 }
   },
-  "bossPowers": { "resurrectCount": 10, "resurrectCooldown": 35, "tornadoCooldown": 14, "tornadoSpeed": 16, "tornadoLifetime": 4, "tornadoRadius": 2.5, "tornadoFraction": 0.15, "tornadoKnockback": 12 },
+  "groundAlienPowers": {
+    "stretch": { "name": "Stretch Strike", "cooldown": 2.4, "range": 3.2, "fraction": 0.10, "speedMultiplier": 1.1 },
+    "dash": { "name": "Quick Pounce", "cooldown": 1.9, "range": 2.4, "fraction": 0.08, "speedMultiplier": 1.25, "burstRange": 6, "burstSeconds": 0.5, "burstMultiplier": 1.6, "burstCooldown": 4 },
+    "charge": { "name": "Armored Charge", "fraction": 0.12, "speedMultiplier": 1.2 }
+  },
+  "bossPowers": { "resurrectCount": 7, "resurrectMaxAlive": 7, "resurrectCooldown": 35, "tornadoCooldown": 14, "tornadoSpeed": 16, "tornadoLifetime": 4, "tornadoRadius": 2.5, "tornadoFraction": 0.15, "tornadoKnockback": 12 },
   "projectiles": {
     "flak": {
       "capacity": 100,
@@ -470,6 +476,12 @@
     }
   },
   "levels": {
+    "level01": {
+      "captiveRescueRadius": 4,
+      "captiveRescueSeconds": 1.2,
+      "departureSeconds": 6,
+      "corpseSeconds": 8
+    },
     "level02": {
       "firstWaveTriggerSeconds": 30,
       "betweenWavesSeconds": 8,

@@ -148,6 +148,10 @@ export class GameWorld {
     this._onMainMenuRequested = callback;
   }
 
+  setLevelOpeningHandler(callback) {
+    this._onBeforeLevelLoad = callback;
+  }
+
   /**
    * Loads and initializes a new level stage.
    * Tears down any previously active level and frees GPU and physics resources.
@@ -156,6 +160,14 @@ export class GameWorld {
   async loadLevel(newLevel) {
     if (this.isLevelLoading) return;
     this.isLevelLoading = true;
+    if (this._onBeforeLevelLoad) {
+      const wasPaused=this.isPaused;
+      this.isPaused=true;
+      try { await this._onBeforeLevelLoad(newLevel); }
+      catch (error) { console.error('Level opening failed:',error); }
+      this.isPaused=wasPaused;
+      this.clock.getDelta();
+    }
     if (this.ui) this.ui.showFade(); // The handover happens behind black; the new stage fades in built
 
     // 1. Tear down previous level
@@ -241,7 +253,7 @@ export class GameWorld {
    * Toggles pause state if inside an active level
    */
   togglePause() {
-    if (!this.currentLevel) return;
+    if (!this.currentLevel || this.isLevelLoading) return;
     if (this.isPaused) {
       this.resume();
     } else {
@@ -323,11 +335,12 @@ export class GameWorld {
    * tone mapping / grade tail), straight onto the canvas otherwise.
    */
   _renderFrame() {
-    const camera = this.getActiveCamera();
+    const scene = this.cinematic?.scene || this.scene;
+    const camera = this.cinematic?.camera || this.getActiveCamera();
     if (this.postStack) {
-      this.postStack.render(this.scene, camera);
+      this.postStack.render(scene, camera);
     } else {
-      this.renderer.render(this.scene, camera);
+      this.renderer.render(scene, camera);
     }
   }
 
@@ -439,6 +452,14 @@ export class GameWorld {
     this.animationFrameId = requestAnimationFrame(this._loop);
 
     const delta = Math.min(this.clock.getDelta(), 0.1);
+
+    // The campaign film owns its own 3D scene and camera. Gameplay stays frozen behind it.
+    if (this.cinematic) {
+      this.cinematic.update(delta);
+      this._renderFrame();
+      this.input.update();
+      return;
+    }
 
     // =========================================================================
     // PHASE 1: INPUT & GLOBAL HOTKEYS
@@ -568,6 +589,10 @@ export class GameWorld {
 
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
+    if (this.cinematic?.camera) {
+      this.cinematic.camera.aspect = aspect;
+      this.cinematic.camera.updateProjectionMatrix();
+    }
 
     if (this.activeCamera && this.activeCamera !== this.camera && this.activeCamera.isPerspectiveCamera) {
       this.activeCamera.aspect = aspect;
@@ -583,6 +608,7 @@ export class GameWorld {
    */
   dispose() {
     this.stop();
+    this.campaignCinematic?.dispose();
     window.removeEventListener('resize', this._onResize);
     this.input.dispose();
 
