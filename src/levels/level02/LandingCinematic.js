@@ -174,7 +174,7 @@ export class LandingCinematic extends BaseEntity {
     this.elapsed += delta;
     const t = Math.min(1, Math.max(0, this.elapsed - this.holdSeconds) / (this.duration - this.holdSeconds));
     this._pose(t);
-    if (this.onFrame) this.onFrame(t, this.elapsed);
+    if (this.onFrame) this.onFrame(t, this.elapsed, delta);
     if (t >= 1) this.finish();
   }
 

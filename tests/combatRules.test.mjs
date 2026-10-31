@@ -108,12 +108,12 @@ test('Elite Afton pounces quickly while Heavy Bot charges and slams',async()=>{
  elite.dispose();heavy.dispose();
 });
 
-test('level-two factories exclude black and white aliens; level three adds black and reserves white for the Warden',async()=>{
+test('both island levels support black flyers and reserve white for the Warden',async()=>{
  const w=await createTestWorld(),squad=new AlienSquad(w,{targets:[],alertRadius:50,corpseSeconds:8});
  const level={gameWorld:w,squad,environment:{heightAt:()=>0},village:null};
  for(const type of ['brute','trooper','sniper','heavy']){
   const a=IslandLevel.prototype.createAlien.call(level,type,0,0);
-  assert.equal(a.model.character.id,type==='brute' ? 'gorr' : 'galiant');
+  assert.equal(a.model.character.id,type==='brute' ? 'gorr' : type==='sniper' ? 'bahamut-nt' : 'galiant');
  }
  level.village={};
  const black=IslandLevel.prototype.createAlien.call(level,'sniper',0,0);assert.equal(black.model.character.id,'bahamut-nt');

@@ -1,4 +1,5 @@
 export const HUMAN_CHARACTERS = [
+  { id: 'bishop', name: 'Bishop / Lance Henriksen' },
   { id: 'deadpool', name: 'Deadpool' },
   { id: 'ashe', name: 'Ashe' },
   { id: 'junker-queen', name: 'Junker Queen' },

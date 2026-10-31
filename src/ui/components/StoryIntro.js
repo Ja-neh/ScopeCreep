@@ -114,10 +114,11 @@ export class StoryIntro {
     return new Promise(resolve=>{this.resolve=resolve;});
   }
 
-  showLevel(levelName) {
+  showLevel(levelName, { automatic = false } = {}) {
     const opening=LEVEL_OPENINGS[levelName];
     if (!opening) return Promise.resolve();
     this.finish();
+    this.automatic = automatic;
     this.mode='level';this.opening=opening;
     this.element.classList.remove('ui-hidden');
     this.element.classList.add('ui-cinematic');
@@ -145,9 +146,12 @@ export class StoryIntro {
     this.mission.textContent=this.opening.mission;this.mission.hidden=false;
     this.skipButton.hidden=true;this.continueButton.hidden=false;
     this.continueButton.focus();
+    if (this.automatic) this.missionTimer = setTimeout(() => this.finish(), 3500);
   }
 
   finish() {
+    clearTimeout(this.missionTimer);
+    this.automatic = false;
     this.cinematic?.stop();
     this.element.classList.remove('ui-mission-briefing');
     this.element.classList.add('ui-hidden');

@@ -24,7 +24,7 @@ function teardown(world, level) {
 
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
-test('one additional flying alien accompanies every five normal arrivals without replacing them',()=>{
+test('one additional flying alien accompanies every two normal arrivals without replacing them',()=>{
   const level={cfg:{maxAliveAliens:22},squad:{members:[]},player:{position:{x:0,y:0,z:0}},_flyingSpawnCredit:0};
   level.createAlien=(type,x,z)=>{const alien={type,position:{x,z},isDead:false,assault(target){this.target=target;}};level.squad.members.push(alien);return alien;};
   for(let i=0;i<10;i++){
@@ -33,7 +33,7 @@ test('one additional flying alien accompanies every five normal arrivals without
   }
   assert.equal(level.squad.members.filter(a=>!a.isExtraFlyer).length,10);
   const extra=level.squad.members.filter(a=>a.isExtraFlyer);
-  assert.equal(extra.length,2);
+  assert.equal(extra.length,5);
   assert.ok(extra.every(a=>a.type==='sniper' && a.target===level.player.position));
 });
 

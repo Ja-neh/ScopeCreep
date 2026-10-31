@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import config from '../../config.json';
-const POWER_COLORS={'deadpool':16729156,'ashe':16762704,'firion':7855615,'junker-queen':16744256,'bob':6747903,'mr-overalls':3718648};
+const POWER_COLORS={'bishop':3718648,'deadpool':16729156,'ashe':16762704,'firion':7855615,'junker-queen':16744256,'bob':6747903,'mr-overalls':3718648};
 
 /** Owned by a player/squadmate: gameplay in Phase 5, its single reused effect in Phase 6. */
 export class CharacterPower {

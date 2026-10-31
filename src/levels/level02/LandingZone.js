@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { AnchoredShip } from './AnchoredShip.js';
+import { SquadTransport } from './SquadTransport.js';
 import { HelicopterModel } from '../../entities/models/HelicopterModel.js';
 import { HelicopterArrival } from './HelicopterArrival.js';
 
@@ -76,31 +76,15 @@ export class LandingZone {
   }
 
   async build() {
-    const group = this.gameWorld.environmentGroup;
-
-    // 1. Anchored ship
-    this.ship = new AnchoredShip(this.gameWorld, { position: SHIP_POSITION, heading: SHIP_HEADING });
-    await this.ship.load();
-    group.add(this.ship.mesh);
-
-    // 2. Boarding ramp, platform and gangway, built in the ship's frame
-    this.boarding = new THREE.Group();
-    this.boarding.name = 'LandingZone_Boarding';
-    this.boarding.position.copy(this.ship.mesh.position);
-    this.boarding.quaternion.copy(this.ship.mesh.quaternion);
-    this.boarding.updateMatrixWorld(true);
-    group.add(this.boarding);
-    this._buildBoarding();
-
-    // 3. Helicopters parked on the sand
-    for (const spot of HELICOPTER_SPOTS) {
-      this._parkHelicopter(spot);
-    }
-
-    // 4. Room for the ammo crate between them
-    const crate = SUPPLY_CRATE_SPOT;
-    this.spawnPoints.supplyCrate = new THREE.Vector3(crate.x, this.environment.heightAt(crate.x, crate.z), crate.z);
-    this.clearings.push({ x: crate.x, z: crate.z, radius: 3 });
+    this.ship = new SquadTransport(this.gameWorld.environmentGroup, new THREE.Vector3(0, 9, 215));
+    this.ship.mesh.scale.setScalar(3);
+    this.gangway.top.set(0, this.environment.heightAt(0,188)+.3, 188);
+    this.gangway.foot.set(0, this.environment.heightAt(0,175)+.1, 175);
+    this.spawnPoints.gangwayTop=this.gangway.top.clone();
+    this.spawnPoints.gangwayFoot=this.gangway.foot.clone();
+    this.spawnPoints.deck=this.gangway.top.clone();
+    this.spawnPoints.supplyCrate=new THREE.Vector3(-8,this.environment.heightAt(-8,175),175);
+    this.clearings.push({x:0,z:200,radius:48});
   }
 
   /**

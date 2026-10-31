@@ -157,13 +157,14 @@ export class GameWorld {
    * Tears down any previously active level and frees GPU and physics resources.
    * @param {BaseLevel} newLevel - Instance of a class extending BaseLevel
    */
-  async loadLevel(newLevel) {
+  async loadLevel(newLevel, { automatic = false } = {}) {
     if (this.isLevelLoading) return;
     this.isLevelLoading = true;
     if (this._onBeforeLevelLoad) {
+      this.ui?.hideFade();
       const wasPaused=this.isPaused;
       this.isPaused=true;
-      try { await this._onBeforeLevelLoad(newLevel); }
+      try { await this._onBeforeLevelLoad(newLevel, { automatic }); }
       catch (error) { console.error('Level opening failed:',error); }
       this.isPaused=wasPaused;
       this.clock.getDelta();

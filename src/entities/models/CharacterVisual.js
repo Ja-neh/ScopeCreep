@@ -4,12 +4,19 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { TwoBoneIK } from './TwoBoneIK.js';
 import { HumanoidAnimationPlayer } from './HumanoidAnimationPlayer.js';
 
-export const CHARACTER_IDS = ['deadpool', 'ashe', 'firion', 'junker-queen', 'gorr', 'bob', 'galiant', 'bahamut-nt', 'bahamut-xvi'];
+export const CHARACTER_IDS = ['bishop', 'deadpool', 'ashe', 'firion', 'junker-queen', 'gorr', 'bob', 'galiant', 'bahamut-nt', 'bahamut-xvi'];
 const assets = new Map();
 const X = new THREE.Vector3(1, 0, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion();
 const collectionRig = {
+  'Mr-overalls.glb': {
+    head: /^head$/, spine: /^spine_03$/,
+    leftUpperArm: /^upperarm_l$/, leftForearm: /^lowerarm_l$/, leftHand: /^hand_l$/,
+    rightUpperArm: /^upperarm_r$/, rightForearm: /^lowerarm_r$/, rightHand: /^hand_r$/,
+    leftThigh: /^thigh_l$/, leftShin: /^calf_l$/, leftFoot: /^foot_l$/,
+    rightThigh: /^thigh_r$/, rightShin: /^calf_r$/, rightFoot: /^foot_r$/
+  },
   'heavy-bot.glb': {
     head: /^mixamorig_Head_06$/, spine: /^mixamorig_Spine2_04$/,
     leftUpperArm: /^mixamorig_LeftArm_09$/, leftForearm: /^mixamorig_LeftForeArm_010$/, leftHand: /^mixamorig_LeftHand_011$/,
@@ -149,7 +156,8 @@ export class CharacterVisual {
     this._weakSpot = weakSpot;
     this.ready = Promise.resolve(false);
     if (!enabled) return;
-    const customAssetUrl = characterOptions.assetUrl;
+    if (id === 'bishop') this.characterOptions = { ...characterOptions, assetUrl: `${import.meta.env?.BASE_URL || '/'}assets/Mr-overalls.glb` };
+    const customAssetUrl = this.characterOptions.assetUrl;
     this.nativeMixer = null;
     this.nativeActions = {};
     this.nativeAction = null;
@@ -265,7 +273,9 @@ export class CharacterVisual {
     if (gltf.animations?.some(clip => /(?:idle|walk|jog|sprint)_.*fit/i.test(clip.name)) && this.characterOptions?.assetUrl) {
       this.nativeMixer = new THREE.AnimationMixer(this.root);
       for (const clip of gltf.animations) {
-        const action = this.nativeMixer.clipAction(clip);
+        const inPlace = clip.clone();
+        inPlace.tracks = inPlace.tracks.filter(track => !/(?:^|\/|\.)root\.position$/i.test(track.name));
+        const action = this.nativeMixer.clipAction(inPlace);
         const normalized = clip.name.toLowerCase().replace(/[^a-z]+/g, '_');
         this.nativeActions[normalized] = action;
       }

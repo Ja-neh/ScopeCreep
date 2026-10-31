@@ -6,6 +6,7 @@ import { IslandBattlefield } from './level02/IslandBattlefield.js';
 import { DestructibleCover } from './level02/DestructibleCover.js';
 import { ObjectiveBeacon } from './level02/ObjectiveBeacon.js';
 import { SupplyCrate } from './level02/SupplyCrate.js';
+import { RevivePoint } from './level03/RevivePoint.js';
 import { IntelTrail } from './level02/IntelTrail.js';
 import { VillageSmoke } from './level02/VillageSmoke.js';
 import { BeachGulls } from './level02/BeachGulls.js';
@@ -145,7 +146,7 @@ const RALLY_POSTS = [
  * Opening: a camera sweep while the AI crew file down the gangway and the two helicopters fly
  * in and land; their pilots climb out and guard them. In a solo game the player leads 4 AI
  * squadmates (the ship's crew is always 5), who wait on the sand, then follow the player in
- * formation and fight alongside them. A supply crate stands between the helicopters (hold [E] to
+ * formation and fight alongside them. A supply crate stands at the glowing beach checkpoints (hold [E] to
  * patch up).
  *
  * Flow: landing (until the player is ashore or the timer runs out) -> waves -> hunt (the survivors
@@ -230,7 +231,7 @@ export class Level02 extends IslandLevel {
     this.wreckage = this.trackDisposable(new BeachWreckage(this.gameWorld, this.environment, {
       clearings: [...this.landingZone.clearings, ...this._extraClearings()]
     }));
-    this.wreckage.build();
+    // The escaped alien carrier is the only beach arrival vehicle.
     this.battlefield = this.trackDisposable(new IslandBattlefield(this.gameWorld, this.environment, [...this.landingZone.clearings, ...this._extraClearings()]));
     this.battlefield.build();
     // The village gate on the plateau rim: where the path leaves the beach for the village, and
@@ -245,7 +246,8 @@ export class Level02 extends IslandLevel {
 
   _clearings() {
     const gateClearings = this.gate ? this.gate.clearings : [];
-    return [...this.landingZone.clearings, ...this._extraClearings(), ...gateClearings];
+    const crests=[170,100,30,-40,-110,-180].map(z=>({x:this.environment.pathCentreX(z)+5,z,radius:6}));
+    return [...this.landingZone.clearings, ...this._extraClearings(), ...gateClearings,...crests];
   }
 
   /** Once the scenery stands: give it health so firefights eat into it (see DestructibleCover). */
@@ -269,8 +271,31 @@ export class Level02 extends IslandLevel {
     return { position: this.landingZone.spawnPoints.gangwayTop, yaw: 0 };
   }
 
-  /** Supply crate between the helicopters, and the islanders' intel trail. The crate yields [E] while the player is reviving a squadmate. */
+  /** Supply crate at the glowing beach checkpoints, and the islanders' intel trail. The crate yields [E] while the player is reviving a squadmate. */
+  createAlien(type,x,z,y=null) {
+    const alien=super.createAlien(type,x,z,y);
+    this._flyerCredit=(this._flyerCredit || 0)+config.extraFlyingFraction;
+    if(this._flyerCredit>=1){
+      this._flyerCredit-=1;
+      const flyer=super.createAlien('sniper',x+3,z,y);
+      flyer.isExtraFlyer=true;flyer.assault(this.player.position);
+    }
+    return alien;
+  }
+
   _createProps() {
+    this.resupplyCrests = [];
+    for (const z of [170, 100, 30, -40, -110, -180]) {
+      const x = this.environment.pathCentreX(z) + 5;
+      const position = new THREE.Vector3(x, this.environment.heightAt(x,z), z);
+      const crest = new RevivePoint(this.gameWorld, {
+        name: 'Beach resupply checkpoint', position, player: this.player, radius: 4,
+        onReached: point => { this.lastRevivePoint=point; this._checkpoint.copy(point.respawnPosition); }
+      });
+      this.gameWorld.addEntity(crest); this.resupplyCrests.push(crest);
+      this.gameWorld.addEntity(new SupplyCrate(this.gameWorld, { position: position.clone().add(new THREE.Vector3(1.5,0,0)),
+        player:this.player,weapons:this.weapons,isSuppressed:()=>this._reviveCandidate()!==null }));
+    }
     this.supplyCrate = new SupplyCrate(this.gameWorld, {
       position: this.landingZone.spawnPoints.supplyCrate,
       player: this.player,
@@ -322,7 +347,7 @@ export class Level02 extends IslandLevel {
   }
 
   _lowHealthHint() {
-    return 'Low health! Patch up at the supply crate between the helicopters — hold [E].';
+    return 'Low health! Patch up at the supply crate at the glowing beach checkpoints — hold [E].';
   }
 
   // ---------------------------------------------------------------------------
@@ -405,6 +430,7 @@ export class Level02 extends IslandLevel {
 
     switch (this.state) {
       case 'landing':
+        if (this.cinematic && !this.cinematic.isFinished) break;
         if (this._isPlayerAshore() || this.elapsed >= this.cfg.firstWaveTriggerSeconds) {
           this.state = 'waves';
           this.waves.start();
@@ -490,7 +516,7 @@ export class Level02 extends IslandLevel {
           this._gateEntryFade -= delta;
           if (this._gateEntryFade <= 0) {
             this._chained = true;
-            this.gameWorld.loadLevel(this._nextLevel());
+              this.gameWorld.loadLevel(this._nextLevel(), { automatic: true });
           }
         }
         break;
@@ -857,9 +883,9 @@ export class Level02 extends IslandLevel {
     const ground = this.environment.heightAt(gate.x + 18, gate.z - 20);
     const pad = new THREE.Vector3(gate.x + 18, ground + 3, gate.z - 20);
     this.transport = this.trackDisposable(new SquadTransport(this.gameWorld.scene, pad));
-    const boarding = pad.clone().add(new THREE.Vector3(0, -2, 6));
+    const boarding = pad.clone().add(new THREE.Vector3(0, -2, -12));
     const start = this.player.position.clone();
-    const crew = this.allies.members.filter(Boolean);
+    const crew = this.allies.mates.filter(Boolean);
     const crewStarts = crew.map((mate) => mate.position.clone());
     this.cinematic = new LandingCinematic(this.gameWorld, {
       player: this.player,
@@ -869,19 +895,21 @@ export class Level02 extends IslandLevel {
       endOnPlayer: false,
       flightPath: [pad.clone().add(new THREE.Vector3(16, 9, 22)), pad.clone().add(new THREE.Vector3(-14, 12, 15)), pad.clone().add(new THREE.Vector3(8, 24, -30))],
       focus: (out) => out.copy(this.transport.mesh.position),
-      onFrame: (t, elapsed) => {
+      onFrame: (t, elapsed, delta) => {
         const board = THREE.MathUtils.smoothstep(elapsed, 0.5, 3.5);
         this.player.teleport(
           THREE.MathUtils.lerp(start.x, boarding.x, board),
           THREE.MathUtils.lerp(start.y, boarding.y, board),
           THREE.MathUtils.lerp(start.z, boarding.z, board)
         );
+        this.player.model.character.animate(delta || 0,elapsed>.5&&elapsed<3.5?3:0,false);
         for (let i = 0; i < crew.length; i++) {
           const from = crewStarts[i];
           const destination = boarding.clone().add(new THREE.Vector3((i - (crew.length - 1) / 2) * 1.4, 0, 0));
           const step = THREE.MathUtils.smoothstep(elapsed, 0.8 + i * 0.2, 3.8 + i * 0.2);
           crew[i].teleport(THREE.MathUtils.lerp(from.x, destination.x, step), THREE.MathUtils.lerp(from.y, destination.y, step), THREE.MathUtils.lerp(from.z, destination.z, step));
           crew[i].mesh.visible = elapsed < 4.8;
+          crew[i].model.animate(delta || 0,step>0&&step<1?3:0,false);
         }
         this.player.mesh.visible = elapsed < 4.8;
         const lift = THREE.MathUtils.smoothstep(elapsed, 4.5, 8.5);
@@ -913,86 +941,32 @@ export class Level02 extends IslandLevel {
    * The opening: crew on the gangway, helicopters flying in, and the camera sweep.
    */
   _beginLanding() {
-    this.spawnCrew({ onGangway: true });
-    this.landingZone.flyInHelicopters({ onTouchdown: (bay, index) => this._pilotClimbsOut(bay, index) });
-
-    const operators = this.allies.members.filter((member) => member && member.mesh);
-    const squadCenter = new THREE.Vector3();
-    const bounds = new THREE.Box3();
-    for (const operator of operators) {
-      squadCenter.add(operator.position);
-      bounds.expandByPoint(operator.position);
-    }
-    squadCenter.multiplyScalar(1 / Math.max(1, operators.length));
-    squadCenter.y += 1.1;
-    const squadRadius = Math.max(13, bounds.getSize(new THREE.Vector3()).length() * 0.55 + 5);
-    const teamFacing = new THREE.Vector3();
-    for (const operator of operators) {
-      const yaw = operator.yaw ?? operator.mesh.rotation.y;
-      teamFacing.x -= Math.sin(yaw);
-      teamFacing.z -= Math.cos(yaw);
-    }
-    if (teamFacing.lengthSq() < 0.01) teamFacing.set(0, 0, -1);
-    teamFacing.normalize();
-    const teamRevealOrbit = {
-      center: squadCenter,
-      radius: Math.max(30, squadRadius * 1.9),
-      height: 7.5,
-      turns: 0.24,
-      startAngle: Math.atan2(teamFacing.x, teamFacing.z)
-    };
-    const squadReveal = new THREE.Vector3(
-      squadCenter.x + Math.sin(teamRevealOrbit.startAngle) * teamRevealOrbit.radius,
-      squadCenter.y + teamRevealOrbit.height,
-      squadCenter.z + Math.cos(teamRevealOrbit.startAngle) * teamRevealOrbit.radius
-    );
-    const islandOrbit = {
-      center: new THREE.Vector3(0, 22, -140),
-      radius: 420,
-      height: 84,
-      turns: 0.32,
-      seconds: 12.5,
-      startAngle: -1.05
-    };
-    const orbitExitAngle = islandOrbit.startAngle + Math.PI * 2 * islandOrbit.turns;
-    const orbitExit = new THREE.Vector3(
-      islandOrbit.center.x + Math.sin(orbitExitAngle) * islandOrbit.radius,
-      islandOrbit.center.y + islandOrbit.height,
-      islandOrbit.center.z + Math.cos(orbitExitAngle) * islandOrbit.radius
-    );
-    const islandView = new THREE.Vector3(0, 28, -110);
-
-    this.operatorAura = new OperatorIntroAura(operators, 26);
-    this.gameWorld.addEntity(this.operatorAura);
-
-    this.cinematic = new LandingCinematic(this.gameWorld, {
-      player: this.player,
-      title: 'SQUAD DEPLOYMENT',
-      subtitle: 'GET READY. THE WAR FOR THE COAST BEGINS.',
-      duration: 25,
-      handover: [0.97, 0.998],
-      endHoldSeconds: 6,
-      endOrbit: teamRevealOrbit,
-      easing: 'inOut',
-      holdSeconds: 1.4,
-      aimTowards: 0.08,
-      operatorOrbit: islandOrbit,
-      flightPath: [
-        orbitExit,
-        new THREE.Vector3(457, 106, -66),
-        new THREE.Vector3(210, 60, 140),
-        squadReveal
-      ],
-      focus: (out) => {
-        const shotProgress = THREE.MathUtils.smoothstep(this.cinematic?.elapsed || 0, 12.2, 16.4);
-        return out.lerpVectors(islandView, squadCenter, shotProgress);
+    this.spawnCrew(); this._crewFollowing=true;
+    const actors=[this.player,...this.allies.mates];
+    const destinations=actors.map((actor,i)=>new THREE.Vector3((i-(actors.length-1)/2)*2.4,this.environment.heightAt(0,170)+.1,170));
+    actors.forEach(actor=>{actor.mesh.visible=false;});
+    const ship=this.landingZone.ship.mesh, touchdown=ship.position.clone();
+    this.cinematic=new LandingCinematic(this.gameWorld,{
+      player:this.player,title:'RETURN TO THE ISLAND',subtitle:'The captured alien carrier lands on the coast.',
+      duration:12,holdSeconds:0,endOnPlayer:true,
+      flightPath:[new THREE.Vector3(70,40,170),new THREE.Vector3(40,15,150),new THREE.Vector3(16,8,156)],
+      focus:out=>out.set(0,8,195),
+      onFrame:(t,elapsed,delta)=>{
+        const land=THREE.MathUtils.smoothstep(t,0,.4);
+        ship.position.copy(touchdown).add(new THREE.Vector3(0,(1-land)*80,(1-land)*75));
+        actors.forEach((actor,i)=>{
+          const walk=THREE.MathUtils.smoothstep(t,.42+i*.025,.88+i*.015),d=destinations[i];
+          actor.mesh.visible=t>=.42+i*.025;
+          if(actor.mesh.visible){
+            const z=THREE.MathUtils.lerp(188,d.z,walk),x=d.x;
+            actor.teleport(x,this.environment.heightAt(x,z)+.1,z);actor.yaw=0;actor.mesh.rotation.y=0;
+            actor.model.character.animate(delta || 0,walk>0&&walk<1?3:0,false);
+          }
+        });
       },
-      onFinished: () => {
-        if (this.operatorAura) {
-          this.gameWorld.removeEntity(this.operatorAura);
-          this.operatorAura = null;
-        }
-        this._setMusic('ambient');
+      onFinished:()=>{
+        actors.forEach((actor,i)=>{actor.mesh.visible=true;const d=destinations[i];actor.teleport(d.x,d.y,d.z);});
+        ship.position.copy(touchdown);this._setMusic('ambient');
       }
     });
     this.gameWorld.addEntity(this.cinematic);

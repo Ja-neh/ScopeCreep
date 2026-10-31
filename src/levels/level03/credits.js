@@ -28,6 +28,7 @@ export const CREDITS = [
     ]
   },
   { heading: 'CHARACTER ANIMATIONS', lines: [
+    { text: 'Quaternius / ActionForge — Bishop motion clips (CC0)', url: 'https://actionforge.app/' },
     { text: 'Adobe Mixamo — motion clips and Y Bot reference', url: 'https://www.mixamo.com/' },
     'Animations retargeted for the game characters'
   ] },

@@ -373,7 +373,7 @@ export class IslandLevel extends BaseLevel {
   createAlien(type, x, z, y = null) {
     const position = new THREE.Vector3(x, y === null ? this.environment.heightAt(x, z) + 0.1 : y, z);
     const AlienType = ALIEN_TYPES[type] || AlienTrooper;
-    const characterId=type==='brute' ? 'gorr' : this.village && type==='sniper' ? 'bahamut-nt' : 'galiant';
+    const characterId=type==='brute' ? 'gorr' : type==='sniper' ? 'bahamut-nt' : 'galiant';
     const base = import.meta.env?.BASE_URL || '/';
     const collectionAsset = type === 'heavy' ? 'heavy-bot.glb'
       : type === 'trooper' && this._groundAlienVisualIndex++ % 3 === 0 ? 'elite-afton.glb' : null;
@@ -533,6 +533,11 @@ export class IslandLevel extends BaseLevel {
     this._playerDown = false;
     this._playerLost = false;
     player.isLost = false;
+    player.isDead = false;
+    player.setFrozen(false);
+    player.model.character?.resetPose();
+    player.mesh.visible = true;
+    player.mesh.rotation.z = 0;
     this._setPlayerDownPose(false);
     if (!this._shouldStaySuspended()) player.isDevSuspended = false;
     const ui = this.gameWorld.ui;

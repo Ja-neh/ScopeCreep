@@ -93,7 +93,7 @@ export class CampaignCinematic3D {
     this.ships[0].mesh.scale.setScalar(2.6);
     this.ships[1].mesh.scale.setScalar(1.65);
     this.ships[2].mesh.scale.setScalar(1.8);
-    this.ships.forEach((ship) => ship.mesh.rotation.y = Math.PI);
+    this.ships.forEach((ship) => ship.mesh.rotation.y = 0);
     this.cages = [];
     const bar = new THREE.MeshStandardMaterial({ color: 0x64d8d0, emissive: 0x146c6a, metalness: .55 });
     for (const x of [-9, 0, 9]) {
@@ -142,7 +142,7 @@ export class CampaignCinematic3D {
       cell.group.position.set(...position); this.interior.add(cell.group);
       return cell;
     });
-    const brigLight = new THREE.PointLight(0xb8ffe4, 110, 28, 1.3);
+    const brigLight = new THREE.PointLight(0xb8ffe4, 18, 28, 1.3);
     brigLight.position.set(17, 4.3, -47); this.interior.add(brigLight);
     this.shipBlockers = [];
     this.interior.visible = false;

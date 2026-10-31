@@ -2,6 +2,7 @@
   "audioEffects": { "walkStepSeconds": 0.39, "runStepSeconds": 0.27, "stepMinSpeed": 1.2, "alienApproachSeconds": 4.2, "alienApproachRange": 24, "flightPulseSeconds": 2.4 },
   "weaponPickup": { "radius": 1.1, "reachSeconds": 2.4 },
   "characterPowers": {
+    "bishop": { "name": "Synthetic Repair", "kind": "heal", "cooldown": 18, "duration": 5, "healPerSecond": 12 },
     "deadpool": { "name": "Regeneration", "kind": "heal", "cooldown": 16, "duration": 4, "healPerSecond": 14 },
     "ashe": { "name": "Charged Shot", "kind": "shot", "cooldown": 9, "duration": 0.5, "damage": 75, "range": 90 },
     "firion": { "name": "Blade Pulse", "kind": "pulse", "cooldown": 12, "duration": 0.6, "damage": 50, "range": 9, "knockback": 7 },
@@ -10,7 +11,7 @@
     "mr-overalls": { "name": "Adrenaline", "kind": "heal", "cooldown": 15, "duration": 4, "healPerSecond": 10 }
   },
   "alienTactics": { "strafeDistance": 4, "strafeSeconds": 1.2, "repositionSeconds": 3.2, "dodgeDistance": 5, "dodgeSeconds": 0.7, "dodgeCooldown": 2.5, "dodgeSpeedMultiplier": 1.4, "meleeDistance": 5, "probeHeight": 1, "maxDrop": 0.55 },
-  "extraFlyingFraction": 0.2,
+  "extraFlyingFraction": 0.5,
   "alienPowers": {
     "gorr": { "name": "Shadow Blade", "cooldown": 0.5, "fractionMin": 0.03, "fractionMax": 0.05, "swordFraction": 0.25, "speed": 460, "range": 70, "healOnSlam": 18, "reptilianCapsule": { "radius": 0.45, "halfHeight": 0.55 } },
     "galiant": { "name": "Acid Slime", "cooldown": 2.4, "fractionMin": 0.10, "fractionMax": 0.10, "speed": 35, "range": 55 },

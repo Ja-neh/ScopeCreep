@@ -384,8 +384,9 @@ export class Level03 extends IslandLevel {
     const spawn = this.village.spawnPoints.start;
     const touchdown = new THREE.Vector3(spawn.x + 15, spawn.y + 3, spawn.z + 8);
     this.transport = this.trackDisposable(new SquadTransport(this.gameWorld.scene, touchdown.clone().add(new THREE.Vector3(0, 48, 95))));
-    const crew = this.allies.members.filter(Boolean);
+    const crew = this.allies.mates.filter(Boolean);
     const crewDestinations = crew.map((mate) => mate.position.clone());
+    const playerDestination=this.player.position.clone();
     this.player.mesh.visible = false;
     for (const mate of crew) mate.mesh.visible = false;
     let disembarked = false;
@@ -399,7 +400,7 @@ export class Level03 extends IslandLevel {
     const stage = (t, from, to) => turn(Math.min(1, Math.max(0, (t - from) / (to - from))));
     const focus = (out) => {
       const t = (this.cinematic ? this.cinematic.elapsed : 0) / OPENING_SECONDS;
-      if (t < 0.28) return out.copy(this.transport.mesh.position);
+      if (t < 0.5) return out.copy(this.transport.mesh.position);
       out.lerpVectors(wardenChest, middle, stage(t, 0.32, 0.55));
       return out.lerp(gatePoint, stage(t, 0.68, 0.88));
     };
@@ -413,31 +414,35 @@ export class Level03 extends IslandLevel {
       flightPath: [
         touchdown.clone().add(new THREE.Vector3(35, 25, 45)),
         touchdown.clone().add(new THREE.Vector3(-16, 12, 18)),
-        new THREE.Vector3(hall.doorway.x - f.x * 3, hall.doorway.y + 3.2, hall.doorway.z - f.z * 3),
-        new THREE.Vector3(hall.doorway.x + f.x * 8, hall.doorway.y + 8, hall.doorway.z + f.z * 8),
-        new THREE.Vector3(hall.centre.x + 40 + f.x * 70, hall.centre.y + 200, hall.centre.z + f.z * 70),
-        new THREE.Vector3(25, 150, -300),
+        touchdown.clone().add(new THREE.Vector3(12, 8, -18)),
         new THREE.Vector3(gate.x - 6, gatePoint.y + 6, gate.z + 12)
       ],
       defaultFocus: wardenChest,
       aimTowards: 0,
       focus,
-      onFrame: (t) => {
+      onFrame: (t,elapsed,delta) => {
         const landing = THREE.MathUtils.smoothstep(t, 0, 0.22);
         this.transport.mesh.position.copy(touchdown).add(new THREE.Vector3(0, (1 - landing) * 48, (1 - landing) * 95));
         if (t >= 0.22) disembark();
         if (t >= 0.22 && t <= 0.4) {
           const walk = THREE.MathUtils.smoothstep(t, 0.22, 0.4);
+          const px=THREE.MathUtils.lerp(touchdown.x,playerDestination.x,walk);
+          const pz=THREE.MathUtils.lerp(touchdown.z-12,playerDestination.z,walk);
+          this.player.teleport(px,this.environment.heightAt(px,pz)+.1,pz);
+          this.player.model.character.animate(delta || 0,3,false);
           for (let i = 0; i < crew.length; i++) {
             const destination = crewDestinations[i];
-            const ramp = touchdown.clone().add(new THREE.Vector3((i - 2) * 1.3, -2.4, 5));
+            const ramp = touchdown.clone().add(new THREE.Vector3((i - 2) * 1.3, -2.4, -12));
             crew[i].teleport(THREE.MathUtils.lerp(ramp.x, destination.x, walk), THREE.MathUtils.lerp(ramp.y, destination.y, walk), THREE.MathUtils.lerp(ramp.z, destination.z, walk));
+            crew[i].model.animate(delta || 0,3,false);
           }
         }
       },
       // The camera reaches the player: the intro groove stops and the scene is just surf and wind
       onFinished: () => {
         disembark();
+        this.player.teleport(playerDestination.x,playerDestination.y,playerDestination.z);
+        crew.forEach((mate,i)=>mate.teleport(...crewDestinations[i].toArray()));
         this.transport.mesh.visible = false;
         const music = this.gameWorld.music;
         if (music) music.setState('ambient');

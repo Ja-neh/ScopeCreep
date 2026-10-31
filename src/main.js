@@ -77,9 +77,9 @@ async function bootstrap() {
   gameWorld.setMainMenuHandler(() => {
     showMenu();
   });
-  gameWorld.setLevelOpeningHandler((level) => {
+  gameWorld.setLevelOpeningHandler((level, options) => {
     gameWorld.music.setEffectsOnly(true);
-    return gameWorld.ui.storyIntro.showLevel(level.constructor.name);
+    return gameWorld.ui.storyIntro.showLevel(level.constructor.name, options);
   });
 
   // 4. Open with the story, then let the player choose any of the three levels.

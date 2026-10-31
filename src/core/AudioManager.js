@@ -397,7 +397,7 @@ export class AudioManager {
     this._master.connect(ctx.destination);
     if (ctx.state === 'suspended' && typeof ctx.resume === 'function') ctx.resume();
     if (this.onUnlocked) this.onUnlocked(ctx);
-    void this._decodeSamples();
+    if (this._sampleLoad) void this._sampleLoad.then(() => this._decodeSamples()).catch(() => {});
     return ctx;
   }
 
@@ -457,7 +457,8 @@ export class AudioManager {
       source.buffer = buffer;
       source.playbackRate.value = pitch;
       source.connect(voice);
-      source.start(now);
+      const limit = { wingbeat: .85, fire: .7, alienCall: 1.5, hit: .12, hurt: .25 }[name] || buffer.duration;
+      source.start(now, 0, Math.min(limit, buffer.duration));
     } else {
       source = def.build({ ctx, when: now, out: voice, noise: this._ensureNoise(ctx), pitch });
     }

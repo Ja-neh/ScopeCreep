@@ -1,38 +1,40 @@
 import * as THREE from 'three';
 
-/** A lightweight, reusable landing craft for the campaign handoff. */
+/** Moving version of the village generator saucers, with a belly hatch and ramp. */
 export class SquadTransport {
   constructor(parent, position) {
     this.mesh = new THREE.Group();
-    const hull = new THREE.Mesh(new THREE.CapsuleGeometry(3, 8, 6, 12), new THREE.MeshStandardMaterial({ color: 0x344c58, metalness: 0.7, roughness: 0.33 }));
-    hull.rotation.x = Math.PI / 2;
-    this.mesh.add(hull);
-    const canopy = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 8), new THREE.MeshStandardMaterial({ color: 0x142f42, metalness: 0.5, roughness: 0.2, emissive: 0x072337 }));
-    canopy.scale.set(1, 0.55, 1.5);
-    canopy.position.set(0, 1.45, -1);
-    this.mesh.add(canopy);
-    for (const side of [-1, 1]) {
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(8, 0.28, 3.8), new THREE.MeshStandardMaterial({ color: 0x425b66, metalness: 0.75, roughness: 0.35 }));
-      wing.position.set(side * 4.5, -0.1, 1);
-      wing.rotation.y = side * 0.16;
-      this.mesh.add(wing);
-      const thruster = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 2.3, 12), new THREE.MeshStandardMaterial({ color: 0x29424e, metalness: 0.8, roughness: 0.3 }));
-      thruster.rotation.x = Math.PI / 2;
-      thruster.position.set(side * 4.5, -0.25, 2.4);
-      this.mesh.add(thruster);
-      const glow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 16), new THREE.MeshBasicMaterial({ color: 0x6de9ff, side: THREE.DoubleSide }));
-      glow.position.set(side * 4.5, -0.25, 3.6);
-      this.mesh.add(glow);
+    this.mesh.name = 'Alien transport saucer';
+    const hull = new THREE.MeshStandardMaterial({ color: 0x586b73, metalness: .72, roughness: .35 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x243d43, metalness: .7, roughness: .4 });
+    const glow = new THREE.MeshStandardMaterial({ color: 0x39dc9c, emissive: 0x29c98d, emissiveIntensity: 1.4 });
+    const add = (geometry, material, x=0,y=0,z=0) => {
+      const mesh = new THREE.Mesh(geometry,material); mesh.position.set(x,y,z);
+      mesh.castShadow=true; mesh.receiveShadow=true; this.mesh.add(mesh); return mesh;
+    };
+    const profile=[[0,0],[3.6,0],[9,.72],[12,1.44],[12,1.56],[11.52,1.92],[8.64,2.52],[4.2,3],[0,3.12]];
+    add(new THREE.LatheGeometry(profile.map(p=>new THREE.Vector2(...p)),40),hull);
+    const rim=add(new THREE.TorusGeometry(12,.09,6,64),glow,0,1.5);rim.rotation.x=Math.PI/2;
+    const dome=add(new THREE.SphereGeometry(3.6,24,12,0,Math.PI*2,0,Math.PI/2),glow,0,3);
+    dome.scale.y=.67;
+    for(let i=0;i<4;i++) {
+      const angle=Math.PI/4+i*Math.PI/2,x=Math.sin(angle)*7,z=Math.cos(angle)*7;
+      add(new THREE.CylinderGeometry(.22,.32,3,8),dark,x,-1.5,z);
+      add(new THREE.CylinderGeometry(.8,.8,.2,12),dark,x,-2.9,z);
     }
-    this.mesh.position.copy(position);
-    parent.add(this.mesh);
+    for(let i=0;i<16;i++) {
+      const angle=i*Math.PI/8;
+      add(new THREE.BoxGeometry(.5,.18,.3),glow,Math.sin(angle)*11.85,1.65,Math.cos(angle)*11.85);
+    }
+    add(new THREE.CylinderGeometry(1.5,1.5,.1,20),glow,0,-.04,0);
+    const ramp=add(new THREE.BoxGeometry(2.8,.18,11),dark,0,-1.5,-6.8);
+    ramp.rotation.x=-Math.atan2(3,11);
+    this.mesh.position.copy(position); parent.add(this.mesh);
   }
-
   dispose() {
-    this.mesh.parent?.remove(this.mesh);
-    this.mesh.traverse((node) => {
-      node.geometry?.dispose();
-      node.material?.dispose();
-    });
+    this.mesh.removeFromParent();
+    const materials=new Set();
+    this.mesh.traverse(node=>{node.geometry?.dispose();if(node.material)materials.add(node.material);});
+    materials.forEach(m=>m.dispose());
   }
 }

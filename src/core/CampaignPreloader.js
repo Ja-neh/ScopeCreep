@@ -7,7 +7,7 @@ const FILES = [
   ...['deadpool','ashe','firion','junker-queen','bob','gorr','galiant','alien-reptilian',
     'distortus-rex','heavy-bot','elite-afton','bahamut-nt','bahamut-xvi'].map(name=>`characters/${name}.glb`),
   ...['deadpool','ashe','firion','junker-queen','bob','gorr'].map(name=>`animations/${name}.json`),
-  ...['deadpool','ashe','firion','junker-queen','bob'].map(name=>`portraits/${name}.png`)
+  ...['bishop','deadpool','ashe','firion','junker-queen','bob'].map(name=>`portraits/${name}.png`)
 ];
 
 export async function preloadCampaignAssets(onProgress=()=>{}, fetchAsset=fetch) {

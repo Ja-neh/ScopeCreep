@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // The brig's clear floor between its two rows of sleeping pods. Shared by the
 // playable Level 1 and its opening, so the same people occupy the same cells.
 export const BRIG_PLAYER = [19, 0.08, -49];
-export const BRIG_CAPTIVES = [[12, 0.08, -46], [15, 0.08, -46], [18, 0.08, -46], [21, 0.08, -46]];
+export const BRIG_CAPTIVES = [[12, 0.08, -46], [15, 0.08, -46], [18, 0.08, -46], [21, 0.08, -46], [9, 0.08, -46]];
 
 export function createCaptiveCell() {
   const group = new THREE.Group();
