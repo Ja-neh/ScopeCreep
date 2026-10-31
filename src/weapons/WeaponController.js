@@ -49,7 +49,10 @@ export class WeaponController extends BaseEntity {
     onBulletImpact = null,
     showHeldWeapons = true,
     showWeaponHUD = true,
-    hasGun = true
+    hasGun = true,
+    allowSwitching = true,
+    allowQuickMelee = true,
+    gunOnly = false
   } = {}) {
     super('WeaponController');
     this.gameWorld = gameWorld;
@@ -59,6 +62,9 @@ export class WeaponController extends BaseEntity {
     this.showHeldWeapons = showHeldWeapons !== false;
     this.showWeaponHUD = showWeaponHUD !== false;
     this.hasGun = hasGun !== false;
+    this.gunOnly = !!gunOnly;
+    this.allowSwitching = allowSwitching !== false && !this.gunOnly;
+    this.allowQuickMelee = allowQuickMelee !== false && !this.gunOnly;
 
     this.gunCfg = config.weapons.machineGun;
     this.knifeCfg = config.weapons.knife;
@@ -172,16 +178,18 @@ export class WeaponController extends BaseEntity {
     this.isAiming = canAct && this.activeWeapon === 'rifle' && input.isActionDown('aimDownSights');
 
     if (canAct) {
-      if (input.isActionJustPressed('weaponPrimary')) {
-        this._equip('rifle');
-      } else if (input.isActionJustPressed('weaponMelee')) {
-        this._equip('knife');
-      } else if (input.isActionJustPressed('weaponBomb')) {
-        this._equip('bomb');
-      } else if (input.isActionJustPressed('weaponNext')) {
-        this._equip(SLOT_CYCLE[(SLOT_CYCLE.indexOf(this.equipped) + 1) % SLOT_CYCLE.length]);
-      } else if (input.isActionJustPressed('weaponPrev')) {
-        this._equip(SLOT_CYCLE[(SLOT_CYCLE.indexOf(this.equipped) + SLOT_CYCLE.length - 1) % SLOT_CYCLE.length]);
+      if (this.allowSwitching) {
+        if (input.isActionJustPressed('weaponPrimary')) {
+          this._equip('rifle');
+        } else if (input.isActionJustPressed('weaponMelee')) {
+          this._equip('knife');
+        } else if (input.isActionJustPressed('weaponBomb')) {
+          this._equip('bomb');
+        } else if (input.isActionJustPressed('weaponNext')) {
+          this._equip(SLOT_CYCLE[(SLOT_CYCLE.indexOf(this.equipped) + 1) % SLOT_CYCLE.length]);
+        } else if (input.isActionJustPressed('weaponPrev')) {
+          this._equip(SLOT_CYCLE[(SLOT_CYCLE.indexOf(this.equipped) + SLOT_CYCLE.length - 1) % SLOT_CYCLE.length]);
+        }
       }
 
       if (input.isActionJustPressed('reload') && this.equipped === 'rifle') {
@@ -189,7 +197,7 @@ export class WeaponController extends BaseEntity {
       }
 
       // Quick knife: swing without switching weapons
-      if (input.isActionJustPressed('quickMelee') && this.equipped === 'rifle' && this.quickMeleeTimer <= 0 && this.knife.startAttack()) {
+      if (this.allowQuickMelee && input.isActionJustPressed('quickMelee') && this.equipped === 'rifle' && this.quickMeleeTimer <= 0 && this.knife.startAttack()) {
         this.rifle.cancelReload();
         this.quickMeleeTimer = this.knifeCfg.cooldown;
         this._showModels();
@@ -223,6 +231,7 @@ export class WeaponController extends BaseEntity {
   }
 
   _equip(weapon) {
+    if ((this.gunOnly || !this.allowSwitching) && weapon !== 'rifle') return;
     if (weapon === this.equipped) return;
     this.equipped = weapon;
     this.switchTimer = this.switchSeconds;

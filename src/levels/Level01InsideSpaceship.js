@@ -214,6 +214,7 @@ export class Level01InsideSpaceship extends BaseLevel {
     this._fallDeathY = -20;
     this._fallDeathTriggered = false;
     this._controlCenterVisible = false;
+    this.showControlCenterUI = false; // "SHIP CONTROL" UI overlay disabled on the control room dashboard
     this.controlCenterConsole = null;
     this._dashboardHologram = null;
     this._dashboardRadarNeedle = null;
@@ -235,6 +236,7 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.spawnPlayer = new THREE.Vector3(19, 1, -49);
     this.checkpoint1 = new THREE.Vector3(1, 1, 41);
     this.checkpoint2 = new THREE.Vector3(0, 11, 42);
+    this.enableDevCheckpoints = false; // Player cannot use [1], [2], [3] to teleport during normal gameplay
 
     this._tempEffectiveMat = new THREE.Matrix4();
     this._tempGeomCenterMat = new THREE.Matrix4();
@@ -522,6 +524,9 @@ export class Level01InsideSpaceship extends BaseLevel {
       showHeldWeapons: false,
       showWeaponHUD: false,
       hasGun: false,
+      gunOnly: true,
+      allowSwitching: false,
+      allowQuickMelee: false,
       onGunshot: (pos) => {
         if (this.enemySquad) {
           this.enemySquad.reportNoise(pos);
@@ -1198,24 +1203,42 @@ export class Level01InsideSpaceship extends BaseLevel {
       gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
     }
 
-    // Checkpoint navigation shortcuts for easy stage testing
-    if (gameWorld && gameWorld.input && this.player && typeof gameWorld.input.isKeyJustPressed === 'function') {
+    // Checkpoint navigation shortcuts for stage testing (disabled for player in normal gameplay)
+    if (this.enableDevCheckpoints && gameWorld && gameWorld.input && this.player && typeof gameWorld.input.isKeyJustPressed === 'function') {
       if (gameWorld.input.isKeyJustPressed('Digit1')) {
-        this.player.teleport(this.spawnPlayer.x, this.spawnPlayer.y, this.spawnPlayer.z);
-        if (gameWorld.ui) gameWorld.ui.showToast('Checkpoint 1: Holding Cells (Floor 1)', 'info', 2000);
+        this.teleportToCheckpoint(1);
       } else if (gameWorld.input.isKeyJustPressed('Digit2')) {
-        this.player.teleport(this.checkpoint1.x, this.checkpoint1.y, this.checkpoint1.z);
-        if (gameWorld.ui) gameWorld.ui.showToast('Checkpoint 2: Staircase Entry (Floor 1)', 'info', 2000);
+        this.teleportToCheckpoint(2);
       } else if (gameWorld.input.isKeyJustPressed('Digit3')) {
-        this.player.teleport(this.checkpoint2.x, this.checkpoint2.y, this.checkpoint2.z);
-        if (gameWorld.ui) gameWorld.ui.showToast('Checkpoint 3: Research Lab (Floor 2)', 'info', 2000);
-        if (!this.hasGun) this._takeGunFromDesk();
+        this.teleportToCheckpoint(3);
       } else if (gameWorld.input.isKeyJustPressed('Digit4')) {
-        this.player.teleport(1.0, 11.2, 73.0);
-        this._controlRoomUnlocked = true;
-        if (this.controlRoomDoor) this.controlRoomDoor.isLocked = false;
-        if (gameWorld.ui) gameWorld.ui.showToast('Checkpoint 4: Bridge Dashboard (Floor 2)', 'info', 2000);
+        this.teleportToCheckpoint(4);
       }
+    }
+  }
+
+  /**
+   * Teleports player to a level checkpoint. Preserved as a callable feature,
+   * with keyboard shortcuts disabled by default during normal gameplay.
+   * @param {number} index
+   */
+  teleportToCheckpoint(index) {
+    if (!this.player) return;
+    if (index === 1) {
+      this.player.teleport(this.spawnPlayer.x, this.spawnPlayer.y, this.spawnPlayer.z);
+      if (this.gameWorld.ui) this.gameWorld.ui.showToast('Checkpoint 1: Holding Cells (Floor 1)', 'info', 2000);
+    } else if (index === 2) {
+      this.player.teleport(this.checkpoint1.x, this.checkpoint1.y, this.checkpoint1.z);
+      if (this.gameWorld.ui) this.gameWorld.ui.showToast('Checkpoint 2: Staircase Entry (Floor 1)', 'info', 2000);
+    } else if (index === 3) {
+      this.player.teleport(this.checkpoint2.x, this.checkpoint2.y, this.checkpoint2.z);
+      if (this.gameWorld.ui) this.gameWorld.ui.showToast('Checkpoint 3: Research Lab (Floor 2)', 'info', 2000);
+      if (!this.hasGun) this._takeGunFromDesk();
+    } else if (index === 4) {
+      this.player.teleport(1.0, 11.2, 73.0);
+      this._controlRoomUnlocked = true;
+      if (this.controlRoomDoor) this.controlRoomDoor.isLocked = false;
+      if (this.gameWorld.ui) this.gameWorld.ui.showToast('Checkpoint 4: Bridge Dashboard (Floor 2)', 'info', 2000);
     }
   }
 
@@ -1327,18 +1350,23 @@ export class Level01InsideSpaceship extends BaseLevel {
   _updateControlCenterPanel() {
     if (!this.player?.position || !this.gameWorld.ui) return;
 
-    // 1. Decorative Console Buttons (preserves tests and visual panels)
-    const nearControlCenter =
-      this.player.position.distanceToSquared(CONTROL_CENTER_POSITION) <=
-      CONTROL_CENTER_RADIUS * CONTROL_CENTER_RADIUS;
+    // 1. Decorative Console Buttons (disabled by default to remove "SHIP CONTROL" UI overlay)
+    if (this.showControlCenterUI) {
+      const nearControlCenter =
+        this.player.position.distanceToSquared(CONTROL_CENTER_POSITION) <=
+        CONTROL_CENTER_RADIUS * CONTROL_CENTER_RADIUS;
 
-    if (nearControlCenter !== this._controlCenterVisible) {
-      this._controlCenterVisible = nearControlCenter;
-      if (nearControlCenter) {
-        this.gameWorld.ui.showControlCenter(CONTROL_CENTER_BUTTONS);
-      } else {
-        this.gameWorld.ui.hideControlCenter();
+      if (nearControlCenter !== this._controlCenterVisible) {
+        this._controlCenterVisible = nearControlCenter;
+        if (nearControlCenter) {
+          this.gameWorld.ui.showControlCenter(CONTROL_CENTER_BUTTONS);
+        } else {
+          this.gameWorld.ui.hideControlCenter();
+        }
       }
+    } else if (this._controlCenterVisible) {
+      this._controlCenterVisible = false;
+      this.gameWorld.ui.hideControlCenter();
     }
 
     // 2. Interactive Navigation Dashboard Console

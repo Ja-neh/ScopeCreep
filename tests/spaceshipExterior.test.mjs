@@ -47,6 +47,12 @@ test('spaceship control center shows decorative buttons nearby and disposes its 
 
   level.player = { position: new Vector3(-4, 12, 79) };
   level._updateControlCenterPanel();
+  // By default, the "SHIP CONTROL" UI overlay is removed
+  assert.equal(world.ui.callsTo('showControlCenter').length, 0);
+
+  // When explicitly enabled, it displays the buttons
+  level.showControlCenterUI = true;
+  level._updateControlCenterPanel();
   assert.equal(world.ui.callsTo('showControlCenter').length, 1);
   assert.equal(world.ui.callsTo('showControlCenter')[0].args[0].length, 6);
 
@@ -403,5 +409,57 @@ test('player death plays animation and immediately shows Restart and Home menu o
   assert.equal(homeRequested, true, 'Home calls returnToMainMenu');
 
   level.dispose();
+});
+
+test('Level 1 only allows gun usage: [1], [2], [3] and quick melee do not switch to knife or bomb', async () => {
+  const world = await createTestWorld();
+  const player = {
+    position: new Vector3(0, 0, 0),
+    velocity: new Vector3(0, 0, 0),
+    pitch: 0,
+    yaw: 0,
+    mesh: new Vector3(),
+    springArm: { eyeHeight: 1.6 },
+    collider: null,
+    isCrouching: false,
+    crouchAmount: 0
+  };
+
+  const weapons = new Level01InsideSpaceship(world);
+  const controller = new (await import('../src/weapons/WeaponController.js')).WeaponController(world, player, {
+    gunOnly: true,
+    allowSwitching: false,
+    allowQuickMelee: false,
+    showHeldWeapons: false,
+    showWeaponHUD: false,
+    hasGun: true
+  });
+
+  assert.equal(controller.equipped, 'rifle');
+  assert.equal(controller.activeWeapon, 'rifle');
+
+  // Attempting to switch to knife ([2]) or bomb ([3]) is blocked
+  world.input.isPointerLocked = true;
+
+  // Simulate pressing Digit2 (weaponMelee)
+  world.input.press('weaponMelee');
+  controller.gameplayUpdate(0.016, world);
+  assert.equal(controller.equipped, 'rifle', 'remains on rifle when weaponMelee is pressed');
+  assert.equal(controller.activeWeapon, 'rifle');
+
+  // Simulate pressing Digit3 (weaponBomb)
+  world.input.pressed.clear();
+  world.input.press('weaponBomb');
+  controller.gameplayUpdate(0.016, world);
+  assert.equal(controller.equipped, 'rifle', 'remains on rifle when weaponBomb is pressed');
+  assert.equal(controller.activeWeapon, 'rifle');
+
+  // Direct _equip calls for knife or bomb are also rejected
+  controller._equip('knife');
+  assert.equal(controller.equipped, 'rifle');
+  controller._equip('bomb');
+  assert.equal(controller.equipped, 'rifle');
+
+  weapons.dispose();
 });
 
