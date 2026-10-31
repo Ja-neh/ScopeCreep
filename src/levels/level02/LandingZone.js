@@ -56,6 +56,7 @@ export class LandingZone {
     this.environment = environment;
 
     this.ship = null;
+    this.shipCollisionBody = null;
     this.boarding = null;
     this.helicopters = [];
     this.helicopterBays = []; // { model, collider, x, z, heading, groundY, side, doorPoint, guardPoint, guardFacing }
@@ -78,6 +79,7 @@ export class LandingZone {
   async build() {
     this.ship = new SquadTransport(this.gameWorld.environmentGroup, new THREE.Vector3(0, 9, 215));
     this.ship.mesh.scale.setScalar(3);
+    this._buildShipCollision();
     this.gangway.top.set(0, this.environment.heightAt(0,188)+.3, 188);
     this.gangway.foot.set(0, this.environment.heightAt(0,175)+.1, 175);
     this.spawnPoints.gangwayTop=this.gangway.top.clone();
@@ -85,6 +87,42 @@ export class LandingZone {
     this.spawnPoints.deck=this.gangway.top.clone();
     this.spawnPoints.supplyCrate=new THREE.Vector3(-8,this.environment.heightAt(-8,175),175);
     this.clearings.push({x:0,z:200,radius:48});
+  }
+
+  /** Blocks climbing through the saucer shell and clipping through its landing legs. */
+  _buildShipCollision() {
+    if (!this.physicsWorld?.isInitialized || !this.ship?.mesh) return;
+    const mesh = this.ship.mesh;
+    mesh.updateMatrixWorld(true);
+    const position = mesh.getWorldPosition(new THREE.Vector3());
+    const rotation = mesh.getWorldQuaternion(new THREE.Quaternion());
+    this.shipCollisionBody = this.physicsWorld.createKinematicRigidBody({
+      position,
+      rotation: { x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w }
+    });
+    if (!this.shipCollisionBody) return;
+
+    const scale = mesh.scale.x;
+    const RAPIER = this.physicsWorld.RAPIER;
+    const addCylinder = (halfHeight, radius, x = 0, y = 0, z = 0) => {
+      const desc = RAPIER.ColliderDesc.cylinder(halfHeight, radius).setTranslation(x, y, z);
+      const collider = this.physicsWorld.createCollider(desc, this.shipCollisionBody);
+      if (collider) collider.userData = { isLandingShip: true };
+    };
+
+    // A vertical hull collider replaces the visible shallow saucer profile for character
+    // movement, so its sloped surface cannot be treated as a ramp by the character controller.
+    const hullHeight = 3.12 * scale;
+    addCylinder(hullHeight / 2, 12 * scale, 0, hullHeight / 2, 0);
+
+    // The four supports are separate so the squad cannot pass through the visible landing gear.
+    for (let i = 0; i < 4; i++) {
+      const angle = Math.PI / 4 + i * Math.PI / 2;
+      const x = Math.sin(angle) * 7 * scale;
+      const z = Math.cos(angle) * 7 * scale;
+      addCylinder(1.5 * scale, 0.38 * scale, x, -1.5 * scale, z);
+      addCylinder(0.3 * scale, 0.82 * scale, x, -2.9 * scale, z);
+    }
   }
 
   /**
@@ -311,6 +349,14 @@ export class LandingZone {
    * Flies any arriving helicopters and spins the rotors. Call once per frame in Phase 5.
    */
   update(delta) {
+    if (this.shipCollisionBody && this.ship?.mesh) {
+      const position = this.ship.mesh.getWorldPosition(new THREE.Vector3());
+      const rotation = this.ship.mesh.getWorldQuaternion(new THREE.Quaternion());
+      this.shipCollisionBody.setNextKinematicTranslation(position);
+      this.shipCollisionBody.setNextKinematicRotation({
+        x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w
+      });
+    }
     for (const arrival of this.arrivals) {
       arrival.update(delta);
     }
@@ -320,6 +366,10 @@ export class LandingZone {
   }
 
   dispose() {
+    if (this.shipCollisionBody) {
+      this.physicsWorld.removeRigidBody(this.shipCollisionBody);
+      this.shipCollisionBody = null;
+    }
     for (const arrival of this.arrivals) {
       arrival.dispose();
     }

@@ -180,6 +180,7 @@ export class BeachEnvironment {
     this.beachLandmarks = null;
     this.landmarkGeometries = [];
     this.landmarkMaterials = [];
+    this.landmarkColliders = [];
     this.creek = null;
     this.coastalCliffs = [];
     this.creekTime = 0;
@@ -911,6 +912,28 @@ export class BeachEnvironment {
       this.landmarkGeometries.push(geometry);
       return geometry;
     };
+    const addRockCollider = (mesh) => {
+      const physics = this.gameWorld.physics;
+      const positions = mesh.geometry.getAttribute('position');
+      if (!physics || !positions) return;
+      mesh.updateMatrixWorld(true);
+      const points = new Float32Array(positions.count * 3);
+      const point = new THREE.Vector3();
+      for (let i = 0; i < positions.count; i++) {
+        point.fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld);
+        // These rocks are intentionally sunk into the terrain for a natural base. Keep their
+        // colliders above the matching ground surface so the hidden underside cannot snag feet.
+        point.y = Math.max(point.y, this.heightAt(point.x, point.z) + 0.02);
+        points[i * 3] = point.x;
+        points[i * 3 + 1] = point.y;
+        points[i * 3 + 2] = point.z;
+      }
+      const collider = physics.createStaticConvexHull(points, { x: 0, y: 0, z: 0 });
+      if (collider) {
+        collider.userData = { isLandmark: true };
+        this.landmarkColliders.push(collider);
+      }
+    };
     const rockShapes = [makeRock(2), makeRock(7), makeRock(13)];
     const makeChunk = (x, y, z, sx, sy, sz, variant = 0, rotation = 0) => {
       const chunk = new THREE.Mesh(rockShapes[variant % rockShapes.length], grey[variant % grey.length]);
@@ -920,6 +943,7 @@ export class BeachEnvironment {
       chunk.castShadow = true;
       chunk.receiveShadow = true;
       group.add(chunk);
+      addRockCollider(chunk);
       return chunk;
     };
 
@@ -985,9 +1009,38 @@ export class BeachEnvironment {
     monolith.castShadow = true;
     monolith.receiveShadow = true;
     group.add(monolith);
+    addRockCollider(monolith);
     makeChunk(-66, monolithGround + 7, monolithZ + 3, 13, 7, 11, 0, 12);
     makeChunk(-8, monolithGround + 5, monolithZ + 10, 10, 5, 13, 2, 19);
     makeChunk(-48, monolithGround + 13, monolithZ - 8, 9, 12, 8, 1, 5);
+
+    // Add box colliders after assembly: some skywalk meshes have their position and rotation
+    // adjusted after `place()` returns. Building colliders from their final world transforms
+    // keeps the physics aligned with the visible walls, towers, foundations and walkways.
+    if (this.gameWorld.physics) {
+      const position = new THREE.Vector3();
+      const scale = new THREE.Vector3();
+      const rotation = new THREE.Quaternion();
+      group.updateMatrixWorld(true);
+      for (const mesh of group.children) {
+        if (!mesh.isMesh || mesh.geometry !== cityBox) continue;
+        mesh.getWorldScale(scale);
+        const sx = Math.abs(scale.x), sy = Math.abs(scale.y), sz = Math.abs(scale.z);
+        // Skip trim, window lights and other narrow ornament; collide with substantial solids.
+        if (sx < 2.4 || sy < 1.2 || sz < 2.4) continue;
+        mesh.getWorldPosition(position);
+        mesh.getWorldQuaternion(rotation);
+        const collider = this.gameWorld.physics.createStaticBox(
+          { x: sx * 0.5, y: sy * 0.5, z: sz * 0.5 },
+          position,
+          { x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w }
+        );
+        if (collider) {
+          collider.userData = { isLandmark: true };
+          this.landmarkColliders.push(collider);
+        }
+      }
+    }
 
     // Batch the static landmark pieces by shared geometry/material to keep the added skyline
     // from turning into hundreds of separate draw calls.
@@ -1088,6 +1141,11 @@ export class BeachEnvironment {
   }
 
   dispose() {
+    for (const collider of this.landmarkColliders) {
+      this.gameWorld.physics?.removeRigidBody(collider.rigidBody);
+    }
+    this.landmarkColliders = [];
+
     for (const light of this.lights) {
       if (light.parent) light.parent.remove(light);
       if (light.isLight) light.dispose(); // Frees the shadow map

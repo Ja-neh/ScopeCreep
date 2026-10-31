@@ -79,6 +79,7 @@ export class Level01InsideSpaceship extends BaseLevel {
       { actions: ['forward', 'backward', 'steerLeft', 'steerRight'], label: 'Walk / Move' },
       { actions: ['sprint'], label: 'Sprint / Jog' },
       { actions: ['firePrimary'], label: 'Shoot pistol' },
+      { actions: ['toggleMap'], label: 'Spaceship map (M)' },
       { actions: ['toggleCamera'], label: 'First / Third person' },
       { actions: ['pause'], label: 'Options / Menu' }
     ];
@@ -103,6 +104,11 @@ export class Level01InsideSpaceship extends BaseLevel {
     this._doorLockedPromptVisible = false;
     this._holdingCellBattleStarted = false;
     this.missionAlienSpawnNodes = [];
+    this._openedProgressDoors = new WeakSet();
+    this._lastGuidedDoor = undefined;
+    this._missionObjective = null;
+    this._mapRefreshTimer = 0;
+    this._doorGuidanceRefreshTimer = 0;
     this.projectilePool = null;
     this.enemySquad = null;
     this.allies = null;
@@ -140,6 +146,191 @@ export class Level01InsideSpaceship extends BaseLevel {
     this._tempPos = new THREE.Vector3();
     this._tempQuat = new THREE.Quaternion();
     this._tempScale = new THREE.Vector3();
+  }
+
+  getMapTerrain() {
+    return {
+      kind: 'spaceship',
+      title: 'SPACESHIP MAP',
+      enemyLegend: 'Aliens (square: upper deck)',
+      markerLegend: 'Doors: gold next, square upper',
+      canvasScale: 2.2,
+      bounds: { minX: -72, maxX: 72, minZ: -56, maxZ: 88 },
+      drawBackground(ctx, width, height, bounds) {
+        const scaleX = width / (bounds.maxX - bounds.minX);
+        const scaleZ = height / (bounds.maxZ - bounds.minZ);
+        ctx.save();
+        ctx.setTransform(scaleX, 0, 0, scaleZ, -bounds.minX * scaleX, -bounds.minZ * scaleZ);
+        ctx.fillStyle = '#08111e';
+        ctx.fillRect(bounds.minX, bounds.minZ, bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
+
+        for (let x = Math.ceil(bounds.minX / 10) * 10; x <= bounds.maxX; x += 10) {
+          ctx.strokeStyle = 'rgba(100, 160, 190, 0.08)';
+          ctx.lineWidth = 0.35;
+          ctx.beginPath(); ctx.moveTo(x, bounds.minZ); ctx.lineTo(x, bounds.maxZ); ctx.stroke();
+        }
+        for (let z = Math.ceil(bounds.minZ / 10) * 10; z <= bounds.maxZ; z += 10) {
+          ctx.beginPath(); ctx.moveTo(bounds.minX, z); ctx.lineTo(bounds.maxX, z); ctx.stroke();
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(-8, -55); ctx.lineTo(10, -55); ctx.lineTo(18, -39);
+        ctx.lineTo(20, 70); ctx.lineTo(12, 87); ctx.lineTo(-13, 87);
+        ctx.lineTo(-20, 70); ctx.lineTo(-18, -39); ctx.closePath();
+        ctx.fillStyle = '#17283a'; ctx.fill();
+        ctx.strokeStyle = '#7ecfe0'; ctx.lineWidth = 1.2; ctx.stroke();
+
+        const room = (x, z, w, d, color, label) => {
+          ctx.fillStyle = color; ctx.fillRect(x, z, w, d);
+          ctx.strokeStyle = 'rgba(126, 207, 224, 0.5)'; ctx.lineWidth = 0.7;
+          ctx.strokeRect(x, z, w, d);
+          if (label) {
+            ctx.fillStyle = '#c8dbe8';
+            ctx.font = '4.2px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x + w / 2, z + d / 2);
+          }
+        };
+
+        // Passage spine connects the brig, holding bay, stairs, lab, and bridge.
+        room(-5, -53, 10, 137, '#263b50', 'PASSAGE');
+        room(6, -54, 13, 18, '#33495b', 'BRIG');
+        room(-16, -28, 10, 21, '#293d50', 'HOLDING BAY');
+        room(6, -24, 12, 21, '#293d50', 'STORAGE');
+        room(6, 28, 13, 22, '#3b3542', 'STAIRS');
+        room(-17, 2, 11, 35, '#293d50', 'LAB');
+        room(6, 2, 12, 22, '#293d50', 'LAB');
+        room(-15, 57, 17, 29, '#33495b', 'BRIDGE');
+
+        ctx.restore();
+      }
+    };
+  }
+
+  getMapData() {
+    const player = this.player;
+    if (!player?.position) return null;
+    const mates = (this.allies?.members || []).filter((mate) => mate !== player).map((mate) => ({
+      x: mate.position.x,
+      z: mate.position.z,
+      downed: !!mate.health?.isDead
+    }));
+    let enemies = (this.enemySquad?.members || []).filter((alien) => alien.health && !alien.health.isDead).map((alien) => ({
+      x: alien.position.x,
+      z: alien.position.z,
+      floor: alien.position.y > 7 ? 2 : 1,
+      big: !!alien.isBoss,
+      alerted: !!alien.perception?.target
+    }));
+    if (!this._holdingCellBattleStarted) {
+      let positions = this.missionAlienSpawnNodes.map((node) => node.getWorldPosition(new THREE.Vector3()));
+      if (!positions.length) {
+        positions = [
+          new THREE.Vector3(4, 1, -38), new THREE.Vector3(4, 1, -28),
+          new THREE.Vector3(1, 1, 16), new THREE.Vector3(-4, 11, 0), new THREE.Vector3(5, 11, 18)
+        ];
+      }
+      enemies = positions.map((position) => ({ x: position.x, z: position.z, floor: position.y > 7 ? 2 : 1, alerted: false }));
+      const gunnerIndices = new Set(positions.length >= 3 ? [1, 2] : [Math.max(0, positions.length - 1)]);
+      if (positions.length > 3) gunnerIndices.add(3);
+      if (positions.length > 4) gunnerIndices.add(4);
+      for (const index of gunnerIndices) {
+        const position = positions[index];
+        enemies.push({
+          x: position.x + (position.x > 0 ? -2.2 : 2.2),
+          z: position.z,
+          floor: position.y > 7 ? 2 : 1,
+          alerted: false
+        });
+      }
+    }
+    return {
+      player: { x: player.position.x, z: player.position.z, yaw: player.yaw },
+      mates,
+      enemies,
+      markers: this._mapDoorMarkers()
+    };
+  }
+
+  _doorWorldPosition(door, target = new THREE.Vector3()) {
+    if (door?.mesh) return door.mesh.getWorldPosition(target);
+    return target.set(0, 0, 0);
+  }
+
+  _doorLabel(door, position = this._doorWorldPosition(door)) {
+    if (door === this.cellDoor) return 'CELL EXIT';
+    if (Math.abs(position.z) < 2) return 'HOLDING BAY';
+    if (Math.abs(position.z - 24) < 2) return 'LAB ACCESS';
+    if (Math.abs(position.z - 42) < 2) return position.y > 7 ? 'UPPER STAIR' : 'STAIRWELL';
+    if (Math.abs(position.z - 68) < 2) return 'BRIDGE';
+    return 'SHIP DOOR';
+  }
+
+  _getNextDoor() {
+    for (const door of this.doors) {
+      if (door.isOpen?.()) this._openedProgressDoors.add(door);
+    }
+    if (this.cellDoor && !this._openedProgressDoors.has(this.cellDoor)) return this.cellDoor;
+
+    const playerPosition = this.player?.position;
+    const candidates = this.doors.filter((door) => door !== this.cellDoor && !this._openedProgressDoors.has(door) && !door.isLocked);
+    if (!candidates.length) return null;
+    if (!playerPosition) return candidates[0];
+
+    const playerFloor = playerPosition.y > 7 ? 2 : 1;
+    const sameFloor = candidates.filter((door) => (this._doorWorldPosition(door).y > 7 ? 2 : 1) === playerFloor);
+    const pool = sameFloor.length ? sameFloor : candidates;
+    pool.sort((a, b) => this._doorWorldPosition(a).distanceToSquared(playerPosition) - this._doorWorldPosition(b).distanceToSquared(playerPosition));
+    return pool[0];
+  }
+
+  _mapDoorMarkers() {
+    const nextDoor = this._getNextDoor();
+    return this.doors.map((door) => {
+      const position = this._doorWorldPosition(door);
+      const opened = this._openedProgressDoors.has(door) || !!door.isOpen?.();
+      return {
+        x: position.x,
+        z: position.z,
+        floor: position.y > 7 ? 2 : 1,
+        label: `${door === nextDoor ? 'NEXT: ' : ''}${this._doorLabel(door, position)}`,
+        done: opened,
+        door: true,
+        next: door === nextDoor
+      };
+    });
+  }
+
+  _setMissionObjective(title, detail = '') {
+    this._missionObjective = { title, detail };
+    this._renderMissionObjective();
+  }
+
+  _renderMissionObjective() {
+    if (!this._missionObjective || this.missionComplete) return;
+    const nextDoor = this._getNextDoor();
+    const doorHint = nextDoor ? ` Next door: ${this._doorLabel(nextDoor)}; marked on the spaceship map.` : '';
+    this.gameWorld.ui?.showObjective?.(this._missionObjective.title, `${this._missionObjective.detail}${doorHint}`);
+  }
+
+  _updateNextDoorGuidance(delta) {
+    if (this.missionComplete) return;
+    this._doorGuidanceRefreshTimer -= delta;
+    if (this._doorGuidanceRefreshTimer > 0) return;
+    this._doorGuidanceRefreshTimer = 0.12;
+    const nextDoor = this._getNextDoor();
+    if (nextDoor === this._lastGuidedDoor) return;
+    this._lastGuidedDoor = nextDoor;
+    this._renderMissionObjective();
+  }
+
+  _updateShipMap(delta) {
+    const ui = this.gameWorld.ui;
+    if (!ui || (!ui.isMapOpen && !ui.isMinimapVisible)) return;
+    this._mapRefreshTimer -= delta;
+    if (this._mapRefreshTimer > 0) return;
+    this._mapRefreshTimer = 0.12;
+    ui.updateMap(this.getMapData());
   }
 
   async init() {
@@ -510,7 +701,8 @@ export class Level01InsideSpaceship extends BaseLevel {
     }
     if (!positions.length) {
       positions.push(
-        new THREE.Vector3(12, 1, -38),
+        // Keep the first hostile in the passage rather than among the captive pods.
+        new THREE.Vector3(4, 1, -38),
         new THREE.Vector3(4, 1, -28),
         new THREE.Vector3(1, 1, 16),
         new THREE.Vector3(-4, 11, 0),
@@ -528,6 +720,32 @@ export class Level01InsideSpaceship extends BaseLevel {
       alien.missionStage = i < 3 ? 'holdingBay' : 'lab';
       this.enemySquad.add(alien);
       this.alienSpawns.push(alien);
+    }
+
+    // Add two armed robotic gunners to each section where there are enough spawn anchors.
+    const gunnerIndices = new Set(positions.length >= 3 ? [1, 2] : [Math.max(0, positions.length - 1)]);
+    if (positions.length > 3) gunnerIndices.add(3);
+    if (positions.length > 4) gunnerIndices.add(4);
+    for (const index of gunnerIndices) {
+      const spawn = positions[index];
+      const gunnerPosition = spawn.clone();
+      gunnerPosition.x += spawn.x > 0 ? -2.2 : 2.2;
+      const gunnerModel = new AlienModel({
+        // Gorr provides a rifle and ranged AI; the Afton model supplies the robotic look.
+        characterId: 'gorr',
+        characterOptions: {
+          assetUrl: `${this.gameWorld.assetBaseUrl || base}assets/characters/elite-afton.glb`
+        }
+      });
+      const gunner = new AlienTrooper(this.gameWorld, {
+        position: gunnerPosition,
+        squad: this.enemySquad,
+        model: gunnerModel
+      });
+      gunner.missionFloor = spawn.y > 7 ? 2 : 1;
+      gunner.missionStage = index < 3 ? 'holdingBay' : 'lab';
+      this.enemySquad.add(gunner);
+      this.alienSpawns.push(gunner);
     }
   }
 
@@ -621,7 +839,7 @@ export class Level01InsideSpaceship extends BaseLevel {
 
     this.gameWorld.audio?.play?.('reload');
     this.gameWorld.ui?.showToast?.('Rifle acquired. The cell door is unlocked.', 'success', 3500);
-    this.gameWorld.ui?.showObjective?.('EXIT THE HOLDING BAY', 'Approach the unlocked cell door.');
+    this._setMissionObjective('EXIT THE HOLDING BAY', 'Approach the unlocked cell door.');
   }
 
   _createSpaceBackdrop() {
@@ -908,7 +1126,7 @@ export class Level01InsideSpaceship extends BaseLevel {
       this._holdingCellBattleStarted = true;
       this._spawnMissionAliens(this.missionAlienSpawnNodes);
       this.gameWorld.ui?.showToast?.('Hostiles detected beyond the holding cell.', 'warning', 3500);
-      this.gameWorld.ui?.showObjective?.('FIGHT THROUGH THE ALIENS', 'Clear the holding bay to reach the captives.');
+      this._setMissionObjective('FIGHT THROUGH THE ALIENS', 'Clear the holding bay to reach the captives.');
     }
 
     // Performance Optimization A & D: Dynamic Light Culling & Floor Occlusion Culling
@@ -954,6 +1172,8 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.allies?.update(delta);
     this._updateCaptives(delta);
     this._updateMissionProgress(delta);
+    this._updateNextDoorGuidance(delta);
+    this._updateShipMap(delta);
     if (this.player?.health && gameWorld.ui) {
       gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
     }
@@ -989,20 +1209,21 @@ export class Level01InsideSpaceship extends BaseLevel {
 
     if (this.missionStage === 'holdingBay' && floorEnemies.length === 0) {
       this.missionStage = 'rescue';
-      this.gameWorld.ui?.showObjective('FREE THE CAPTIVES', 'Hold E beside each cage to rescue the other main characters.');
+      this._setMissionObjective('FREE THE CAPTIVES', 'Hold E beside each cage to rescue the other main characters.');
     } else if (this.missionStage === 'rescue' && this.captives.every((captive) => captive.freed)) {
       this.missionStage = 'stairwell';
-      this.gameWorld.ui?.showObjective('REACH THE STAIRWELL', 'Everyone is free. Climb to Floor 2 and fight toward the bridge.');
+      this._setMissionObjective('REACH THE STAIRWELL', 'Everyone is free. Climb to Floor 2 and fight toward the bridge.');
     } else if (this.missionStage === 'stairwell' && this.player.position.y >= 7 && this.player.position.z < 55) {
       this.missionStage = 'lab';
-      this.gameWorld.ui?.showObjective('SECURE THE LAB', 'Eliminate the remaining aliens in the research lab.');
+      this._setMissionObjective('SECURE THE LAB', 'Eliminate the remaining aliens in the research lab.');
     } else if (this.missionStage === 'lab' && !this.enemySquad.members.some((alien) => !alien.isDead && alien.missionStage === 'lab')) {
       this.missionStage = 'controlRoom';
-      this.gameWorld.ui?.showObjective('TAKE CONTROL OF THE SHIP', 'Reach the bridge console and turn the transport back toward Earth.');
+      this._setMissionObjective('TAKE CONTROL OF THE SHIP', 'Reach the bridge console and turn the transport back toward Earth.');
     } else if (this.missionStage === 'controlRoom' && this.player.position.distanceTo(CONTROL_CENTER_POSITION) < CONTROL_CENTER_RADIUS) {
       this.missionComplete = true;
       this._departureSeconds = config.levels.level01.departureSeconds;
       this.player.setFrozen(true);
+      this._missionObjective = null;
       this.gameWorld.ui?.hideObjective?.();
       this.gameWorld.ui?.showCinematic?.('COURSE: EARTH', 'The crew takes the bridge. The captured ship turns toward the occupied island.');
     }
@@ -1208,7 +1429,7 @@ export class Level01InsideSpaceship extends BaseLevel {
         if (this.gameWorld.ui) {
           this.gameWorld.ui.hideFade(false);
           this.gameWorld.ui.showToast('Find the rifle on the desk to unlock the cell door.', 'info', 4500);
-          this.gameWorld.ui.showObjective('SEARCH THE HOLDING BAY', 'Pick up the rifle from the desk to unlock the exit door.');
+          this._setMissionObjective('SEARCH THE HOLDING BAY', 'Pick up the rifle from the desk to unlock the exit door.');
         }
 
         // Resume ambient level score
@@ -1249,7 +1470,7 @@ export class Level01InsideSpaceship extends BaseLevel {
         this.gameWorld.ui.hideCinematic();
         this.gameWorld.ui.hideFade(false);
         this.gameWorld.ui.showToast('Find the rifle on the desk to unlock the cell door.', 'info', 4500);
-        this.gameWorld.ui.showObjective('SEARCH THE HOLDING BAY', 'Pick up the rifle from the desk to unlock the exit door.');
+        this._setMissionObjective('SEARCH THE HOLDING BAY', 'Pick up the rifle from the desk to unlock the exit door.');
       }
 
       // Resume ambient score for level exploration

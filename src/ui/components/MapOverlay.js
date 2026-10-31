@@ -103,7 +103,7 @@ export class MapOverlay {
     this.element.id = 'ui-map-overlay';
     this.element.innerHTML = `
       <div class="ui-map-panel">
-        <div class="ui-map-title">ISLAND MAP <span class="ui-map-hint">[M] close</span></div>
+        <div class="ui-map-title"><span class="ui-map-name">ISLAND MAP</span> <span class="ui-map-hint">[M] close</span></div>
         <canvas class="ui-map-canvas" width="352" height="451"></canvas>
         <div class="ui-map-legend">
           <span class="ui-map-key ui-map-key-you">You</span>
@@ -114,6 +114,10 @@ export class MapOverlay {
         </div>
       </div>
     `;
+    this.titleElement = this.element.querySelector('.ui-map-name');
+    this.alienLegendElement = this.element.querySelector('.ui-map-key-alien');
+    this.markerLegendElement = this.element.querySelector('.ui-map-key-marker');
+    this.intelLegendElement = this.element.querySelector('.ui-map-key-intel');
     this.canvas = this.element.querySelector('.ui-map-canvas');
     this.ctx = this.canvas.getContext('2d');
     this.parent.appendChild(this.element);
@@ -148,7 +152,10 @@ export class MapOverlay {
    */
   show(terrain) {
     this.element.classList.remove('ui-hidden');
-    if (terrain) this._paintTerrain(terrain);
+    if (terrain) {
+      this._setTerrainLabels(terrain);
+      this._paintTerrain(terrain);
+    }
   }
 
   hide() {
@@ -163,7 +170,17 @@ export class MapOverlay {
   showMinimap(terrain) {
     if (!this.miniElement) return;
     this.miniElement.classList.remove('ui-hidden');
-    if (terrain) this._paintTerrain(terrain);
+    if (terrain) {
+      this._setTerrainLabels(terrain);
+      this._paintTerrain(terrain);
+    }
+  }
+
+  _setTerrainLabels(terrain) {
+    if (this.titleElement) this.titleElement.textContent = terrain.title || 'ISLAND MAP';
+    if (this.alienLegendElement) this.alienLegendElement.textContent = terrain.enemyLegend || 'Aliens';
+    if (this.markerLegendElement) this.markerLegendElement.textContent = terrain.markerLegend || 'Objective';
+    if (this.intelLegendElement) this.intelLegendElement.hidden = terrain.kind === 'spaceship';
   }
 
   /**
@@ -211,9 +228,11 @@ export class MapOverlay {
 
     const metresWide = bounds.maxX - bounds.minX;
     const metresTall = bounds.maxZ - bounds.minZ;
-    const width = Math.max(MIN_CANVAS, Math.round(metresWide * CANVAS_SCALE));
-    const height = Math.max(MIN_CANVAS, Math.round(metresTall * CANVAS_SCALE));
-    if (this.canvas.width !== width || this.canvas.height !== height) {
+    const canvasScale = terrain.canvasScale || CANVAS_SCALE;
+    const minCanvas = terrain.minCanvas || MIN_CANVAS;
+    const width = Math.max(minCanvas, Math.round(metresWide * canvasScale));
+    const height = Math.max(minCanvas, Math.round(metresTall * canvasScale));
+    if (!this._background || this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
       this._background = document.createElement('canvas');
@@ -226,6 +245,12 @@ export class MapOverlay {
     if (this.miniCanvas.width !== MINI_WIDTH || this.miniCanvas.height !== miniHeight) {
       this.miniCanvas.width = MINI_WIDTH;
       this.miniCanvas.height = miniHeight;
+    }
+
+    const bg = this._background.getContext('2d');
+    if (typeof terrain.drawBackground === 'function') {
+      terrain.drawBackground(bg, width, height, bounds);
+      return;
     }
 
     // Sample the island on a coarse grid, then scale it up onto the chart
@@ -253,7 +278,6 @@ export class MapOverlay {
     }
     sampleCtx.putImageData(image, 0, 0);
 
-    const bg = this._background.getContext('2d');
     bg.imageSmoothingEnabled = true;
     bg.drawImage(sample, 0, 0, width, height);
     const scale=width/side;
@@ -341,6 +365,36 @@ export class MapOverlay {
     for (const marker of markers) {
       if (typeof marker.x !== 'number' || typeof marker.z !== 'number') continue;
       const p = projectPoint(this.bounds, width, height, marker.x, marker.z, this._point);
+      if (marker.door) {
+        ctx.beginPath();
+        if (marker.next) {
+          ctx.moveTo(p.x, p.y - 8);
+          ctx.lineTo(p.x + 8, p.y);
+          ctx.lineTo(p.x, p.y + 8);
+          ctx.lineTo(p.x - 8, p.y);
+          ctx.closePath();
+          ctx.fillStyle = '#ffd166';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          if (marker.floor === 2) {
+            ctx.strokeStyle = '#243244';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(p.x - 2, p.y - 2, 4, 4);
+          }
+        } else {
+          if (marker.floor === 2) ctx.rect(p.x - 4, p.y - 4, 8, 8);
+          else ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = marker.done ? '#7ed957' : '#7b8fa5';
+          ctx.fill();
+        }
+        if (marker.label && !this._compact) {
+          ctx.fillStyle = marker.next ? '#fff1c2' : '#c5d0de';
+          ctx.fillText(marker.label, p.x, p.y + (marker.floor === 2 ? -12 : 18));
+        }
+        continue;
+      }
       ctx.fillStyle = marker.done ? '#7ed957' : '#ffd166';
       ctx.beginPath();
       ctx.moveTo(p.x, p.y - 7);
@@ -362,7 +416,8 @@ export class MapOverlay {
       const p = projectPoint(this.bounds, width, height, alien.x, alien.z, this._point);
       const radius = alien.big ? 6 : 4;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      if (alien.floor === 2) ctx.rect(p.x - radius, p.y - radius, radius * 2, radius * 2);
+      else ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
       if (alien.alerted) {
         ctx.fillStyle = '#ff5252';
         ctx.fill();

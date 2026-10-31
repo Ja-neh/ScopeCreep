@@ -391,7 +391,7 @@ export class Level02 extends IslandLevel {
 
   /** The landing, the waves and the objective. */
   async _startScenario() {
-    this._beginLanding(); // The intro groove and the deploy swell are already up (BaseLevel.init)
+    this._beginLanding(); // The score stays off in gameplay; positional combat effects remain active
 
     // The objective: the village gate on the plateau rim (see VillageGate). The beacon stands
     // just through the opening — the push inland ends inside the gate
@@ -937,20 +937,28 @@ export class Level02 extends IslandLevel {
   // The landing
   // ---------------------------------------------------------------------------
 
-  /**
-   * The opening: crew on the gangway, helicopters flying in, and the camera sweep.
-   */
+  /** The opening: the carrier lands, the crew disembarks, and the camera reveals the island. */
   _beginLanding() {
     this.spawnCrew(); this._crewFollowing=true;
     const actors=[this.player,...this.allies.mates];
     const destinations=actors.map((actor,i)=>new THREE.Vector3((i-(actors.length-1)/2)*2.4,this.environment.heightAt(0,170)+.1,170));
     actors.forEach(actor=>{actor.mesh.visible=false;});
     const ship=this.landingZone.ship.mesh, touchdown=ship.position.clone();
+    const orbitAngle=Math.PI*2*.22;
+    const orbitEnd=new THREE.Vector3(Math.sin(orbitAngle)*390,303,-20+Math.cos(orbitAngle)*390);
+    const islandFocus=new THREE.Vector3(0,24,-20);
+    const landingFocus=new THREE.Vector3(0,5,178);
     this.cinematic=new LandingCinematic(this.gameWorld,{
       player:this.player,title:'RETURN TO THE ISLAND',subtitle:'The captured alien carrier lands on the coast.',
-      duration:12,holdSeconds:0,endOnPlayer:true,
-      flightPath:[new THREE.Vector3(70,40,170),new THREE.Vector3(40,15,150),new THREE.Vector3(16,8,156)],
-      focus:out=>out.set(0,8,195),
+      duration:16,holdSeconds:0,endOnPlayer:true,
+      operatorOrbit:{center:new THREE.Vector3(0,18,-20),radius:390,height:285,turns:.22,seconds:5},
+      flightPath:[orbitEnd,new THREE.Vector3(220,165,198),new THREE.Vector3(60,38,188)],
+      focus:out=>{
+        const t=THREE.MathUtils.clamp((this.cinematic?.elapsed||0)/16,0,1);
+        const reveal=THREE.MathUtils.smoothstep(t,.28,.7);
+        return out.copy(islandFocus).lerp(landingFocus,reveal);
+      },
+      aimTowards:0,
       onFrame:(t,elapsed,delta)=>{
         const land=THREE.MathUtils.smoothstep(t,0,.4);
         ship.position.copy(touchdown).add(new THREE.Vector3(0,(1-land)*80,(1-land)*75));
@@ -965,7 +973,11 @@ export class Level02 extends IslandLevel {
         });
       },
       onFinished:()=>{
-        actors.forEach((actor,i)=>{actor.mesh.visible=true;const d=destinations[i];actor.teleport(d.x,d.y,d.z);});
+        actors.forEach((actor,i)=>{
+          actor.mesh.visible=true;
+          const d=destinations[i];
+          actor.teleport(d.x,this.environment.heightAt(d.x,d.z)+.1,d.z);
+        });
         this.allies.followLeader();
         ship.position.copy(touchdown);this._setMusic('ambient');
       }
