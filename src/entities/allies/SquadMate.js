@@ -12,7 +12,7 @@ const SLOT_TOLERANCE = 2.5;         // Close enough to its post to stand still
 const RETARGET_DISTANCE = 1.5;      // Re-issue a move when the post has drifted this far
 const RUN_DISTANCE = 10;            // Run, not walk, to a post further than this
 const ROUTE_RECHECK_SECONDS = 0.3;  // How often a follower checks whether its way is blocked
-const REPOSITION_SECONDS = [4, 7];  // Look for a better firing spot this often
+const COVER_POST_RADIUS = 2.5;      // Keep combat cover close to the squad's formation slot
 const CHEST_HEIGHT = 1.2;
 const ALERT_SECONDS = 2;            // After being shot, look towards the shooter this long
 const REVIVE_REACH_SLACK = 0.5;     // Extra reach once a revive has started
@@ -22,10 +22,9 @@ const REVIVE_REACH_SLACK = 0.5;     // Extra reach once a revive has started
  * An AI soldier on the player's side (ship crew, or a pilot who has landed). Takes orders from
  * its HumanSquad: walk a route (down the gangway), then follow the leader in formation or hold a
  * point. A follower with a wall between it and its post follows the leader's trail around it,
- * and runs faster to catch up when far behind. When it sees an alien it fights from the edge of
- * cover near its post, firing machine-gun
- * bursts, and goes back to its post once the area is clear. It never strays further than
- * `leashRadius` from its post, so the squad stays together. Sent to a downed teammate, it runs
+ * and runs faster to catch up when far behind. When it sees an alien it stays near its formation
+ * slot, firing machine-gun bursts from nearby cover, and returns to following once the area is
+ * clear. Sent to a downed teammate, it runs
  * over and revives them (not shooting meanwhile); downed itself, it waits for someone to do the same.
  * Balance values come from config.json (`allies.squadMate`).
  */
@@ -47,6 +46,7 @@ export class SquadMate extends GroundCombatant {
     if(this.model.character?.id)this.name=characterName(this.model.character.id);
     this.power = new CharacterPower(this, this.model.character?.id || 'bob');
     this.squad = squad;
+    this.isSquadMate = true;
     this.perception = new Perception(this, cfg);
 
     // Orders: walk `route` first, then `order` ('follow' the leader, or 'hold' a point)
@@ -65,7 +65,6 @@ export class SquadMate extends GroundCombatant {
     this._shotTimer = 0;
     this._pauseTimer = Math.random() * cfg.burstPause;
 
-    this._repositionTimer = 0;
     this._alertTimer = 0;
     this._alertPoint = new THREE.Vector3();
     this._post = new THREE.Vector3();
@@ -263,12 +262,12 @@ export class SquadMate extends GroundCombatant {
   }
 
   /**
-   * A firing spot near the post: the edge of a rock at fighting range if one is within the
-   * leash, otherwise the post itself.
+   * A firing spot near this squadmate's formation slot, so combat doesn't pull it away from the
+   * player. Fall back to the slot if there is no nearby cover within weapon range.
    */
   _chooseFiringSpot(post, threat) {
     if (this.squad && this.squad.findCover(post, threat, this._point, this.cfg.minRange, this.cfg.maxRange) &&
-      Math.hypot(this._point.x - post.x, this._point.z - post.z) <= this.cfg.leashRadius) {
+      Math.hypot(this._point.x - post.x, this._point.z - post.z) <= COVER_POST_RADIUS) {
       return this._point;
     }
     return this._point.copy(post);
@@ -373,9 +372,6 @@ const SQUADMATE_STATES = {
   },
 
   engage: {
-    enter(m) {
-      m._repositionTimer = 0;
-    },
     exit(m) {
       m.clearLook();
     },
@@ -383,19 +379,12 @@ const SQUADMATE_STATES = {
       const target = m.perception.target;
       if (!target && m.perception.timeSinceSeen > m.cfg.regroupSeconds) return m.order;
 
-      m.lookAt(target ? target.position : m.perception.lastKnownPosition);
+      const threat = target ? target.position : m.perception.lastKnownPosition;
+      m.lookAt(threat);
       m.getPost(m._post);
-      const fromPost = Math.hypot(m.position.x - m._post.x, m.position.z - m._post.z);
-
-      m._repositionTimer -= delta;
-      if (m._repositionTimer <= 0 || fromPost > m.cfg.leashRadius) {
-        m._repositionTimer = REPOSITION_SECONDS[0] + Math.random() * (REPOSITION_SECONDS[1] - REPOSITION_SECONDS[0]);
-        const threat = target ? target.position : m.perception.lastKnownPosition;
-        const spot = m._chooseFiringSpot(m._post, threat);
-        const distance = Math.hypot(spot.x - m.position.x, spot.z - m.position.z);
-        if (distance > SLOT_TOLERANCE) m.moveTo(spot, m.cfg.runSpeed);
-        else m.stop();
-      }
+      const spot = m._chooseFiringSpot(m._post, threat);
+      if (m.order === 'follow') m._followTo(spot, delta);
+      else m._goTo(spot);
       return null;
     }
   }

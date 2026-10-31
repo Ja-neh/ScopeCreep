@@ -9,6 +9,7 @@ import {
   loadBigDoorSlidingUp
 } from '../entities/doors/index.js';
 import { WeaponController } from '../weapons/WeaponController.js';
+import { createRifleModel, createWeaponMaterials, disposeModelGeometry } from '../weapons/WeaponModels.js';
 import { ProjectilePool } from '../entities/ProjectilePool.js';
 import { AlienSquad } from '../ai/AlienSquad.js';
 import { AlienTrooper } from '../entities/enemies/AlienTrooper.js';
@@ -91,6 +92,17 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.levelRigidBody = null;
     this.doors = [];
     this.weapons = null;
+    this.hasGun = false;
+    this.cellDoor = null;
+    this.deskGunGroup = null;
+    this.deskGunMaterials = null;
+    this.deskGunRingMaterial = null;
+    this.deskGunPos = new THREE.Vector3(10, 0.88, -39.85);
+    this.deskGunLight = null;
+    this._deskGunPromptVisible = false;
+    this._doorLockedPromptVisible = false;
+    this._holdingCellBattleStarted = false;
+    this.missionAlienSpawnNodes = [];
     this.projectilePool = null;
     this.enemySquad = null;
     this.allies = null;
@@ -262,6 +274,7 @@ export class Level01InsideSpaceship extends BaseLevel {
         }
       }
     });
+    this.missionAlienSpawnNodes = alienSpawnNodes;
 
     // 5. Setup Lighting Environment (Linear decay = 1.0 with boosted intensities for indoor illumination)
 
@@ -383,14 +396,16 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.allies = this.trackDisposable(new HumanSquad(this.gameWorld, {
       leader: this.player,
       isWalkable: (x, z) => x > -22 && x < 22 && z > -90 && z < 90,
-      corpseSeconds: config.levels.level01.corpseSeconds
+      corpseSeconds: config.levels.level01.corpseSeconds,
+      onMemberExpired: (member) => {
+        if (member !== this.player) this._recoverSquadmate(member);
+      }
     }));
 
-    this.weapons = new WeaponController(this.gameWorld, this.player);
-    this.gameWorld.addEntity(this.weapons);
     this.projectilePool = new ProjectilePool(this.gameWorld);
     this.gameWorld.addEntity(this.projectilePool);
     this.gameWorld.projectilePool = this.projectilePool;
+    this._createDeskGunProp();
 
     this.enemySquad = this.trackDisposable(new AlienSquad(this.gameWorld, {
       targets: this.allies.members,
@@ -398,8 +413,9 @@ export class Level01InsideSpaceship extends BaseLevel {
       corpseSeconds: config.levels.level01.corpseSeconds
     }));
     this.allies.enemySquad = this.enemySquad;
-    this._spawnMissionAliens(alienSpawnNodes);
     if (this.gameWorld.ui) {
+      this.gameWorld.ui.hideCrosshair?.();
+      this.gameWorld.ui.hideWeaponHUD?.();
       this.gameWorld.ui.showPlayerHealth();
       this.gameWorld.ui.updatePlayerHealth(this.player.health.currentHealth, this.player.health.maxHealth);
     }
@@ -470,7 +486,24 @@ export class Level01InsideSpaceship extends BaseLevel {
     this.gameWorld.ui?.showPrompt?.('E', `FREE ${nearby.hero.name.toUpperCase()} (${Math.floor(nearby.progress / config.levels.level01.captiveRescueSeconds * 100)}%)`, '#76e9ec', this);
   }
 
+  _recoverSquadmate(mate) {
+    if (!mate || mate === this.player || !mate.rigidBody) return;
+    const player = this.player.position;
+    const angle = (mate.slotIndex || 0) * 2.399963229728653;
+    const x = THREE.MathUtils.clamp(player.x + Math.cos(angle) * 2.2, -8.5, 8.5);
+    const z = THREE.MathUtils.clamp(player.z + Math.sin(angle) * 2.2, -43, 43);
+
+    mate.isLost = false;
+    mate.lostTime = 0;
+    mate.revive(mate.health.maxHealth);
+    mate.teleport(x, player.y, z);
+    mate.follow();
+    mate.reviveSecondsLeft = 0;
+    this.gameWorld.ui?.showToast?.(`${mate.name} regrouped with the team.`, 'info', 2500);
+  }
+
   _spawnMissionAliens(spawnNodes = []) {
+    if (this.alienSpawns.length > 0) return;
     const positions = [];
     for (const node of spawnNodes) {
       positions.push(node.getWorldPosition(new THREE.Vector3()));
@@ -496,6 +529,99 @@ export class Level01InsideSpaceship extends BaseLevel {
       this.enemySquad.add(alien);
       this.alienSpawns.push(alien);
     }
+  }
+
+  _createDeskGunProp() {
+    this.deskGunGroup = new THREE.Group();
+    this.deskGunGroup.name = 'DeskRiflePickup';
+    this.deskGunGroup.position.copy(this.deskGunPos);
+
+    this.deskGunMaterials = createWeaponMaterials();
+    const rifle = createRifleModel(this.deskGunMaterials);
+    rifle.mesh.position.set(0, 0.04, 0);
+    rifle.mesh.rotation.set(0, Math.PI * 0.25, Math.PI / 2);
+    rifle.mesh.scale.setScalar(0.72);
+    this.deskGunGroup.add(rifle.mesh);
+
+    this.deskGunLight = new THREE.PointLight(0x00f5a0, 1.8, 3.5);
+    this.deskGunLight.position.set(0, 0.3, 0);
+    this.deskGunGroup.add(this.deskGunLight);
+
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.2, 0.24, 20).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x00f5a0, side: THREE.DoubleSide })
+    );
+    ring.position.y = 0.015;
+    this.deskGunRingMaterial = ring.material;
+    this.deskGunGroup.add(ring);
+    this.gameWorld.environmentGroup.add(this.deskGunGroup);
+  }
+
+  _updateHoldingRoomInteractions() {
+    if (this.isIntroPlaying || !this.player?.position) return;
+
+    if (this.deskGunLight && !this.hasGun) {
+      this.deskGunLight.intensity = 1.5 + Math.sin(Date.now() * 0.005) * 0.5;
+    }
+
+    if (!this.hasGun && this.deskGunGroup) {
+      const nearGun = this.player.position.distanceToSquared(this.deskGunPos) <= 2.2 * 2.2;
+      if (nearGun) {
+        if (!this._deskGunPromptVisible) {
+          this._deskGunPromptVisible = true;
+          this.gameWorld.ui?.showPrompt?.('[E]', 'PICK UP RIFLE', '#00f5a0', this.deskGunGroup);
+        }
+        if (this.gameWorld.input?.isActionJustPressed('specialAction')) this._takeGunFromDesk();
+      } else if (this._deskGunPromptVisible) {
+        this._deskGunPromptVisible = false;
+        this.gameWorld.ui?.hidePrompt?.(this.deskGunGroup);
+      }
+    }
+
+    if (!this.hasGun && this.cellDoor) {
+      const doorPos = this.cellDoor.mesh?.position || new THREE.Vector3(6, 0, -49);
+      const nearDoor = this.player.position.distanceToSquared(doorPos) <= 3.2 * 3.2;
+      if (nearDoor && !this._doorLockedPromptVisible) {
+        this._doorLockedPromptVisible = true;
+        this.gameWorld.ui?.showPrompt?.('LOCKED', 'PICK UP THE RIFLE FROM THE DESK', '#ef4444', this.cellDoor);
+      } else if (!nearDoor && this._doorLockedPromptVisible) {
+        this._doorLockedPromptVisible = false;
+        this.gameWorld.ui?.hidePrompt?.(this.cellDoor);
+      }
+    }
+  }
+
+  _takeGunFromDesk() {
+    if (this.hasGun) return;
+    this.hasGun = true;
+
+    if (this._deskGunPromptVisible) {
+      this._deskGunPromptVisible = false;
+      this.gameWorld.ui?.hidePrompt?.(this.deskGunGroup);
+    }
+    if (this._doorLockedPromptVisible && this.cellDoor) {
+      this._doorLockedPromptVisible = false;
+      this.gameWorld.ui?.hidePrompt?.(this.cellDoor);
+    }
+
+    if (this.deskGunGroup) {
+      disposeModelGeometry(this.deskGunGroup);
+      this.deskGunGroup = null;
+      for (const material of Object.values(this.deskGunMaterials || {})) material.dispose();
+      this.deskGunMaterials = null;
+      this.deskGunRingMaterial?.dispose();
+      this.deskGunRingMaterial = null;
+      this.deskGunLight = null;
+    }
+
+    this.weapons = new WeaponController(this.gameWorld, this.player);
+    this.gameWorld.addEntity(this.weapons);
+    this.weapons.pickUpRifle();
+    this.cellDoor?.unlock?.();
+
+    this.gameWorld.audio?.play?.('reload');
+    this.gameWorld.ui?.showToast?.('Rifle acquired. The cell door is unlocked.', 'success', 3500);
+    this.gameWorld.ui?.showObjective?.('EXIT THE HOLDING BAY', 'Approach the unlocked cell door.');
   }
 
   _createSpaceBackdrop() {
@@ -666,6 +792,8 @@ export class Level01InsideSpaceship extends BaseLevel {
         closeDelay: 1.2
       });
     } else if (/SPAWN-Door-Sliding-Sideways/i.test(name)) {
+      const isHoldingCellDoor = /Sliding-Sideways.*001/i.test(name) ||
+        (Math.abs(worldPos.x - 6) < 1.5 && Math.abs(worldPos.z + 49) < 1.5);
       door = await loadDoorSlidingSideways(this.gameWorld, {
         name,
         position: worldPos,
@@ -675,8 +803,10 @@ export class Level01InsideSpaceship extends BaseLevel {
         panelMetalness: 0.15,
         openSpeed: 2.2,
         closeSpeed: 1.8,
-        closeDelay: 1.0
+        closeDelay: 1.0,
+        isLocked: isHoldingCellDoor && !this.hasGun
       });
+      if (isHoldingCellDoor) this.cellDoor = door;
     } else if (/SPAWN-Door-Sliding-Up/i.test(name)) {
       door = await loadDoorSlidingUp(this.gameWorld, {
         name,
@@ -772,6 +902,14 @@ export class Level01InsideSpaceship extends BaseLevel {
     if (this._checkPlayerFall()) return;
 
     this._updateControlCenterPanel();
+    this._updateHoldingRoomInteractions(delta);
+
+    if (this.hasGun && !this._holdingCellBattleStarted && this.cellDoor?.isOpen?.()) {
+      this._holdingCellBattleStarted = true;
+      this._spawnMissionAliens(this.missionAlienSpawnNodes);
+      this.gameWorld.ui?.showToast?.('Hostiles detected beyond the holding cell.', 'warning', 3500);
+      this.gameWorld.ui?.showObjective?.('FIGHT THROUGH THE ALIENS', 'Clear the holding bay to reach the captives.');
+    }
 
     // Performance Optimization A & D: Dynamic Light Culling & Floor Occlusion Culling
     if (this.player && this.player.position) {
@@ -812,7 +950,7 @@ export class Level01InsideSpaceship extends BaseLevel {
       }
     }
 
-    if (this.enemySquad) this.enemySquad.update();
+    if (this._holdingCellBattleStarted && this.enemySquad) this.enemySquad.update();
     this.allies?.update(delta);
     this._updateCaptives(delta);
     this._updateMissionProgress(delta);
@@ -846,6 +984,7 @@ export class Level01InsideSpaceship extends BaseLevel {
       return;
     }
     if (this.isIntroPlaying || !this.enemySquad) return;
+    if (this.missionStage === 'holdingBay' && !this._holdingCellBattleStarted) return;
     const floorEnemies = this.enemySquad.members.filter((alien) => !alien.isDead && alien.missionStage === this.missionStage);
 
     if (this.missionStage === 'holdingBay' && floorEnemies.length === 0) {
@@ -930,6 +1069,7 @@ export class Level01InsideSpaceship extends BaseLevel {
       { actions: ['aimDownSights'], label: 'Aim' },
       { actions: ['firePrimary'], label: 'Fire' },
       { actions: ['reload'], label: 'Reload' },
+      { actions: ['specialAction'], label: 'Pick up weapon / Interact' },
       { actions: ['toggleCamera'], label: 'Toggle View (V)' },
       { actions: ['toggleColliders'], label: 'Toggle Colliders Wireframe (B / F2)' }
     ];
@@ -1067,7 +1207,8 @@ export class Level01InsideSpaceship extends BaseLevel {
         // Lift screen fade so room reveals player already standing in control
         if (this.gameWorld.ui) {
           this.gameWorld.ui.hideFade(false);
-          this.gameWorld.ui.showToast('Find a way out of the Stasis Holding Bay.', 'info', 4000);
+          this.gameWorld.ui.showToast('Find the rifle on the desk to unlock the cell door.', 'info', 4500);
+          this.gameWorld.ui.showObjective('SEARCH THE HOLDING BAY', 'Pick up the rifle from the desk to unlock the exit door.');
         }
 
         // Resume ambient level score
@@ -1107,8 +1248,8 @@ export class Level01InsideSpaceship extends BaseLevel {
       if (this.gameWorld.ui) {
         this.gameWorld.ui.hideCinematic();
         this.gameWorld.ui.hideFade(false);
-        this.gameWorld.ui.showToast('Fight through the guards and free the captives.', 'info', 4000);
-        this.gameWorld.ui.showObjective('ESCAPE THE HOLDING BAY', 'Defeat the guards, then rescue every captive.');
+        this.gameWorld.ui.showToast('Find the rifle on the desk to unlock the cell door.', 'info', 4500);
+        this.gameWorld.ui.showObjective('SEARCH THE HOLDING BAY', 'Pick up the rifle from the desk to unlock the exit door.');
       }
 
       // Resume ambient score for level exploration
@@ -1121,6 +1262,20 @@ export class Level01InsideSpaceship extends BaseLevel {
   dispose() {
     this._endIntroCutscene();
     this.gameWorld.ui?.hidePrompt?.(this);
+    if (this._deskGunPromptVisible && this.deskGunGroup) {
+      this.gameWorld.ui?.hidePrompt?.(this.deskGunGroup);
+      this._deskGunPromptVisible = false;
+    }
+    if (this._doorLockedPromptVisible && this.cellDoor) {
+      this.gameWorld.ui?.hidePrompt?.(this.cellDoor);
+      this._doorLockedPromptVisible = false;
+    }
+    if (this.deskGunGroup) disposeModelGeometry(this.deskGunGroup);
+    this.deskGunGroup = null;
+    for (const material of Object.values(this.deskGunMaterials || {})) material.dispose();
+    this.deskGunMaterials = null;
+    this.deskGunRingMaterial?.dispose();
+    this.deskGunRingMaterial = null;
     for (const captive of this.captives) {
       captive.group.parent?.remove(captive.group);
       captive.model.dispose();

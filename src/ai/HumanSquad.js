@@ -5,11 +5,11 @@ import config from '../config.json';
 // Formation places around the leader, in the leader's frame (x right, z behind, meters), and the
 // direction each one watches relative to the squad's heading (radians, positive = left).
 const FORMATION = [
-  { x: -3.5, z: 2.5, watch: 0.6 },
-  { x: 3.5, z: 2.5, watch: -0.6 },
-  { x: -6, z: 6, watch: 1.4 },
-  { x: 6, z: 6, watch: -1.4 },
-  { x: 0, z: 7, watch: Math.PI }
+  { x: -1.8, z: 1.8, watch: 0.6 },
+  { x: 1.8, z: 1.8, watch: -0.6 },
+  { x: -3.3, z: 3, watch: 1.4 },
+  { x: 3.3, z: 3, watch: -1.4 },
+  { x: 0, z: 4.2, watch: Math.PI }
 ];
 const HEADING_SPEED = 1.5;   // Leader speed (m/s) above which the formation turns to their travel direction
 const HEADING_RATE = 2;      // How quickly the formation turns (1/s)

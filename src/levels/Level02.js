@@ -966,6 +966,7 @@ export class Level02 extends IslandLevel {
       },
       onFinished:()=>{
         actors.forEach((actor,i)=>{actor.mesh.visible=true;const d=destinations[i];actor.teleport(d.x,d.y,d.z);});
+        this.allies.followLeader();
         ship.position.copy(touchdown);this._setMusic('ambient');
       }
     });

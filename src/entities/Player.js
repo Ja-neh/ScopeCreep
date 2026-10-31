@@ -15,6 +15,7 @@ export { CameraMode };
 
 // How quickly the camera and body ease between standing and crouching (per second)
 const CROUCH_BLEND_RATE = 10;
+const MOVEMENT_FILTER = (collider) => collider.userData?.entity?.isSquadMate !== true;
 
 /**
  * Player
@@ -432,7 +433,10 @@ export class Player extends BaseEntity {
       this.groundProbe.clipBarrierMovement(currPos,desiredMovement,this.isGrounded,this.controllerOffset*2+0.05);
       this.characterController.computeColliderMovement(
         this.collider,
-        desiredMovement
+        desiredMovement,
+        undefined,
+        undefined,
+        MOVEMENT_FILTER
       );
 
       const correctedMovement = this.characterController.computedMovement();
